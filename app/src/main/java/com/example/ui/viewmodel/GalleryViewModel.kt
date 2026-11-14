@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.ai.DepthAnythingV2Engine
 import com.example.data.ai.FacePersonClusterer
+import com.example.data.ai.FaceReference
 import com.example.data.ai.FacePersonGroup
 import com.example.data.ai.DepthMapResult
 import com.example.data.ai.DepthModelManager
@@ -197,8 +198,8 @@ class GalleryViewModel(
     }
 
   private val facePeopleBundleFlow =
-    combine(galleryRepo.faceIndexedMedia, galleryRepo.facePeople) { faceRows, facePeople ->
-      faceRows to facePeople
+    combine(galleryRepo.faceIndexedMedia, galleryRepo.facePeople, galleryRepo.faceExclusions) { faceRows, facePeople, exclusions ->
+      Triple(faceRows, facePeople, exclusions)
     }
 
   private val mediaBundleFlow =
@@ -209,7 +210,7 @@ class GalleryViewModel(
       galleryRepo.customAlbums,
       facePeopleBundleFlow,
     ) { visible, vault, trashed, albums, faceBundle ->
-      MediaBundle(visible, vault, trashed, albums, faceBundle.first, faceBundle.second)
+      MediaBundle(visible, vault, trashed, albums, faceBundle.first, faceBundle.second, faceBundle.third)
     }
 
   private val uiControlsBundleFlow =
@@ -251,7 +252,7 @@ class GalleryViewModel(
         val q = searchCtrl.query.trim().lowercase()
         val personRecords = media.facePeople.associateBy { it.clusterId }
         val detectedGroups =
-          FacePersonClusterer.cluster(media.faceRows, prefs.clusteringThreshold).map { group ->
+          FacePersonClusterer.cluster(\n            media.faceRows, prefs.clusteringThreshold,\n            media.faceExclusions.map { FaceReference(it.photoId, it.faceIndex) }.toSet(),\n          ).map { group ->
             val record = personRecords[group.id]
             group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId)
           }
@@ -272,6 +273,7 @@ class GalleryViewModel(
                   photoIds = samePerson.flatMap { it.photoIds }.distinct().sortedDescending(),
                   faceCount = samePerson.sumOf { it.faceCount },
                   clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
+                  faces = samePerson.flatMap { it.faces }.distinct(),
                 )
               }
             }
@@ -658,6 +660,14 @@ class GalleryViewModel(
         galleryRepo.saveFacePerson(FacePersonEntity(clusterId = clusterId, name = cleanName))
       }
       emitMessage(if (cleanName == null) "Person label removed" else "Saved person as $cleanName")
+    }
+  }
+
+  /** Remove only one detected face from the current person; other matches remain assigned. */
+  fun excludeFaceFromPerson(photoId: Long, faceIndex: Int) {
+    viewModelScope.launch {
+      galleryRepo.excludeFace(photoId, faceIndex)
+      emitMessage("Face removed from person")
     }
   }
 
