@@ -654,11 +654,35 @@ fun SearchScreen(
           if (group.faces.isNotEmpty()) {
             Text("Remove an incorrectly grouped face", style = MaterialTheme.typography.labelMedium)
             group.faces.take(10).forEach { face ->
-              TextButton(onClick = {
-                onExcludeFace(face.photoId, face.faceIndex)
-                personBeingNamed = null
-              }) {
-                Text("Remove face from photo ${face.photoId} (face ${face.faceIndex + 1})")
+              val photo = uiState.visibleMedia.firstOrNull { it.id == face.photoId }
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                if (photo != null) {
+                  GalleryMediaImage(
+                    item = photo,
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
+                  )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    photo?.title ?: "Photo unavailable",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                  )
+                  Text(
+                    "Detected face ${face.faceIndex + 1}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = extended.textMuted,
+                  )
+                }
+                TextButton(onClick = {
+                  onExcludeFace(face.photoId, face.faceIndex)
+                  personBeingNamed = null
+                }) { Text("Remove") }
               }
             }
           }
