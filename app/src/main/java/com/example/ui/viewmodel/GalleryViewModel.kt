@@ -15,6 +15,7 @@ import com.example.data.ai.DepthModelManager
 import com.example.data.ai.DepthModelPackState
 import com.example.data.editor.PhotoEditorRenderer
 import com.example.data.local.AlbumEntity
+import com.example.data.local.FacePersonEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaAccessLevel
 import com.example.data.media.MediaPermissionHelper
@@ -202,8 +203,9 @@ class GalleryViewModel(
       galleryRepo.trashedMedia,
       galleryRepo.customAlbums,
       galleryRepo.faceIndexedMedia,
-    ) { visible, vault, trashed, albums, faceRows ->
-      MediaBundle(visible, vault, trashed, albums, faceRows)
+      galleryRepo.facePeople,
+    ) { visible, vault, trashed, albums, faceRows, facePeople ->
+      MediaBundle(visible, vault, trashed, albums, faceRows, facePeople)
     }
 
   private val uiControlsBundleFlow =
@@ -243,7 +245,33 @@ class GalleryViewModel(
           }
 
         val q = searchCtrl.query.trim().lowercase()
-        val peopleGroups = FacePersonClusterer.cluster(media.faceRows, prefs.clusteringThreshold)
+        val personRecords = media.facePeople.associateBy { it.clusterId }
+        val detectedGroups =
+          FacePersonClusterer.cluster(media.faceRows, prefs.clusteringThreshold).map { group ->
+            val record = personRecords[group.id]
+            group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId)
+          }
+        // Assigning the same name to multiple clusters merges them in the People list.
+        val peopleGroups =
+          detectedGroups
+            .filter { personRecords[it.id]?.isIgnored != true }
+            .groupBy { group ->
+              group.name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "cluster:${group.id}"
+            }
+            .values
+            .map { samePerson ->
+              if (samePerson.size == 1) samePerson.single()
+              else {
+                val first = samePerson.first()
+                first.copy(
+                  id = "person:${first.name.orEmpty().trim().lowercase()}",
+                  photoIds = samePerson.flatMap { it.photoIds }.distinct().sortedDescending(),
+                  faceCount = samePerson.sumOf { it.faceCount },
+                  clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
+                )
+              }
+            }
+            .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.name ?: it.id })
         val peoplePhotoIds = peopleGroups.flatMap { it.photoIds }.toSet()
         val isPeopleSearch = q == "portraits"
         val selectedPersonGroup = peopleGroups.firstOrNull { q == "person:${it.id}" }
@@ -614,6 +642,17 @@ class GalleryViewModel(
 
   fun setSearchQuery(query: String) {
     searchQuery.value = query
+  }
+
+  /** Persist a local person label. Reusing a name merges clusters in the People list. */
+  fun setFacePersonName(group: FacePersonGroup, name: String?) {
+    val cleanName = name?.trim()?.takeIf { it.isNotEmpty() }
+    viewModelScope.launch {
+      group.clusterIds.distinct().forEach { clusterId ->
+        galleryRepo.saveFacePerson(FacePersonEntity(clusterId = clusterId, name = cleanName))
+      }
+      emitMessage(if (cleanName == null) "Person label removed" else "Saved person as $cleanName")
+    }
   }
 
   fun toggleSearchOnlyLocation() {
@@ -1035,6 +1074,7 @@ class GalleryViewModel(
     val trashed: List<GalleryMediaItem>,
     val customAlbums: List<AlbumEntity>,
     val faceRows: List<com.example.data.local.MediaItemEntity>,
+    val facePeople: List<FacePersonEntity>,
   )
 
   private data class UiControlsBundle(
