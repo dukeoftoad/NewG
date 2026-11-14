@@ -12,6 +12,7 @@ import android.provider.OpenableColumns
 import com.example.data.local.AlbumEntity
 import com.example.data.local.GalleryDao
 import com.example.data.local.FacePersonEntity
+import com.example.data.local.FaceExclusionEntity
 import com.example.data.local.MediaItemEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaStoreScanner
@@ -53,6 +54,16 @@ class GalleryRepository(
   val faceIndexedMedia: Flow<List<MediaItemEntity>> = dao.observeFaceIndexedMedia()
 
   val facePeople: Flow<List<FacePersonEntity>> = dao.observeFacePeople()
+
+  val faceExclusions: Flow<List<FaceExclusionEntity>> = dao.observeFaceExclusions()
+
+  suspend fun excludeFace(photoId: Long, faceIndex: Int) {
+    dao.upsertFaceExclusion(FaceExclusionEntity(photoId, faceIndex))
+  }
+
+  suspend fun restoreFace(photoId: Long, faceIndex: Int) {
+    dao.deleteFaceExclusion(photoId, faceIndex)
+  }
 
   suspend fun saveFacePerson(person: FacePersonEntity) {
     val existing = dao.getFacePerson(person.clusterId)
