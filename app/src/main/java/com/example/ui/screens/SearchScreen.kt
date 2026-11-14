@@ -84,7 +84,7 @@ fun SearchScreen(
   onOpenLightbox: (Long) -> Unit,
   onSetColumns: (Int) -> Unit = {},
   onNamePerson: (FacePersonGroup, String?) -> Unit = { _, _ -> },
-  onExcludeFace: (Long, Int) -> Unit = { _, _ -> },
+  onExcludeFace: (Long, Int) -> Unit = { _, _ -> },\n  onSetPersonCover: (FacePersonGroup, Long) -> Unit = { _, _ -> },
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
@@ -617,7 +617,7 @@ fun SearchScreen(
               }) { Text(existing) }
             }
           }
-          if (group.faces.isNotEmpty()) {
+          Text("Choose a cover photo", style = MaterialTheme.typography.labelMedium)\n          group.photoIds.mapNotNull { photoId -> uiState.visibleMedia.firstOrNull { it.id == photoId } }.forEach { photo ->\n            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {\n              GalleryMediaImage(item = photo, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)))\n              TextButton(onClick = {\n                onSetPersonCover(group, photo.id)\n                personBeingNamed = null\n              }) { Text(if (photo.id == group.coverPhotoId) "Current cover" else "Set as cover") }\n            }\n          }\n          if (group.faces.isNotEmpty()) {
             Text("Remove an incorrectly grouped face", style = MaterialTheme.typography.labelMedium)
             group.faces.forEach { face ->
               TextButton(onClick = {
