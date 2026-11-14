@@ -46,11 +46,13 @@ jobs:
       - name: Generate temporary alpha signing keystore
         id: alpha
         shell: bash
+        env:
+          VERSION_INPUT: ${{ inputs.version_name }}
         run: |
           set -euo pipefail
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            version_name="${{ inputs.version_name }}"
+            version_name="${VERSION_INPUT}"
           else
             version_name="${GITHUB_REF_NAME#alpha-v}"
           fi
