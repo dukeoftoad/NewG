@@ -1,13 +1,31 @@
 package com.example.data.repository
 
+import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.provider.OpenableColumns
 import com.example.data.local.AlbumEntity
 import com.example.data.local.GalleryDao
+import com.example.data.local.MediaItemEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaStoreScanner
 import com.example.data.model.GalleryMediaItem
+import com.example.data.model.MediaCategory
+import com.example.data.model.MediaType
+import com.example.data.model.PhotoEditRecipe
 import com.example.data.model.TonePreset
 import com.example.data.security.VaultCryptoManager
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -94,12 +112,128 @@ class GalleryRepository(
       dao.updateVaultState(id = id, hidden = false, encryptedPath = null)
     }
 
+  suspend fun unhideBatchFromVaultEncrypted(ids: List<Long>): Int =
+    withContext(Dispatchers.IO) {
+      if (ids.isEmpty()) return@withContext 0
+      val entities = dao.getMediaByIds(ids)
+      entities.forEach { entity ->
+        vaultCryptoManager.deleteEncryptedFile(entity.encryptedVaultFile)
+      }
+      dao.unhideBatch(ids)
+      entities.size
+    }
+
   suspend fun deletePermanentlyFromVault(id: Long) =
     withContext(Dispatchers.IO) {
       val entity = dao.getMediaById(id) ?: return@withContext
       vaultCryptoManager.deleteEncryptedFile(entity.encryptedVaultFile)
       dao.deletePermanently(id)
     }
+
+  suspend fun deletePermanentlyBatchFromVault(ids: List<Long>): Int =
+    withContext(Dispatchers.IO) {
+      if (ids.isEmpty()) return@withContext 0
+      val entities = dao.getMediaByIds(ids)
+      entities.forEach { entity ->
+        vaultCryptoManager.deleteEncryptedFile(entity.encryptedVaultFile)
+      }
+      dao.deletePermanentlyBatch(ids)
+      entities.size
+    }
+
+  suspend fun importExternalUrisToVault(uris: List<Uri>): Int =
+    withContext(Dispatchers.IO) {
+      if (uris.isEmpty()) return@withContext 0
+      var imported = 0
+      val dayFmt = SimpleDateFormat("dd MMM yyyy", Locale.US)
+      val monthFmt = SimpleDateFormat("MMMM yyyy", Locale.US)
+      val weekDayFmt = SimpleDateFormat("MMM d", Locale.US)
+      val yearFmt = SimpleDateFormat("yyyy", Locale.US)
+
+      uris.forEach { uri ->
+        val bytes =
+          runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } }
+            .getOrNull()
+        if (bytes == null || bytes.isEmpty()) return@forEach
+
+        val mime = context.contentResolver.getType(uri).orEmpty()
+        val displayName = resolveDisplayName(uri) ?: "Vault Import"
+        val nowMs = System.currentTimeMillis()
+        val nowDate = Date(nowMs)
+        val cal = Calendar.getInstance().apply { time = nowDate }
+        cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+        val weekStart = weekDayFmt.format(cal.time)
+        cal.add(Calendar.DAY_OF_WEEK, 6)
+        val weekEnd = weekDayFmt.format(cal.time)
+        val weekGroup = "$weekStart – $weekEnd, ${yearFmt.format(nowDate)}"
+
+        val bounds =
+          BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { opts ->
+            runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) }
+          }
+        val aspectRatio =
+          if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+            (bounds.outWidth.toFloat() / bounds.outHeight.toFloat()).coerceIn(0.55f, 1.8f)
+          } else {
+            1.0f
+          }
+
+        val mediaType =
+          when {
+            mime.startsWith("video/") -> MediaType.VIDEO
+            mime == "image/gif" -> MediaType.GIF
+            else -> MediaType.PHOTO
+          }
+        val category =
+          when (mediaType) {
+            MediaType.VIDEO -> MediaCategory.VIDEOS
+            MediaType.GIF -> MediaCategory.GIFS
+            MediaType.PHOTO,
+            MediaType.SCREENSHOT -> MediaCategory.CAMERA
+          }
+
+        val entity =
+          MediaItemEntity(
+            title = displayName.substringBeforeLast('.').ifBlank { "Vault Import" },
+            uriString = null,
+            drawableResName = "sample_lake_sunset",
+            bucketName = "Vault Import",
+            category = category.name,
+            mediaType = mediaType.name,
+            dateLabel = dayFmt.format(nowDate),
+            weekGroup = weekGroup,
+            monthGroup = monthFmt.format(nowDate),
+            timestamp = nowMs,
+            locationName = "Hidden Vault",
+            hasGps = false,
+            mapX = 0f,
+            mapY = 0f,
+            aspectRatio = aspectRatio,
+            isHidden = true,
+            tagsCsv = "vault, imported, private",
+            ocrText = "",
+            exifSummary = "Imported to AES-256-GCM Vault",
+          )
+
+        val newId = dao.insertSingleMedia(entity)
+        val encPath = vaultCryptoManager.encryptMediaBytes(newId, bytes)
+        dao.updateVaultState(id = newId, hidden = true, encryptedPath = encPath)
+        imported++
+      }
+      imported
+    }
+
+  private fun resolveDisplayName(uri: Uri): String? =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+          ?.use { cursor ->
+            if (cursor.moveToFirst()) {
+              val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+              if (idx >= 0) cursor.getString(idx) else null
+            } else null
+          }
+      }
+      .getOrNull()
 
   suspend fun decryptVaultPreviews(items: List<GalleryMediaItem>): Map<Long, ByteArray> =
     withContext(Dispatchers.IO) {
@@ -156,6 +290,125 @@ class GalleryRepository(
 
   suspend fun setTonePreset(id: Long, preset: TonePreset) {
     dao.setTonePreset(id, preset.name)
+  }
+
+  suspend fun saveEditedCopy(
+    sourceItem: GalleryMediaItem,
+    renderedBitmap: Bitmap,
+    recipe: PhotoEditRecipe,
+  ): Long =
+    withContext(Dispatchers.IO) {
+      val outDir = File(context.filesDir, "edited_media").apply { mkdirs() }
+      val fileName = "toad_edit_${sourceItem.id}_${System.currentTimeMillis()}.jpg"
+      val outFile = File(outDir, fileName)
+      FileOutputStream(outFile).use { fos ->
+        renderedBitmap.compress(Bitmap.CompressFormat.JPEG, 94, fos)
+      }
+
+      // Best-effort export to scoped Pictures/toadGALLERY on Android 10+ (zero broad storage permissions)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        runCatching {
+          val values =
+            ContentValues().apply {
+              put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+              put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+              put(
+                MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/toadGALLERY",
+              )
+              put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+          val uri =
+            context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+          if (uri != null) {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+              renderedBitmap.compress(Bitmap.CompressFormat.JPEG, 94, out)
+            }
+            val done = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+            context.contentResolver.update(uri, done, null, null)
+          }
+        }
+      }
+
+      val nowMs = System.currentTimeMillis()
+      val nowDate = Date(nowMs)
+      val dayFmt = SimpleDateFormat("dd MMM yyyy", Locale.US)
+      val monthFmt = SimpleDateFormat("MMMM yyyy", Locale.US)
+      val weekDayFmt = SimpleDateFormat("MMM d", Locale.US)
+      val yearFmt = SimpleDateFormat("yyyy", Locale.US)
+      val cal = Calendar.getInstance().apply { time = nowDate }
+      cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+      val weekStart = weekDayFmt.format(cal.time)
+      cal.add(Calendar.DAY_OF_WEEK, 6)
+      val weekEnd = weekDayFmt.format(cal.time)
+
+      val aspect =
+        (renderedBitmap.width.toFloat() / renderedBitmap.height.coerceAtLeast(1).toFloat())
+          .coerceIn(0.45f, 2.2f)
+      val cleanBaseTitle = sourceItem.title.removeSuffix(" (Edited)").take(40)
+      val entity =
+        MediaItemEntity(
+          title = "$cleanBaseTitle (Edited)",
+          uriString = Uri.fromFile(outFile).toString(),
+          drawableResName = sourceItem.drawableResName,
+          bucketName = sourceItem.bucketName,
+          category = MediaCategory.CAMERA.name,
+          mediaType = MediaType.PHOTO.name,
+          dateLabel = dayFmt.format(nowDate),
+          weekGroup = "$weekStart – $weekEnd, ${yearFmt.format(nowDate)}",
+          monthGroup = monthFmt.format(nowDate),
+          timestamp = nowMs,
+          locationName = sourceItem.locationName,
+          hasGps = sourceItem.hasGps,
+          mapX = sourceItem.mapX,
+          mapY = sourceItem.mapY,
+          aspectRatio = aspect,
+          isFavorite = false,
+          tagsCsv = (sourceItem.tags + "edited").distinct().joinToString(", "),
+          ocrText = sourceItem.ocrText,
+          exifSummary = "${sourceItem.exifSummary} • Edited Copy",
+          tonePreset = TonePreset.NATURAL.name,
+          albumId = sourceItem.albumId,
+          editRecipeJson = recipe.toJsonString(),
+        )
+      dao.insertSingleMedia(entity)
+    }
+
+  suspend fun applyNonDestructiveEdit(
+    sourceItem: GalleryMediaItem,
+    renderedBitmap: Bitmap,
+    recipe: PhotoEditRecipe,
+  ) =
+    withContext(Dispatchers.IO) {
+      val outDir = File(context.filesDir, "edited_media").apply { mkdirs() }
+      val outFile = File(outDir, "nd_${sourceItem.id}_${System.currentTimeMillis()}.jpg")
+      FileOutputStream(outFile).use { fos ->
+        renderedBitmap.compress(Bitmap.CompressFormat.JPEG, 92, fos)
+      }
+      deleteOwnedEditFile(sourceItem.editedUriString)
+      dao.updateNonDestructiveEdit(
+        id = sourceItem.id,
+        editedUri = Uri.fromFile(outFile).toString(),
+        recipeJson = recipe.toJsonString(),
+      )
+    }
+
+  suspend fun revertNonDestructiveEdit(sourceItem: GalleryMediaItem) =
+    withContext(Dispatchers.IO) {
+      deleteOwnedEditFile(sourceItem.editedUriString)
+      dao.updateNonDestructiveEdit(id = sourceItem.id, editedUri = null, recipeJson = null)
+    }
+
+  private fun deleteOwnedEditFile(uriString: String?) {
+    if (uriString.isNullOrBlank()) return
+    runCatching {
+      val path = Uri.parse(uriString).path ?: return@runCatching
+      val ownedDir = File(context.filesDir, "edited_media").canonicalPath
+      val target = File(path)
+      if (target.canonicalPath.startsWith(ownedDir)) {
+        target.delete()
+      }
+    }
   }
 
   suspend fun emptyRecycleBin() {

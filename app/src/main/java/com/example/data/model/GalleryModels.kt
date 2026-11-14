@@ -128,7 +128,12 @@ data class GalleryMediaItem(
   val exifSummary: String,
   val tonePreset: TonePreset,
   val albumId: Long?,
-)
+  val editedUriString: String? = null,
+  val editRecipeJson: String? = null,
+) {
+  val hasNonDestructiveEdits: Boolean
+    get() = !editedUriString.isNullOrBlank() || !editRecipeJson.isNullOrBlank()
+}
 
 @Immutable
 data class AlbumFolder(
@@ -168,6 +173,7 @@ data class UserPreferences(
   val clusteringThreshold: Float = 0.24f,
   val faceModelInstalled: Boolean = true,
   val semanticModelInstalled: Boolean = false,
+  val depthModelInstalled: Boolean = false,
   val showLocationExif: Boolean = true,
   val vaultBiometrics: Boolean = true,
   val vaultAutoLock: VaultAutoLock = VaultAutoLock.IMMEDIATELY,

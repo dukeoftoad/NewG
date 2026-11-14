@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -51,8 +53,12 @@ import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Smartphone
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,26 +67,39 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaAccessLevel
@@ -90,9 +109,14 @@ import com.example.data.model.LayoutMode
 import com.example.data.model.MediaCategory
 import com.example.data.model.StorySlide
 import com.example.ui.components.MediaThumbnailCard
+import com.example.ui.components.ToadBrandIcon
+import com.example.ui.components.pinchToZoomGridColumns
 import com.example.ui.theme.LocalToadColors
 import com.example.ui.viewmodel.GalleryUiState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotosScreen(
   uiState: GalleryUiState,
@@ -101,6 +125,9 @@ fun PhotosScreen(
   onClearFolderFilter: () -> Unit,
   onToggleCleanFeed: () -> Unit,
   onToggleQuickLayout: () -> Unit,
+  onSetColumns: (Int) -> Unit,
+  onNavigateToTimelineSettings: () -> Unit,
+  onOpenVault: () -> Unit,
   onSyncOrRequestMediaPermissions: () -> Unit,
   onDismissPermissionBanner: () -> Unit,
   onResetFilters: () -> Unit,
@@ -123,7 +150,10 @@ fun PhotosScreen(
   val extended = LocalToadColors.current
   val prefs = uiState.preferences
   val effectiveColumns =
-    if (isWideLayout) (prefs.columns + 1).coerceAtMost(5) else prefs.columns.coerceIn(2, 4)
+    if (isWideLayout) (prefs.columns + 1).coerceIn(2, 10) else prefs.columns.coerceIn(2, 10)
+  val compactThumbnails = effectiveColumns >= 6
+  val coroutineScope = rememberCoroutineScope()
+  val density = LocalDensity.current
 
   val groupedSections =
     remember(uiState.filteredTimelineMedia, prefs.groupBy) {
@@ -162,16 +192,72 @@ fun PhotosScreen(
       }
     }
 
+  val maxCollapsePx = remember(density) { with(density) { 46.dp.toPx() } }
+  var collapseOffsetPx by remember { mutableFloatStateOf(0f) }
+  var moreMenuExpanded by remember { mutableStateOf(false) }
+  var isPinching by remember { mutableStateOf(false) }
+  var showDensityPill by remember { mutableStateOf(false) }
+  var lastObservedCols by remember { mutableIntStateOf(effectiveColumns) }
+
+  LaunchedEffect(effectiveColumns, isPinching) {
+    if (isPinching || effectiveColumns != lastObservedCols) {
+      lastObservedCols = effectiveColumns
+      showDensityPill = true
+      if (!isPinching) {
+        delay(1200)
+        showDensityPill = false
+      }
+    } else {
+      showDensityPill = false
+    }
+  }
+
+  val nestedScrollConnection =
+    remember(maxCollapsePx, uiState.isSelectionMode) {
+      object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+          if (uiState.isSelectionMode) return Offset.Zero
+          val deltaY = available.y
+          if (deltaY < 0f && collapseOffsetPx < maxCollapsePx) {
+            val prev = collapseOffsetPx
+            val next = (prev - deltaY).coerceIn(0f, maxCollapsePx)
+            collapseOffsetPx = next
+            return Offset(0f, -(next - prev))
+          }
+          if (deltaY > 0f && collapseOffsetPx > 0f) {
+            val prev = collapseOffsetPx
+            val next = (prev - deltaY).coerceIn(0f, maxCollapsePx)
+            collapseOffsetPx = next
+            return Offset(0f, -(next - prev))
+          }
+          return Offset.Zero
+        }
+      }
+    }
+
+  val collapseProgress =
+    if (uiState.isSelectionMode) 0f else (collapseOffsetPx / maxCollapsePx).coerceIn(0f, 1f)
+  val titleAlpha = (1f - collapseProgress * 1.3f).coerceIn(0f, 1f)
+  val chipsTopPadding = lerp(46.dp, 2.dp, collapseProgress)
+  val chipsStartInset = lerp(0.dp, 46.dp, collapseProgress)
+  val chipsEndInset = lerp(0.dp, 52.dp, collapseProgress)
+
   val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-  Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+  Box(
+    modifier =
+      modifier
+        .fillMaxSize()
+        .background(MaterialTheme.colorScheme.background)
+        .nestedScroll(nestedScrollConnection)
+  ) {
     Column(modifier = Modifier.fillMaxSize()) {
-      // Sticky Translucent Frosted Header (switches to Multi-Select bar when active)
+      // Unified Translucent Scroll-Collapsing Header (switches to Multi-Select bar when active)
       Column(
         modifier =
           Modifier.fillMaxWidth()
             .background(extended.glassSurface)
-            .padding(top = statusBarTop + 8.dp, bottom = 10.dp)
+            .padding(top = statusBarTop + 4.dp, bottom = 6.dp)
       ) {
         if (uiState.isSelectionMode) {
           Row(
@@ -244,131 +330,272 @@ fun PhotosScreen(
               }
             }
           }
-        } else {
-          Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-          ) {
+          Spacer(modifier = Modifier.height(6.dp))
+        }
+
+        // Unified Header Box: on scroll collapse, toadGALLERY fades out and chips merge inline
+        // between the pinned ToadBrandIcon (left) and More menu (right).
+        if (!uiState.isSelectionMode) {
+          Box(modifier = Modifier.fillMaxWidth()) {
+            // Filter Chips Row (animates upward & insets between Toad icon + More menu on collapse)
+            LazyRow(
+              modifier =
+                Modifier.fillMaxWidth()
+                  .padding(top = chipsTopPadding, start = chipsStartInset, end = chipsEndInset)
+                  .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                  .drawWithContent {
+                    drawContent()
+                    drawRect(
+                      brush =
+                        Brush.horizontalGradient(
+                          0.0f to
+                            if (collapseProgress > 0.15f) Color.Transparent else Color.Black,
+                          0.06f to Color.Black,
+                          0.86f to Color.Black,
+                          1.0f to Color.Transparent,
+                        ),
+                      blendMode = BlendMode.DstIn,
+                    )
+                  },
+              contentPadding = PaddingValues(start = 12.dp, end = 20.dp),
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+              items(MediaCategory.entries) { category ->
+                val selected = uiState.activeCategory == category
+                Surface(
+                  onClick = { onSelectCategory(category) },
+                  modifier = Modifier.testTag("filter_chip_${category.name.lowercase()}"),
+                  shape = CircleShape,
+                  color =
+                    if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surface,
+                  border =
+                    BorderStroke(
+                      1.dp,
+                      if (selected) MaterialTheme.colorScheme.primary else extended.borderSubtle,
+                    ),
+                ) {
+                  Text(
+                    text = category.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color =
+                      if (selected) MaterialTheme.colorScheme.onPrimary else extended.textMuted,
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 6.dp),
+                  )
+                }
+              }
+            }
+
+            // Pinned Left: Toad Brand Icon + Slowly Fading toadGALLERY Title
             Row(
+              modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 4.dp),
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-              Box(
+              ToadBrandIcon(
                 modifier =
-                  Modifier.size(30.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = Alignment.Center,
-              ) {
+                  Modifier.clickable {
+                    coroutineScope.launch {
+                      collapseOffsetPx = 0f
+                      listState.animateScrollToItem(0)
+                    }
+                  }
+              )
+              if (titleAlpha > 0.01f) {
                 Text(
-                  text = "t",
-                  style =
-                    MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                  color = MaterialTheme.colorScheme.onPrimary,
+                  text = "toadGALLERY",
+                  style = MaterialTheme.typography.titleLarge,
+                  color = MaterialTheme.colorScheme.onBackground,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+                  modifier =
+                    Modifier.graphicsLayer {
+                      alpha = titleAlpha
+                      translationY = -collapseProgress * 10.dp.toPx()
+                    },
                 )
               }
-              Text(
-                text = "toadGALLERY",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-              )
             }
 
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
+            // Pinned Right: Fixed More (⋮) Menu Anchor
+            Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp)) {
               IconButton(
-                onClick = { onEnterSelectionMode(null) },
+                onClick = { moreMenuExpanded = true },
                 modifier =
-                  Modifier.minimumInteractiveComponentSize()
-                    .testTag("select_mode_button")
-                    .clip(CircleShape)
-                    .background(extended.surfaceHigh),
+                  Modifier.minimumInteractiveComponentSize().testTag("photos_more_menu_button"),
               ) {
-                Icon(
-                  imageVector = Icons.Filled.CheckCircle,
-                  contentDescription = "Enter multi-select mode",
-                  tint = MaterialTheme.colorScheme.primary,
-                  modifier = Modifier.size(19.dp),
-                )
-              }
-
-              IconButton(
-                onClick = onSyncOrRequestMediaPermissions,
-                modifier =
-                  Modifier.minimumInteractiveComponentSize()
-                    .testTag("sync_mediastore_button")
-                    .clip(CircleShape)
-                    .background(extended.surfaceHigh),
-              ) {
-                Icon(
-                  imageVector = Icons.Filled.Refresh,
-                  contentDescription = "Sync device MediaStore library",
-                  tint = MaterialTheme.colorScheme.onSurface,
-                  modifier = Modifier.size(19.dp),
-                )
-              }
-
-              IconButton(
-                onClick = onToggleQuickLayout,
-                modifier =
-                  Modifier.minimumInteractiveComponentSize()
-                    .testTag("toggle_layout_button")
-                    .clip(CircleShape)
-                    .background(extended.surfaceHigh),
-              ) {
-                Icon(
-                  imageVector =
-                    if (prefs.layoutMode == LayoutMode.COLLAGE) Icons.Filled.GridView
-                    else Icons.Filled.ViewAgenda,
-                  contentDescription = "Switch Grid or Collage layout",
-                  tint = MaterialTheme.colorScheme.onSurface,
-                  modifier = Modifier.size(19.dp),
-                )
-              }
-
-              Surface(
-                onClick = onToggleCleanFeed,
-                modifier = Modifier.minimumInteractiveComponentSize().testTag("clean_feed_button"),
-                shape = CircleShape,
-                color =
-                  if (prefs.hideScreenshots) MaterialTheme.colorScheme.primaryContainer
-                  else extended.surfaceHigh,
-                border =
-                  BorderStroke(
-                    width = 1.dp,
-                    color =
-                      if (prefs.hideScreenshots) MaterialTheme.colorScheme.primary
-                      else Color.Transparent,
-                  ),
-              ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(4.dp),
+                Box(
+                  modifier =
+                    Modifier.size(34.dp)
+                      .clip(CircleShape)
+                      .background(extended.surfaceHigh),
+                  contentAlignment = Alignment.Center,
                 ) {
                   Icon(
-                    imageVector =
-                      if (prefs.hideScreenshots) Icons.Outlined.HideImage
-                      else Icons.Outlined.Smartphone,
-                    contentDescription = null,
-                    tint =
-                      if (prefs.hideScreenshots) MaterialTheme.colorScheme.onPrimaryContainer
-                      else extended.textMuted,
-                    modifier = Modifier.size(15.dp),
-                  )
-                  Text(
-                    text = if (prefs.hideScreenshots) "No Shots" else "Clean",
-                    style = MaterialTheme.typography.labelSmall,
-                    color =
-                      if (prefs.hideScreenshots) MaterialTheme.colorScheme.onPrimaryContainer
-                      else extended.textMuted,
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = "More gallery options",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(19.dp),
                   )
                 }
+              }
+
+              DropdownMenu(
+                expanded = moreMenuExpanded,
+                onDismissRequest = { moreMenuExpanded = false },
+                modifier = Modifier.testTag("photos_more_menu"),
+              ) {
+                DropdownMenuItem(
+                  text = { Text("Multi-Select") },
+                  leadingIcon = {
+                    Icon(
+                      imageVector = Icons.Filled.CheckCircle,
+                      contentDescription = null,
+                      tint = MaterialTheme.colorScheme.primary,
+                    )
+                  },
+                  onClick = {
+                    moreMenuExpanded = false
+                    onEnterSelectionMode(null)
+                  },
+                  modifier = Modifier.testTag("menu_multi_select"),
+                )
+                DropdownMenuItem(
+                  text = { Text("Refresh Library") },
+                  leadingIcon = {
+                    Icon(
+                      imageVector = Icons.Filled.Refresh,
+                      contentDescription = null,
+                    )
+                  },
+                  onClick = {
+                    moreMenuExpanded = false
+                    onSyncOrRequestMediaPermissions()
+                  },
+                  modifier = Modifier.testTag("menu_refresh_library"),
+                )
+                DropdownMenuItem(
+                  text = {
+                    Text(
+                      if (prefs.layoutMode == LayoutMode.COLLAGE) "Switch to Grid View"
+                      else "Switch to Collage View"
+                    )
+                  },
+                  leadingIcon = {
+                    Icon(
+                      imageVector =
+                        if (prefs.layoutMode == LayoutMode.COLLAGE) Icons.Filled.GridView
+                        else Icons.Filled.ViewAgenda,
+                      contentDescription = null,
+                    )
+                  },
+                  onClick = {
+                    moreMenuExpanded = false
+                    onToggleQuickLayout()
+                  },
+                  modifier = Modifier.testTag("menu_toggle_layout"),
+                )
+                DropdownMenuItem(
+                  text = { Text("Clean Feed (Hide Screenshots)") },
+                  leadingIcon = {
+                    Icon(
+                      imageVector =
+                        if (prefs.hideScreenshots) Icons.Outlined.HideImage
+                        else Icons.Outlined.Smartphone,
+                      contentDescription = null,
+                    )
+                  },
+                  trailingIcon =
+                    if (prefs.hideScreenshots) {
+                      {
+                        Icon(
+                          imageVector = Icons.Filled.Check,
+                          contentDescription = "Active",
+                          tint = MaterialTheme.colorScheme.primary,
+                        )
+                      }
+                    } else null,
+                  onClick = {
+                    moreMenuExpanded = false
+                    onToggleCleanFeed()
+                  },
+                  modifier = Modifier.testTag("menu_clean_feed"),
+                )
+                HorizontalDivider(thickness = 0.5.dp, color = extended.borderSubtle)
+                DropdownMenuItem(
+                  text = { Text("Timeline Layout (${prefs.columns}/row)") },
+                  leadingIcon = {
+                    Icon(
+                      imageVector = Icons.Outlined.Tune,
+                      contentDescription = null,
+                    )
+                  },
+                  onClick = {
+                    moreMenuExpanded = false
+                    onNavigateToTimelineSettings()
+                  },
+                  modifier = Modifier.testTag("menu_timeline_settings"),
+                )
+                DropdownMenuItem(
+                  text = { Text("Hidden Vault") },
+                  leadingIcon = {
+                    Icon(
+                      imageVector = Icons.Filled.Lock,
+                      contentDescription = null,
+                      tint = MaterialTheme.colorScheme.primary,
+                    )
+                  },
+                  onClick = {
+                    moreMenuExpanded = false
+                    onOpenVault()
+                  },
+                  modifier = Modifier.testTag("menu_hidden_vault"),
+                )
+              }
+            }
+          }
+        } else {
+          // Keep Filter Chips accessible in Selection Mode too
+          LazyRow(
+            modifier =
+              Modifier.fillMaxWidth()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                  drawContent()
+                  drawRect(
+                    brush =
+                      Brush.horizontalGradient(
+                        0.86f to Color.Black,
+                        1.0f to Color.Transparent,
+                      ),
+                    blendMode = BlendMode.DstIn,
+                  )
+                },
+            contentPadding = PaddingValues(start = 12.dp, end = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            items(MediaCategory.entries) { category ->
+              val selected = uiState.activeCategory == category
+              Surface(
+                onClick = { onSelectCategory(category) },
+                modifier = Modifier.testTag("filter_chip_${category.name.lowercase()}"),
+                shape = CircleShape,
+                color =
+                  if (selected) MaterialTheme.colorScheme.primary
+                  else MaterialTheme.colorScheme.surface,
+                border =
+                  BorderStroke(
+                    1.dp,
+                    if (selected) MaterialTheme.colorScheme.primary else extended.borderSubtle,
+                  ),
+              ) {
+                Text(
+                  text = category.label,
+                  style = MaterialTheme.typography.labelMedium,
+                  color =
+                    if (selected) MaterialTheme.colorScheme.onPrimary else extended.textMuted,
+                  modifier = Modifier.padding(horizontal = 13.dp, vertical = 6.dp),
+                )
               }
             }
           }
@@ -378,7 +605,7 @@ fun PhotosScreen(
         val activeFolder = uiState.activeFolderFilter
         if (activeFolder != null) {
           Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
           ) {
@@ -408,54 +635,7 @@ fun PhotosScreen(
                 text = "Show All",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-              )
-            }
-          }
-        } else {
-          Spacer(modifier = Modifier.height(10.dp))
-        }
-
-        // Scrollable Filter Chips with Right-Edge Alpha Fade Mask
-        LazyRow(
-          modifier =
-            Modifier.fillMaxWidth()
-              .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-              .drawWithContent {
-                drawContent()
-                drawRect(
-                  brush =
-                    Brush.horizontalGradient(
-                      0.86f to Color.Black,
-                      1.0f to Color.Transparent,
-                    ),
-                  blendMode = BlendMode.DstIn,
-                )
-              },
-          contentPadding = PaddingValues(start = 16.dp, end = 28.dp),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          items(MediaCategory.entries) { category ->
-            val selected = uiState.activeCategory == category
-            Surface(
-              onClick = { onSelectCategory(category) },
-              modifier = Modifier.testTag("filter_chip_${category.name.lowercase()}"),
-              shape = CircleShape,
-              color =
-                if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.surface,
-              border =
-                BorderStroke(
-                  1.dp,
-                  if (selected) MaterialTheme.colorScheme.primary else extended.borderSubtle,
-                ),
-            ) {
-              Text(
-                text = category.label,
-                style = MaterialTheme.typography.labelMedium,
-                color =
-                  if (selected) MaterialTheme.colorScheme.onPrimary else extended.textMuted,
-                modifier = Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
               )
             }
           }
@@ -464,155 +644,203 @@ fun PhotosScreen(
 
       HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
 
-      // Timeline Scroll Content
-      LazyColumn(
-        state = listState,
+      // Pull-to-Refresh + Pinch-to-Zoom Timeline Content
+      PullToRefreshBox(
+        isRefreshing = uiState.isSyncingMedia,
+        onRefresh = onSyncOrRequestMediaPermissions,
         modifier =
-          Modifier.fillMaxSize()
-            .padding(bottom = if (uiState.selectedMediaIds.isNotEmpty()) 84.dp else 0.dp)
-            .testTag("photos_timeline_list"),
-        contentPadding =
-          PaddingValues(bottom = if (uiState.selectedMediaIds.isNotEmpty()) 24.dp else 120.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+          Modifier.weight(1f)
+            .fillMaxWidth()
+            .testTag("photos_pull_refresh")
+            .pinchToZoomGridColumns(
+              currentColumns = prefs.columns,
+              minColumns = 2,
+              maxColumns = 10,
+              onColumnsChange = onSetColumns,
+              onPinchActiveChange = { isPinching = it },
+            ),
       ) {
-        if (uiState.mediaAccessLevel != MediaAccessLevel.FULL && !uiState.permissionBannerDismissed) {
-          item(key = "media_permission_banner") {
-            MediaAccessBanner(
-              accessLevel = uiState.mediaAccessLevel,
-              onGrantClick = onSyncOrRequestMediaPermissions,
-              onDismiss = onDismissPermissionBanner,
-              modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-            )
+        LazyColumn(
+          state = listState,
+          modifier =
+            Modifier.fillMaxSize()
+              .padding(bottom = if (uiState.selectedMediaIds.isNotEmpty()) 84.dp else 0.dp)
+              .testTag("photos_timeline_list"),
+          contentPadding =
+            PaddingValues(
+              top = 6.dp,
+              bottom = if (uiState.selectedMediaIds.isNotEmpty()) 24.dp else 120.dp,
+            ),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          if (uiState.mediaAccessLevel != MediaAccessLevel.FULL && !uiState.permissionBannerDismissed) {
+            item(key = "media_permission_banner") {
+              MediaAccessBanner(
+                accessLevel = uiState.mediaAccessLevel,
+                onGrantClick = onSyncOrRequestMediaPermissions,
+                onDismiss = onDismissPermissionBanner,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+              )
+            }
           }
-        }
 
-        if (prefs.showStories && uiState.activeFolderFilter == null) {
-          item(key = "stories_shelf") {
-            StoriesCarouselShelf(
-              stories = uiState.stories,
-              onOpenStory = onOpenStory,
-            )
+          if (prefs.showStories && uiState.activeFolderFilter == null) {
+            item(key = "stories_shelf") {
+              StoriesCarouselShelf(
+                stories = uiState.stories,
+                onOpenStory = onOpenStory,
+              )
+            }
           }
-        }
 
-        if (groupedSections.isEmpty()) {
-          item(key = "empty_timeline") {
-            Column(
-              modifier = Modifier.fillMaxWidth().padding(vertical = 56.dp, horizontal = 24.dp),
-              horizontalAlignment = Alignment.CenterHorizontally,
-              verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.PhotoLibrary,
-                contentDescription = null,
-                tint = extended.textDim,
-                modifier = Modifier.size(44.dp),
-              )
-              Text(
-                text = "No media matches this filter",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-              )
-              Text(
-                text = "Reset active filters or sync your full device library.",
-                style = MaterialTheme.typography.bodySmall,
-                color = extended.textMuted,
-              )
-              Spacer(modifier = Modifier.height(4.dp))
-              Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                  onClick = onResetFilters,
-                  modifier = Modifier.testTag("reset_filters_button"),
-                  colors =
-                    ButtonDefaults.buttonColors(
-                      containerColor = MaterialTheme.colorScheme.primary,
-                      contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                  Text("Reset Filters")
+          if (groupedSections.isEmpty()) {
+            item(key = "empty_timeline") {
+              Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 56.dp, horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.PhotoLibrary,
+                  contentDescription = null,
+                  tint = extended.textDim,
+                  modifier = Modifier.size(44.dp),
+                )
+                Text(
+                  text = "No media matches this filter",
+                  style = MaterialTheme.typography.titleMedium,
+                  color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                  text = "Reset active filters or sync your full device library.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = extended.textMuted,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Button(
+                    onClick = onResetFilters,
+                    modifier = Modifier.testTag("reset_filters_button"),
+                    colors =
+                      ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                      ),
+                  ) {
+                    Text("Reset Filters")
+                  }
                 }
               }
             }
-          }
-        } else {
-          groupedSections.forEach { (sectionTitle, sectionItems) ->
-            if (prefs.groupBy != GroupByMode.NONE) {
-              item(key = "section_header_$sectionTitle") {
-                Row(
-                  modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                  verticalAlignment = Alignment.CenterVertically,
-                ) {
-                  Text(
-                    text = sectionTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onBackground,
-                  )
-                  if (uiState.isSelectionMode) {
-                    val sectionIds = remember(sectionItems) { sectionItems.map { it.id } }
-                    val allSectionSelected =
-                      sectionIds.isNotEmpty() && sectionIds.all { it in uiState.selectedMediaIds }
-                    Surface(
-                      onClick = { onToggleSectionSelection(sectionIds) },
-                      modifier =
-                        Modifier.minimumInteractiveComponentSize()
-                          .testTag(
-                            "section_select_${sectionTitle.lowercase().replace(Regex("[^a-z0-9]+"), "_")}"
-                          ),
-                      shape = CircleShape,
-                      color =
-                        if (allSectionSelected) MaterialTheme.colorScheme.primary
-                        else extended.surfaceHigh,
-                    ) {
-                      Text(
-                        text = if (allSectionSelected) "Selected (${sectionItems.size})" else "Select (${sectionItems.size})",
-                        style = MaterialTheme.typography.labelSmall,
+          } else {
+            groupedSections.forEach { (sectionTitle, sectionItems) ->
+              if (prefs.groupBy != GroupByMode.NONE) {
+                item(key = "section_header_$sectionTitle") {
+                  Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                    Text(
+                      text = sectionTitle,
+                      style = MaterialTheme.typography.titleSmall,
+                      color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    if (uiState.isSelectionMode) {
+                      val sectionIds = remember(sectionItems) { sectionItems.map { it.id } }
+                      val allSectionSelected =
+                        sectionIds.isNotEmpty() && sectionIds.all { it in uiState.selectedMediaIds }
+                      Surface(
+                        onClick = { onToggleSectionSelection(sectionIds) },
+                        modifier =
+                          Modifier.minimumInteractiveComponentSize()
+                            .testTag(
+                              "section_select_${sectionTitle.lowercase().replace(Regex("[^a-z0-9]+"), "_")}"
+                            ),
+                        shape = CircleShape,
                         color =
-                          if (allSectionSelected) MaterialTheme.colorScheme.onPrimary
-                          else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                          if (allSectionSelected) MaterialTheme.colorScheme.primary
+                          else extended.surfaceHigh,
+                      ) {
+                        Text(
+                          text =
+                            if (allSectionSelected) "Selected (${sectionItems.size})"
+                            else "Select (${sectionItems.size})",
+                          style = MaterialTheme.typography.labelSmall,
+                          color =
+                            if (allSectionSelected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.primary,
+                          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                      }
+                    } else {
+                      Text(
+                        text = "${sectionItems.size} items",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = extended.textDim,
                       )
                     }
+                  }
+                }
+              }
+
+              item(key = "section_grid_$sectionTitle") {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                  if (prefs.layoutMode == LayoutMode.GRID) {
+                    UniformPhotoGrid(
+                      items = sectionItems,
+                      columns = effectiveColumns,
+                      compactMode = compactThumbnails,
+                      isSelectionMode = uiState.isSelectionMode,
+                      selectedIds = uiState.selectedMediaIds,
+                      onItemClick = { item ->
+                        if (uiState.isSelectionMode) onToggleMediaSelection(item.id)
+                        else onOpenLightbox(item.id)
+                      },
+                      onItemLongClick = { item -> onEnterSelectionMode(item.id) },
+                    )
                   } else {
-                    Text(
-                      text = "${sectionItems.size} items",
-                      style = MaterialTheme.typography.bodySmall,
-                      color = extended.textDim,
+                    StaggeredCollageColumns(
+                      items = sectionItems,
+                      columns = effectiveColumns,
+                      compactMode = compactThumbnails,
+                      isSelectionMode = uiState.isSelectionMode,
+                      selectedIds = uiState.selectedMediaIds,
+                      onItemClick = { item ->
+                        if (uiState.isSelectionMode) onToggleMediaSelection(item.id)
+                        else onOpenLightbox(item.id)
+                      },
+                      onItemLongClick = { item -> onEnterSelectionMode(item.id) },
                     )
                   }
                 }
               }
             }
+          }
+        }
 
-            item(key = "section_grid_$sectionTitle") {
-              Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                if (prefs.layoutMode == LayoutMode.GRID) {
-                  UniformPhotoGrid(
-                    items = sectionItems,
-                    columns = effectiveColumns,
-                    isSelectionMode = uiState.isSelectionMode,
-                    selectedIds = uiState.selectedMediaIds,
-                    onItemClick = { item ->
-                      if (uiState.isSelectionMode) onToggleMediaSelection(item.id)
-                      else onOpenLightbox(item.id)
-                    },
-                    onItemLongClick = { item -> onEnterSelectionMode(item.id) },
-                  )
-                } else {
-                  StaggeredCollageColumns(
-                    items = sectionItems,
-                    columns = effectiveColumns,
-                    isSelectionMode = uiState.isSelectionMode,
-                    selectedIds = uiState.selectedMediaIds,
-                    onItemClick = { item ->
-                      if (uiState.isSelectionMode) onToggleMediaSelection(item.id)
-                      else onOpenLightbox(item.id)
-                    },
-                    onItemLongClick = { item -> onEnterSelectionMode(item.id) },
-                  )
-                }
-              }
-            }
+        // Transient Pinch-to-Zoom Column Density Pill
+        androidx.compose.animation.AnimatedVisibility(
+          visible = showDensityPill,
+          enter = fadeIn(),
+          exit = fadeOut(),
+          modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
+        ) {
+          Surface(
+            shape = CircleShape,
+            color = extended.glassSurface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+            shadowElevation = 6.dp,
+            modifier = Modifier.testTag("grid_density_pill"),
+          ) {
+            Text(
+              text =
+                if (compactThumbnails) "$effectiveColumns per row • Compact"
+                else "$effectiveColumns per row",
+              style = MaterialTheme.typography.labelMedium,
+              color = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
           }
         }
       }
@@ -843,9 +1071,9 @@ private fun StoriesCarouselShelf(
   onOpenStory: (Int) -> Unit,
 ) {
   val extended = LocalToadColors.current
-  Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+  Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
     Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -862,8 +1090,8 @@ private fun StoriesCarouselShelf(
     }
 
     LazyRow(
-      contentPadding = PaddingValues(horizontal = 16.dp),
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      contentPadding = PaddingValues(horizontal = 8.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       items(stories, key = { it.id }) { story ->
         Surface(
@@ -945,17 +1173,19 @@ private fun StoriesCarouselShelf(
 private fun UniformPhotoGrid(
   items: List<GalleryMediaItem>,
   columns: Int,
+  compactMode: Boolean,
   isSelectionMode: Boolean,
   selectedIds: Set<Long>,
   onItemClick: (GalleryMediaItem) -> Unit,
   onItemLongClick: (GalleryMediaItem) -> Unit,
 ) {
+  val spacing = if (compactMode) 2.dp else 4.dp
   val rows = remember(items, columns) { items.chunked(columns) }
-  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
     rows.forEach { rowItems ->
       Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
       ) {
         rowItems.forEach { item ->
           MediaThumbnailCard(
@@ -963,6 +1193,7 @@ private fun UniformPhotoGrid(
             forceSquare = true,
             isSelectionMode = isSelectionMode,
             isSelected = item.id in selectedIds,
+            compactMode = compactMode,
             onClick = { onItemClick(item) },
             onLongClick = { onItemLongClick(item) },
             modifier = Modifier.weight(1f),
@@ -980,11 +1211,13 @@ private fun UniformPhotoGrid(
 private fun StaggeredCollageColumns(
   items: List<GalleryMediaItem>,
   columns: Int,
+  compactMode: Boolean,
   isSelectionMode: Boolean,
   selectedIds: Set<Long>,
   onItemClick: (GalleryMediaItem) -> Unit,
   onItemLongClick: (GalleryMediaItem) -> Unit,
 ) {
+  val spacing = if (compactMode) 2.dp else 4.dp
   val columnLists =
     remember(items, columns) {
       val cols = List(columns) { mutableListOf<GalleryMediaItem>() }
@@ -994,13 +1227,13 @@ private fun StaggeredCollageColumns(
 
   Row(
     modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy(6.dp),
+    horizontalArrangement = Arrangement.spacedBy(spacing),
     verticalAlignment = Alignment.Top,
   ) {
     columnLists.forEach { colItems ->
       Column(
         modifier = Modifier.weight(1f),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(spacing),
       ) {
         colItems.forEach { item ->
           MediaThumbnailCard(
@@ -1008,6 +1241,7 @@ private fun StaggeredCollageColumns(
             forceSquare = false,
             isSelectionMode = isSelectionMode,
             isSelected = item.id in selectedIds,
+            compactMode = compactMode,
             onClick = { onItemClick(item) },
             onLongClick = { onItemLongClick(item) },
           )

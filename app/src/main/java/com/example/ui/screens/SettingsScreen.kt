@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -56,6 +58,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -85,6 +89,7 @@ import com.example.ui.theme.LocalToadColors
 import com.example.ui.viewmodel.SettingsUiState
 import com.example.ui.viewmodel.SettingsViewModel
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -154,7 +159,7 @@ private fun SettingsHubView(
   val showAppearance =
     matches("appearance", "theme", "color", "palette", "dark", "light", "material", "layout", "grid", "collage", "stories", "group", "columns")
   val showAi =
-    matches("ai", "people", "faces", "magic search", "things", "models", "onnx", "indexing", "npu", "clip", "clustering")
+    matches("ai", "people", "faces", "magic search", "things", "models", "onnx", "indexing", "npu", "clip", "clustering", "bokeh", "depth", "dav2")
   val showPrivacy =
     matches("privacy", "permissions", "mediastore", "sync", "location", "exif", "gps", "vault", "pin", "biometric", "security", "hidden")
   val showStorage = matches("storage", "cache", "database", "data", "clear", "space", "mb", "index")
@@ -163,7 +168,8 @@ private fun SettingsHubView(
 
   val mlModelsMb =
     (if (prefs.faceModelInstalled) 37.6f else 0f) +
-      (if (prefs.semanticModelInstalled) 213.0f else 0f)
+      (if (prefs.semanticModelInstalled) 213.0f else 0f) +
+      (if (uiState.depthModelState.isInstalled || prefs.depthModelInstalled) 27.3f else 0f)
   val totalStorageMb = 14.2f + mlModelsMb + prefs.mlIndexSizeMb + prefs.cacheSizeMb
 
   Column(modifier = Modifier.fillMaxSize()) {
@@ -491,6 +497,7 @@ private fun SettingsHubView(
                   StorageBreakdownBar(
                     faceModelInstalled = prefs.faceModelInstalled,
                     semanticModelInstalled = prefs.semanticModelInstalled,
+                    depthModelInstalled = uiState.depthModelState.isInstalled || prefs.depthModelInstalled,
                     mlIndexMb = prefs.mlIndexSizeMb,
                     cacheMb = prefs.cacheSizeMb,
                   )
@@ -645,70 +652,118 @@ private fun SettingsSubThemePage(
           SettingsGroupCard {
             Column(
               modifier = Modifier.padding(16.dp),
-              verticalArrangement = Arrangement.spacedBy(10.dp),
+              verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-              Text("Color Palettes", style = MaterialTheme.typography.titleSmall)
-              ThemePalette.entries.forEach { palette ->
-                val selected = prefs.palette == palette
-                Surface(
-                  onClick = { viewModel.selectPalette(palette) },
-                  modifier =
-                    Modifier.fillMaxWidth()
-                      .minimumInteractiveComponentSize()
-                      .testTag("palette_card_${palette.name.lowercase()}"),
-                  shape = RoundedCornerShape(18.dp),
-                  color =
-                    if (selected) MaterialTheme.colorScheme.primaryContainer
-                    else extended.surfaceHigh,
-                  border =
-                    BorderStroke(
-                      1.dp,
-                      if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    ),
-                ) {
-                  Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                  ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Text("Color Palettes", style = MaterialTheme.typography.titleSmall)
+                Text(
+                  text = prefs.palette.displayName,
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.primary,
+                )
+              }
+              BoxWithConstraints(modifier = Modifier.fillMaxWidth().testTag("palette_grid")) {
+                val gridCols = if (maxWidth >= 520.dp) 3 else 2
+                val rows = ThemePalette.entries.chunked(gridCols)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  rows.forEach { rowPalettes ->
                     Row(
-                      verticalAlignment = Alignment.CenterVertically,
-                      horizontalArrangement = Arrangement.spacedBy(12.dp),
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                      Box(
-                        modifier =
-                          Modifier.size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color(palette.surfaceHex))
-                            .border(2.dp, Color(palette.accentHex), CircleShape),
-                        contentAlignment = Alignment.Center,
-                      ) {
-                        Box(
+                      rowPalettes.forEach { palette ->
+                        val selected = prefs.palette == palette
+                        val surfaceBg = Color(palette.surfaceHex)
+                        val accentBg = Color(palette.accentHex)
+                        Surface(
+                          onClick = { viewModel.selectPalette(palette) },
                           modifier =
-                            Modifier.size(14.dp)
-                              .clip(CircleShape)
-                              .background(Color(palette.accentHex))
-                        )
+                            Modifier.weight(1f)
+                              .minimumInteractiveComponentSize()
+                              .testTag("palette_card_${palette.name.lowercase()}"),
+                          shape = RoundedCornerShape(18.dp),
+                          color =
+                            if (selected) MaterialTheme.colorScheme.primaryContainer
+                            else extended.surfaceHigh,
+                          border =
+                            BorderStroke(
+                              width = if (selected) 2.dp else 1.dp,
+                              color =
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else extended.borderSubtle,
+                            ),
+                        ) {
+                          Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                          ) {
+                            // Visual Dual-Tone Swatch Tile Preview
+                            Box(
+                              modifier =
+                                Modifier.fillMaxWidth()
+                                  .height(54.dp)
+                                  .clip(RoundedCornerShape(12.dp))
+                                  .background(surfaceBg)
+                                  .border(
+                                    1.dp,
+                                    accentBg.copy(alpha = 0.45f),
+                                    RoundedCornerShape(12.dp),
+                                  )
+                                  .padding(8.dp)
+                            ) {
+                              Row(
+                                modifier = Modifier.align(Alignment.CenterStart),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                              ) {
+                                Box(
+                                  modifier =
+                                    Modifier.size(20.dp).clip(CircleShape).background(accentBg)
+                                )
+                                Box(
+                                  modifier =
+                                    Modifier.width(26.dp)
+                                      .height(8.dp)
+                                      .clip(CircleShape)
+                                      .background(accentBg.copy(alpha = 0.45f))
+                                )
+                              }
+                              if (selected) {
+                                Icon(
+                                  imageVector = Icons.Filled.CheckCircle,
+                                  contentDescription = "Selected",
+                                  tint = accentBg,
+                                  modifier = Modifier.align(Alignment.TopEnd).size(18.dp),
+                                )
+                              }
+                            }
+
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                              Text(
+                                text = palette.displayName,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                              )
+                              Text(
+                                text = palette.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = extended.textMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                              )
+                            }
+                          }
+                        }
                       }
-                      Column {
-                        Text(
-                          text = palette.displayName,
-                          style = MaterialTheme.typography.labelLarge,
-                          color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                          text = palette.subtitle,
-                          style = MaterialTheme.typography.bodySmall,
-                          color = extended.textMuted,
-                        )
+                      repeat((gridCols - rowPalettes.size).coerceAtLeast(0)) {
+                        Spacer(modifier = Modifier.weight(1f))
                       }
-                    }
-                    if (selected) {
-                      Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Selected",
-                        tint = MaterialTheme.colorScheme.primary,
-                      )
                     }
                   }
                 }
@@ -774,50 +829,109 @@ private fun SettingsSubLayoutPage(
 
               HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
 
-              // Photos per Row Stepper
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Column {
-                  Text("Photos per row", style = MaterialTheme.typography.labelLarge)
-                  Text(
-                    "Synced live with Photos tab",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = extended.textMuted,
-                  )
-                }
-                Surface(shape = CircleShape, color = extended.surfaceHigh) {
-                  Row(
-                    modifier = Modifier.padding(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                  ) {
-                    IconButton(
-                      onClick = { viewModel.changeColumns(-1) },
-                      modifier =
-                        Modifier.minimumInteractiveComponentSize().testTag("columns_minus_button"),
-                    ) {
-                      Icon(
-                        imageVector = Icons.Filled.Remove,
-                        contentDescription = "Decrease columns",
-                      )
-                    }
+              // Photos per Row (2..10 synced with Pinch-to-Zoom)
+              Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                    Text("Photos per row", style = MaterialTheme.typography.labelLarge)
                     Text(
-                      text = "${prefs.columns}",
-                      style = MaterialTheme.typography.titleSmall,
-                      color = MaterialTheme.colorScheme.primary,
+                      text =
+                        if (prefs.columns >= 6)
+                          "Compact grid • Badges auto-hidden at 6+"
+                        else "Synced live with pinch-to-zoom (2–10)",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
                     )
-                    IconButton(
-                      onClick = { viewModel.changeColumns(1) },
-                      modifier =
-                        Modifier.minimumInteractiveComponentSize().testTag("columns_plus_button"),
+                  }
+                  Surface(shape = CircleShape, color = extended.surfaceHigh) {
+                    Row(
+                      modifier = Modifier.padding(4.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                      Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = "Increase columns",
+                      IconButton(
+                        onClick = { viewModel.changeColumns(-1) },
+                        enabled = prefs.columns > 2,
+                        modifier =
+                          Modifier.minimumInteractiveComponentSize().testTag("columns_minus_button"),
+                      ) {
+                        Icon(
+                          imageVector = Icons.Filled.Remove,
+                          contentDescription = "Decrease columns",
+                        )
+                      }
+                      Text(
+                        text = "${prefs.columns}",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
                       )
+                      IconButton(
+                        onClick = { viewModel.changeColumns(1) },
+                        enabled = prefs.columns < 10,
+                        modifier =
+                          Modifier.minimumInteractiveComponentSize().testTag("columns_plus_button"),
+                      ) {
+                        Icon(
+                          imageVector = Icons.Filled.Add,
+                          contentDescription = "Increase columns",
+                        )
+                      }
+                    }
+                  }
+                }
+
+                Slider(
+                  value = prefs.columns.toFloat(),
+                  onValueChange = { viewModel.setColumns(it.roundToInt()) },
+                  valueRange = 2f..10f,
+                  steps = 7,
+                  colors =
+                    SliderDefaults.colors(
+                      thumbColor = MaterialTheme.colorScheme.primary,
+                      activeTrackColor = MaterialTheme.colorScheme.primary,
+                      inactiveTrackColor = extended.surfaceHighest,
+                    ),
+                  modifier = Modifier.fillMaxWidth().testTag("columns_slider"),
+                )
+
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                  listOf(2, 4, 6, 8, 10).forEach { preset ->
+                    val active = prefs.columns == preset
+                    Surface(
+                      onClick = { viewModel.setColumns(preset) },
+                      modifier =
+                        Modifier.weight(1f)
+                          .minimumInteractiveComponentSize()
+                          .testTag("columns_preset_$preset"),
+                      shape = CircleShape,
+                      color =
+                        if (active) MaterialTheme.colorScheme.primary else extended.surfaceHigh,
+                      border =
+                        BorderStroke(
+                          1.dp,
+                          if (active) MaterialTheme.colorScheme.primary
+                          else extended.borderSubtle,
+                        ),
+                    ) {
+                      Box(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                      ) {
+                        Text(
+                          text = "$preset",
+                          style = MaterialTheme.typography.labelMedium,
+                          color =
+                            if (active) MaterialTheme.colorScheme.onPrimary
+                            else extended.textMuted,
+                        )
+                      }
                     }
                   }
                 }
