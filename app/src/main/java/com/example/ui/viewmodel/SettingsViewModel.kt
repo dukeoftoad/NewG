@@ -202,8 +202,8 @@ class SettingsViewModel(
       return
     }
     if (current.isInstalled) {
-      faceIndexManager.pause()
       viewModelScope.launch {
+        faceIndexManager.pauseAndWait()
         val freedMb = faceModelManager.deleteModelPack()
         _messages.tryEmit(String.format("Removed Ente face models (%.1f MB freed)", freedMb))
       }
