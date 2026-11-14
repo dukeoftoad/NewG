@@ -29,6 +29,28 @@ class FacePersonClustererTest {
   }
 
   @Test
+  fun excludesOnlyTheSelectedFaceFromACluster() {
+    val rows = listOf(
+      media(id = 1L, timestamp = 1L, embeddings = listOf(vector(0))),
+      media(id = 2L, timestamp = 2L, embeddings = listOf(vector(0))),
+      media(id = 3L, timestamp = 3L, embeddings = listOf(vector(0))),
+    )
+
+    val groups = FacePersonClusterer.cluster(
+      rows,
+      distanceThreshold = 0.24f,
+      excludedFaces = setOf(FaceReference(photoId = 2L, faceIndex = 0)),
+    )
+
+    assertEquals(1, groups.size)
+    assertEquals(listOf(3L, 1L), groups.single().photoIds)
+    assertEquals(
+      setOf(FaceReference(1L, 0), FaceReference(3L, 0)),
+      groups.single().faces.toSet(),
+    )
+  }
+
+  @Test
   fun doesNotExposeAClusterFoundInOnlyOnePhoto() {
     val rows = listOf(
       media(id = 1L, timestamp = 1L, embeddings = listOf(vector(0), vector(0))),
