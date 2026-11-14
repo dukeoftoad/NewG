@@ -434,11 +434,13 @@ private fun InteractiveCropOverlay(
           onDragStart = { start ->
             val nx = start.x / size.width.coerceAtLeast(1)
             val ny = start.y / size.height.coerceAtLeast(1)
-            val thresh = 0.08f
-            val nearL = abs(nx - currentCrop.left) < thresh
-            val nearR = abs(nx - currentCrop.right) < thresh
-            val nearT = abs(ny - currentCrop.top) < thresh
-            val nearB = abs(ny - currentCrop.bottom) < thresh
+            // A fixed touch radius avoids the oversized 8% edge zones that
+            // previously stole drags intended to move the crop rectangle.
+            val hitRadiusPx = 28.dp.toPx()
+            val nearL = abs(start.x - currentCrop.left * size.width) <= hitRadiusPx
+            val nearR = abs(start.x - currentCrop.right * size.width) <= hitRadiusPx
+            val nearT = abs(start.y - currentCrop.top * size.height) <= hitRadiusPx
+            val nearB = abs(start.y - currentCrop.bottom * size.height) <= hitRadiusPx
             dragTarget =
               when {
                 nearL && nearT -> CropDragTarget.TOP_LEFT
