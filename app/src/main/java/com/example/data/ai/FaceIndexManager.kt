@@ -133,6 +133,11 @@ class FaceIndexManager(
     indexJob?.cancel()
   }
 
+  suspend fun pauseAndWait() {
+    indexJob?.cancelAndJoin()
+    engine.close()
+  }
+
   fun clear() {
     scope.launch {
       indexJob?.cancelAndJoin()
