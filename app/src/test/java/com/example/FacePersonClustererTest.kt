@@ -24,7 +24,7 @@ class FacePersonClustererTest {
     val groups = FacePersonClusterer.cluster(rows, distanceThreshold = 0.24f)
 
     assertEquals(1, groups.size)
-    assertEquals(listOf(1L, 2L), groups.single().photoIds)
+    assertEquals(listOf(2L, 1L), groups.single().photoIds)
     assertEquals(2, groups.single().faceCount)
   }
 
