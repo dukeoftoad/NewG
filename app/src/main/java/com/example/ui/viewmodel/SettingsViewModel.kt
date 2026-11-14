@@ -261,7 +261,8 @@ class SettingsViewModel(
       faceIndexManager.pause()
       _messages.tryEmit("Face indexing paused; completed results are saved")
     } else {
-      faceIndexManager.start(forceReindex = true)
+      val indexState = faceIndexManager.state.value
+      faceIndexManager.start(forceReindex = indexState.progress >= 100 && indexState.processed > 0)
     }
   }
 
@@ -328,13 +329,13 @@ class SettingsViewModel(
 
   fun runEngineSelfTest() {
     val dav2Ready = depthModelManager.state.value.isInstalled
-    selfTestOutput.value =
-      if (dav2Ready) {
-        "NNAPI Delegate OK • Face, CLIP & Depth-Anything-V2-Small-INT8 ready (14ms)"
-      } else {
-        "NNAPI Delegate OK • Face & CLIP tensor latency: 14ms (bokeh-depth-dav2 not downloaded)"
-      }
-    _messages.tryEmit("Engine self-test passed (14ms)")
+    val faceReady = faceModelManager.state.value.isInstalled
+    selfTestOutput.value = when {
+      !faceReady -> "Face model pack is not installed; download it before indexing."
+      dav2Ready -> "Model files verified • Face detector, MobileFaceNet and depth model are installed. Run library indexing to execute face inference."
+      else -> "Model files verified • Face detector and MobileFaceNet are installed. Depth model is not downloaded."
+    }
+    _messages.tryEmit("Model availability check completed")
   }
 
   private data class AiMonitorState(
