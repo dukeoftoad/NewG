@@ -29,6 +29,12 @@ interface GalleryDao {
   @Query("SELECT mediaStoreId FROM media_items WHERE mediaStoreId IS NOT NULL")
   suspend fun getExistingMediaStoreIds(): List<Long>
 
+  @Query("SELECT * FROM media_items WHERE isHidden = 0 AND isTrashed = 0 AND mediaType = 'PHOTO' AND uriString IS NOT NULL AND (:force = 1 OR faceIndexedAt IS NULL) ORDER BY timestamp ASC")
+  suspend fun getPhotosForFaceIndex(force: Boolean): List<MediaItemEntity>
+
+  @Query("UPDATE media_items SET faceDataJson = :faceDataJson, faceIndexedAt = :indexedAt WHERE id = :id")
+  suspend fun updateFaceIndex(id: Long, faceDataJson: String, indexedAt: Long)
+
   @Query("SELECT COUNT(*) FROM media_items")
   suspend fun countAllMedia(): Int
 
@@ -44,9 +50,7 @@ interface GalleryDao {
   @Query("UPDATE media_items SET isFavorite = :favorite WHERE id IN (:ids)")
   suspend fun setFavoriteBatch(ids: List<Long>, favorite: Boolean)
 
-  @Query(
-    "UPDATE media_items SET isHidden = :hidden, encryptedVaultFile = :encryptedPath WHERE id = :id"
-  )
+  @Query("UPDATE media_items SET isHidden = :hidden, encryptedVaultFile = :encryptedPath WHERE id = :id")
   suspend fun updateVaultState(id: Long, hidden: Boolean, encryptedPath: String?)
 
   @Query("UPDATE media_items SET isHidden = 0, encryptedVaultFile = NULL WHERE id IN (:ids)")
@@ -61,9 +65,7 @@ interface GalleryDao {
   @Query("UPDATE media_items SET tonePreset = :preset WHERE id = :id")
   suspend fun setTonePreset(id: Long, preset: String)
 
-  @Query(
-    "UPDATE media_items SET editedUriString = :editedUri, editRecipeJson = :recipeJson WHERE id = :id"
-  )
+  @Query("UPDATE media_items SET editedUriString = :editedUri, editRecipeJson = :recipeJson WHERE id = :id")
   suspend fun updateNonDestructiveEdit(id: Long, editedUri: String?, recipeJson: String?)
 
   @Query("UPDATE media_items SET albumId = :albumId WHERE id IN (:ids)")
