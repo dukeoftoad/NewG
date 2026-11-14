@@ -35,6 +35,9 @@ interface GalleryDao {
   @Query("UPDATE media_items SET faceDataJson = :faceDataJson, faceIndexedAt = :indexedAt WHERE id = :id")
   suspend fun updateFaceIndex(id: Long, faceDataJson: String, indexedAt: Long)
 
+  @Query("SELECT * FROM media_items WHERE isHidden = 0 AND isTrashed = 0 AND faceDataJson IS NOT NULL ORDER BY timestamp ASC")
+  fun observeFaceIndexedMedia(): Flow<List<MediaItemEntity>>
+
   @Query("UPDATE media_items SET faceDataJson = NULL, faceIndexedAt = NULL WHERE isHidden = 0 AND isTrashed = 0")
   suspend fun clearFaceIndex()
 
