@@ -61,6 +61,7 @@ data class GalleryUiState(
   val filteredTimelineMedia: List<GalleryMediaItem> = emptyList(),
   val customAlbums: List<AlbumEntity> = emptyList(),
   val peopleGroups: List<FacePersonGroup> = emptyList(),
+  val ignoredPeopleGroups: List<FacePersonGroup> = emptyList(),
   val folderDestinations: List<String> = listOf("Camera", "Travel", "Screenshots", "Downloads"),
   val stories: List<StorySlide> = SampleMediaCatalog.stories,
   val folderAlbums: List<AlbumFolder> = emptyList(),
@@ -260,6 +261,7 @@ class GalleryViewModel(
             group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId)
           }
         // Assigning the same name to multiple clusters merges them in the People list.
+        val ignoredPeopleGroups = detectedGroups.filter { personRecords[it.id]?.isIgnored == true }
         val peopleGroups =
           detectedGroups
             .filter { personRecords[it.id]?.isIgnored != true }
@@ -369,6 +371,7 @@ class GalleryViewModel(
           filteredTimelineMedia = filteredTimeline,
           customAlbums = media.customAlbums,
           peopleGroups = peopleGroups,
+          ignoredPeopleGroups = ignoredPeopleGroups,
           folderDestinations = folderDestSet.toList(),
           folderAlbums = listOf(favoritesFolder) + deviceBucketFolders + userFolders,
           vaultMedia = media.vault,
@@ -663,6 +666,15 @@ class GalleryViewModel(
         galleryRepo.saveFacePerson(FacePersonEntity(clusterId = clusterId, name = cleanName))
       }
       emitMessage(if (cleanName == null) "Person label removed" else "Saved person as $cleanName")
+    }
+  }
+
+  fun setFacePersonIgnored(group: FacePersonGroup, ignored: Boolean) {
+    viewModelScope.launch {
+      group.clusterIds.distinct().forEach { clusterId ->
+        galleryRepo.setFacePersonIgnored(clusterId, ignored)
+      }
+      emitMessage(if (ignored) "Person hidden from People" else "Person restored to People")
     }
   }
 
