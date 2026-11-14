@@ -619,7 +619,7 @@ fun SearchScreen(
             }
           }
           Text("Choose a cover photo", style = MaterialTheme.typography.labelMedium)
-          group.photoIds.mapNotNull { photoId -> uiState.visibleMedia.firstOrNull { it.id == photoId } }.forEach { photo ->
+          group.photoIds.sortedByDescending { it == group.coverPhotoId }.take(8).mapNotNull { photoId -> uiState.visibleMedia.firstOrNull { it.id == photoId } }.forEach { photo ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
               GalleryMediaImage(item = photo, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)))
               TextButton(onClick = {
@@ -630,7 +630,7 @@ fun SearchScreen(
           }
           if (group.faces.isNotEmpty()) {
             Text("Remove an incorrectly grouped face", style = MaterialTheme.typography.labelMedium)
-            group.faces.forEach { face ->
+            group.faces.take(10).forEach { face ->
               TextButton(onClick = {
                 onExcludeFace(face.photoId, face.faceIndex)
                 personBeingNamed = null
