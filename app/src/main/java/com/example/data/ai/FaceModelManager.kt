@@ -262,7 +262,7 @@ class FaceModelManager(
     private const val EXPECTED_TOTAL_BYTES = 37_656_477L
 
     // Pinned to FlutterFace commit dbcbc2b; hashes are Git blob object IDs from that tree.
-    private const val SOURCE_COMMIT = "$sourceCommit"
+    private const val SOURCE_COMMIT = "dbcbc2b183b516a859323ee7bd5ed269aa9eeaa0"
     private const val DETECTOR_SIZE = 32_369_479L
     private const val EMBEDDER_SIZE = 5_286_998L
     private const val DETECTOR_GIT_BLOB_SHA = "11c42e4909997c9dab9eb318ba919fe10110ee16"
