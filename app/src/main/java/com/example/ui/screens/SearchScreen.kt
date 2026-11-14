@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -39,8 +40,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,6 +66,7 @@ import com.example.data.model.SearchTabMode
 import com.example.ui.components.GalleryMediaImage
 import com.example.ui.components.pinchToZoomGridColumns
 import com.example.ui.theme.LocalToadColors
+import com.example.data.ai.FacePersonGroup
 import com.example.ui.viewmodel.GalleryUiState
 import com.example.ui.viewmodel.MapDisplayMode
 
@@ -79,12 +83,15 @@ fun SearchScreen(
   onNotifyMissingGps: () -> Unit,
   onOpenLightbox: (Long) -> Unit,
   onSetColumns: (Int) -> Unit = {},
+  onNamePerson: (FacePersonGroup, String?) -> Unit = { _, _ -> },
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
   val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
   val suggestions = remember { listOf("sunset", "receipt", "5,000", "dogs", "nature", "notice", "coffee") }
   var typeMenuExpanded by remember { mutableStateOf(false) }
+  var personBeingNamed by remember { mutableStateOf<FacePersonGroup?>(null) }
+  var personNameInput by remember { mutableStateOf("") }
   val prefsCols = uiState.preferences.columns.coerceIn(2, 10)
   val resultColumns = if (isWideLayout) (prefsCols + 1).coerceIn(2, 10) else prefsCols
   val compactResults = resultColumns >= 6
@@ -403,7 +410,7 @@ fun SearchScreen(
                       ) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                           Text(
-                            text = "Person ${index + 1}",
+                            text = group.name?.takeIf { it.isNotBlank() } ?: "Person ${index + 1}",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface,
                           )
@@ -413,11 +420,19 @@ fun SearchScreen(
                             color = extended.textMuted,
                           )
                         }
-                        Text(
-                          text = "View",
-                          style = MaterialTheme.typography.labelMedium,
-                          color = MaterialTheme.colorScheme.primary,
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                          TextButton(onClick = {
+                            personBeingNamed = group
+                            personNameInput = group.name.orEmpty()
+                          }) {
+                            Text(if (group.name.isNullOrBlank()) "Name" else "Edit")
+                          }
+                          Text(
+                            text = "View",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                          )
+                        }
                       }
                     }
                   }
@@ -576,5 +591,50 @@ fun SearchScreen(
         }
       }
     }
+  }
+
+  personBeingNamed?.let { group ->
+    val existingNames = uiState.peopleGroups.mapNotNull { it.name?.trim()?.takeIf(String::isNotEmpty) }.distinct().sorted()
+    AlertDialog(
+      onDismissRequest = { personBeingNamed = null },
+      title = { Text(if (group.name.isNullOrBlank()) "Name this person" else "Rename person") },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          OutlinedTextField(
+            value = personNameInput,
+            onValueChange = { personNameInput = it },
+            label = { Text("Person name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("person_name_input"),
+          )
+          if (existingNames.isNotEmpty()) {
+            Text("Or merge with an existing person", style = MaterialTheme.typography.labelMedium)
+            existingNames.filterNot { it.equals(group.name, ignoreCase = true) }.forEach { existing ->
+              TextButton(onClick = {
+                onNamePerson(group, existing)
+                personBeingNamed = null
+              }) { Text(existing) }
+            }
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(onClick = {
+          onNamePerson(group, personNameInput)
+          personBeingNamed = null
+        }, enabled = personNameInput.isNotBlank()) { Text("Save") }
+      },
+      dismissButton = {
+        Row {
+          if (!group.name.isNullOrBlank()) {
+            TextButton(onClick = {
+              onNamePerson(group, null)
+              personBeingNamed = null
+            }) { Text("Remove name") }
+          }
+          TextButton(onClick = { personBeingNamed = null }) { Text("Cancel") }
+        }
+      },
+    )
   }
 }
