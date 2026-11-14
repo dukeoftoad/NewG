@@ -35,6 +35,9 @@ interface GalleryDao {
   @Query("UPDATE media_items SET faceDataJson = :faceDataJson, faceIndexedAt = :indexedAt WHERE id = :id")
   suspend fun updateFaceIndex(id: Long, faceDataJson: String, indexedAt: Long)
 
+  @Query("UPDATE media_items SET faceDataJson = NULL, faceIndexedAt = NULL WHERE isHidden = 0 AND isTrashed = 0")
+  suspend fun clearFaceIndex()
+
   @Query("SELECT COUNT(*) FROM media_items")
   suspend fun countAllMedia(): Int
 
