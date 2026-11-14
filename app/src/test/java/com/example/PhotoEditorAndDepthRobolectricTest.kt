@@ -169,6 +169,15 @@ class PhotoEditorAndDepthRobolectricTest {
     assertEquals(120, rotated.height)
     rotated.recycle()
 
+    // The crop editing preview uses the same transformed orientation as the renderer.
+    val cropPreview = PhotoEditorRenderer.applyTransformOnly(
+      src,
+      CropParams(rotationQuarterTurns = 1, flipHorizontal = true),
+    )
+    assertEquals(80, cropPreview.width)
+    assertEquals(120, cropPreview.height)
+    cropPreview.recycle()
+
     // 2. Monochrome + Privacy Blur + Text + Bokeh
     val fakeDepth =
       DepthMapResult(
