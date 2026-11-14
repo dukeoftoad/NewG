@@ -10,7 +10,6 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import java.io.File
 import java.nio.FloatBuffer
-import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -212,26 +211,69 @@ class FaceRecognitionEngine {
     val target = Bitmap.createBitmap(EMBED_SIZE, EMBED_SIZE, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(target)
     canvas.drawColor(Color.BLACK)
-    val src = floatArrayOf(
-      face.landmarks[0].first * source.width, face.landmarks[0].second * source.height,
-      face.landmarks[1].first * source.width, face.landmarks[1].second * source.height,
-      face.landmarks[2].first * source.width, face.landmarks[2].second * source.height,
+
+    // FlutterFace's five detector landmarks are ordered left eye, right eye, nose,
+    // left mouth corner, right mouth corner. Map them to the ArcFace 112px template
+    // with a least-squares similarity transform (uniform scale + rotation + translation).
+    val reference = arrayOf(
+      38.2946f to 51.6963f,
+      73.5318f to 51.5014f,
+      56.0252f to 71.7366f,
+      41.5493f to 92.3655f,
+      70.7299f to 92.2041f,
     )
-    val dst = floatArrayOf(38.2946f, 51.6963f, 73.5318f, 51.5014f, 56.0252f, 71.7366f)
-    val matrix = Matrix()
-    val mapped = matrix.setPolyToPoly(src, 0, dst, 0, 3)
-    if (!mapped) {
-      val left = (face.left * source.width).toInt().coerceIn(0, source.width - 1)
-      val top = (face.top * source.height).toInt().coerceIn(0, source.height - 1)
-      val right = (face.right * source.width).toInt().coerceIn(left + 1, source.width)
-      val bottom = (face.bottom * source.height).toInt().coerceIn(top + 1, source.height)
-      val fallback = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
-      canvas.drawBitmap(fallback, null, android.graphics.Rect(0, 0, EMBED_SIZE, EMBED_SIZE), Paint(Paint.FILTER_BITMAP_FLAG))
-      fallback.recycle()
-    } else {
-      canvas.drawBitmap(source, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
+    if (face.landmarks.size != reference.size) {
+      drawFallbackFaceCrop(canvas, source, face)
+      return target
     }
+
+    val sourcePoints = face.landmarks.map { it.first * source.width to it.second * source.height }
+    val sourceMeanX = sourcePoints.map { it.first }.average().toFloat()
+    val sourceMeanY = sourcePoints.map { it.second }.average().toFloat()
+    val targetMeanX = reference.map { it.first }.average().toFloat()
+    val targetMeanY = reference.map { it.second }.average().toFloat()
+
+    var denominator = 0f
+    var dot = 0f
+    var cross = 0f
+    for (i in sourcePoints.indices) {
+      val sx = sourcePoints[i].first - sourceMeanX
+      val sy = sourcePoints[i].second - sourceMeanY
+      val dx = reference[i].first - targetMeanX
+      val dy = reference[i].second - targetMeanY
+      denominator += sx * sx + sy * sy
+      dot += sx * dx + sy * dy
+      cross += sx * dy - sy * dx
+    }
+    if (denominator <= 1e-6f) {
+      drawFallbackFaceCrop(canvas, source, face)
+      return target
+    }
+
+    val a = dot / denominator
+    val b = cross / denominator
+    val translateX = targetMeanX - (a * sourceMeanX - b * sourceMeanY)
+    val translateY = targetMeanY - (b * sourceMeanX + a * sourceMeanY)
+    val matrix = Matrix().apply {
+      setValues(floatArrayOf(a, -b, translateX, b, a, translateY, 0f, 0f, 1f))
+    }
+    canvas.drawBitmap(source, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
     return target
+  }
+
+  private fun drawFallbackFaceCrop(canvas: Canvas, source: Bitmap, face: FaceBox) {
+    val left = (face.left * source.width).toInt().coerceIn(0, source.width - 1)
+    val top = (face.top * source.height).toInt().coerceIn(0, source.height - 1)
+    val right = (face.right * source.width).toInt().coerceIn(left + 1, source.width)
+    val bottom = (face.bottom * source.height).toInt().coerceIn(top + 1, source.height)
+    val fallback = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+    canvas.drawBitmap(
+      fallback,
+      null,
+      android.graphics.Rect(0, 0, EMBED_SIZE, EMBED_SIZE),
+      Paint(Paint.FILTER_BITMAP_FLAG),
+    )
+    fallback.recycle()
   }
 
   private fun nonMaximumSuppression(input: List<FaceBox>): List<FaceBox> {
