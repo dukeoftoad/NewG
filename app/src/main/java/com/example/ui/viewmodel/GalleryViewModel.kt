@@ -666,7 +666,17 @@ class GalleryViewModel(
     }
   }
 
-  fun setFacePersonCover(group: FacePersonGroup, photoId: Long) {\n    if (photoId !in group.photoIds) return\n    viewModelScope.launch {\n      group.clusterIds.distinct().forEach { clusterId ->\n        galleryRepo.setFacePersonCover(clusterId, photoId)\n      }\n      emitMessage("Person cover updated")\n    }\n  }\n\n  /** Remove only one detected face from the current person; other matches remain assigned. */
+  fun setFacePersonCover(group: FacePersonGroup, photoId: Long) {
+    if (photoId !in group.photoIds) return
+    viewModelScope.launch {
+      group.clusterIds.distinct().forEach { clusterId ->
+        galleryRepo.setFacePersonCover(clusterId, photoId)
+      }
+      emitMessage("Person cover updated")
+    }
+  }
+
+  /** Remove only one detected face from the current person; other matches remain assigned. */
   fun excludeFaceFromPerson(photoId: Long, faceIndex: Int) {
     viewModelScope.launch {
       galleryRepo.excludeFace(photoId, faceIndex)
