@@ -196,16 +196,20 @@ class GalleryViewModel(
       )
     }
 
+  private val facePeopleBundleFlow =
+    combine(galleryRepo.faceIndexedMedia, galleryRepo.facePeople) { faceRows, facePeople ->
+      faceRows to facePeople
+    }
+
   private val mediaBundleFlow =
     combine(
       galleryRepo.visibleMedia,
       galleryRepo.vaultMedia,
       galleryRepo.trashedMedia,
       galleryRepo.customAlbums,
-      galleryRepo.faceIndexedMedia,
-      galleryRepo.facePeople,
-    ) { visible, vault, trashed, albums, faceRows, facePeople ->
-      MediaBundle(visible, vault, trashed, albums, faceRows, facePeople)
+      facePeopleBundleFlow,
+    ) { visible, vault, trashed, albums, faceBundle ->
+      MediaBundle(visible, vault, trashed, albums, faceBundle.first, faceBundle.second)
     }
 
   private val uiControlsBundleFlow =
