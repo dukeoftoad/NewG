@@ -49,6 +49,8 @@ class GalleryRepository(
 
   val customAlbums: Flow<List<AlbumEntity>> = dao.observeAlbums()
 
+  val faceIndexedMedia: Flow<List<MediaItemEntity>> = dao.observeFaceIndexedMedia()
+
   suspend fun seedInitialDataIfEmpty() =
     withContext(Dispatchers.IO) {
       if (dao.countAllMedia() == 0) {
