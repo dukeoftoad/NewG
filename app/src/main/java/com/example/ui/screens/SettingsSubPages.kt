@@ -429,6 +429,89 @@ internal fun SettingsSubAiEnginePage(
                 }
               }
 
+              var showFaceModelDetails by remember { mutableStateOf(false) }
+              Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, extended.borderSubtle),
+              ) {
+                Column(
+                  modifier = Modifier.fillMaxWidth().padding(12.dp),
+                  verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                      showFaceModelDetails = !showFaceModelDetails
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                  ) {
+                    Text(
+                      "What do these models do?",
+                      style = MaterialTheme.typography.labelLarge,
+                    )
+                    Icon(
+                      imageVector = if (showFaceModelDetails) Icons.Filled.ExpandLess
+                        else Icons.Filled.ExpandMore,
+                      contentDescription = if (showFaceModelDetails) "Hide model details"
+                        else "Show model details",
+                      tint = extended.textMuted,
+                    )
+                  }
+                  if (showFaceModelDetails) {
+                    Text(
+                      "1. YOLOv5Face Small — scans each photo and finds face locations. " +
+                        "It proposes face boxes and five facial landmarks; non-maximum " +
+                        "suppression removes duplicate overlapping detections.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    Text(
+                      "2. Face alignment — uses the detected landmarks to rotate, scale " +
+                        "and align each crop so faces can be compared more consistently. " +
+                        "This step is preprocessing; it is not a separate downloaded model.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    Text(
+                      "3. MobileFaceNet — converts each aligned face into a compact " +
+                        "numeric embedding. Similar-looking faces should have embeddings " +
+                        "that are closer together; the vector is not a name or a photo.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    HorizontalDivider(color = extended.borderSubtle)
+                    Text(
+                      "How NewG will use them",
+                      style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                      "After the inference and indexing stages are added, NewG can scan " +
+                        "eligible gallery photos, save face locations and embeddings, " +
+                        "group likely matches into People albums, and let you correct " +
+                        "mistakes. Clustering and People albums are not part of this " +
+                        "downloader change.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    Text(
+                      "Current status: these files are downloaded and integrity-checked " +
+                        "only. This app build does not yet run face detection, create " +
+                        "embeddings, or identify people. Once inference is implemented, " +
+                        "processing can run on-device without sending photos to a server.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                      "Model format: ONNX • Runtime planned: ONNX Runtime Android • " +
+                        "Source: Ente FlutterFace demo (GPL-3.0 project).",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = extended.textMuted,
+                    )
+                  }
+                }
+              }
+
               // Semantic CLIP Pack
               Surface(
                 shape = RoundedCornerShape(18.dp),
