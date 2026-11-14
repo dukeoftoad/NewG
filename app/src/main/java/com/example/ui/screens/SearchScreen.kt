@@ -86,6 +86,7 @@ fun SearchScreen(
   onNamePerson: (FacePersonGroup, String?) -> Unit = { _, _ -> },
   onExcludeFace: (Long, Int) -> Unit = { _, _ -> },
   onSetPersonCover: (FacePersonGroup, Long) -> Unit = { _, _ -> },
+  onSetPersonIgnored: (FacePersonGroup, Boolean) -> Unit = { _, _ -> },
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
@@ -439,6 +440,28 @@ fun SearchScreen(
                     }
                   }
                 }
+                if (uiState.ignoredPeopleGroups.isNotEmpty()) {
+                  Spacer(Modifier.height(8.dp))
+                  Text("IGNORED PEOPLE", style = MaterialTheme.typography.labelSmall, color = extended.textMuted)
+                  uiState.ignoredPeopleGroups.forEachIndexed { index, group ->
+                    Row(
+                      modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val cover = uiState.visibleMedia.firstOrNull { it.id == group.coverPhotoId }
+                          ?: uiState.visibleMedia.firstOrNull { it.id in group.photoIds }
+                        if (cover != null) GalleryMediaImage(item = cover, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)))
+                        Column {
+                          Text(group.name?.takeIf { it.isNotBlank() } ?: "Ignored person ${index + 1}", style = MaterialTheme.typography.bodyMedium)
+                          Text("${group.photoIds.size} photos", style = MaterialTheme.typography.bodySmall, color = extended.textMuted)
+                        }
+                      }
+                      TextButton(onClick = { onSetPersonIgnored(group, false) }) { Text("Unignore") }
+                    }
+                  }
+                }
               }
             }
           }
@@ -664,6 +687,7 @@ fun SearchScreen(
               personBeingNamed = null
             }) { Text("Remove name") }
           }
+          TextButton(onClick = { onSetPersonIgnored(group, true); personBeingNamed = null }) { Text("Ignore person") }
           TextButton(onClick = { personBeingNamed = null }) { Text("Cancel") }
         }
       },
