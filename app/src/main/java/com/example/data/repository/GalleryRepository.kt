@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import com.example.data.local.AlbumEntity
 import com.example.data.local.GalleryDao
+import com.example.data.local.FacePersonEntity
 import com.example.data.local.MediaItemEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaStoreScanner
@@ -50,6 +51,12 @@ class GalleryRepository(
   val customAlbums: Flow<List<AlbumEntity>> = dao.observeAlbums()
 
   val faceIndexedMedia: Flow<List<MediaItemEntity>> = dao.observeFaceIndexedMedia()
+
+  val facePeople: Flow<List<FacePersonEntity>> = dao.observeFacePeople()
+
+  suspend fun saveFacePerson(person: FacePersonEntity) = dao.upsertFacePerson(person)
+
+  suspend fun removeFacePersonLabel(clusterId: String) = dao.deleteFacePerson(clusterId)
 
   suspend fun seedInitialDataIfEmpty() =
     withContext(Dispatchers.IO) {
