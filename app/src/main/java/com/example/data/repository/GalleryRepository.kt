@@ -54,7 +54,12 @@ class GalleryRepository(
 
   val facePeople: Flow<List<FacePersonEntity>> = dao.observeFacePeople()
 
-  suspend fun saveFacePerson(person: FacePersonEntity) = dao.upsertFacePerson(person)
+  suspend fun saveFacePerson(person: FacePersonEntity) {
+    val existing = dao.getFacePerson(person.clusterId)
+    dao.upsertFacePerson(
+      existing?.copy(name = person.name, updatedAt = person.updatedAt) ?: person
+    )
+  }
 
   suspend fun removeFacePersonLabel(clusterId: String) = dao.deleteFacePerson(clusterId)
 
