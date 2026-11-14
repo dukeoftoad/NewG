@@ -47,7 +47,9 @@ class PhotoViewerCompactLayoutRobolectricTest {
     composeTestRule.onNodeWithTag("lightbox_top_bar").assertIsDisplayed()
     composeTestRule.onNodeWithTag("lightbox_bottom_bar").assertIsDisplayed()
     composeTestRule.onNodeWithTag("lightbox_info_button").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("lightbox_details_pill").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("lightbox_details_pill").assertDoesNotExist()
+    composeTestRule.onNodeWithTag("lightbox_prev_button").assertDoesNotExist()
+    composeTestRule.onNodeWithTag("lightbox_next_button").assertDoesNotExist()
     composeTestRule.onNodeWithTag("lightbox_exif_sheet").assertDoesNotExist()
     composeTestRule.onNodeWithText("Camera / Source").assertDoesNotExist()
 
