@@ -91,7 +91,7 @@ class UserPreferencesRepository(context: Context) {
         aiMagicSearch = prefs[Keys.AI_MAGIC_SEARCH] ?: true,
         aiThings = prefs[Keys.AI_THINGS] ?: true,
         clusteringThreshold = (prefs[Keys.CLUSTERING_THRESHOLD] ?: 0.24f).coerceIn(0.10f, 0.40f),
-        faceModelInstalled = prefs[Keys.FACE_MODEL_INSTALLED] ?: true,
+        faceModelInstalled = prefs[Keys.FACE_MODEL_INSTALLED] ?: false,
         semanticModelInstalled = prefs[Keys.SEMANTIC_MODEL_INSTALLED] ?: false,
         depthModelInstalled = prefs[Keys.DEPTH_MODEL_INSTALLED] ?: false,
         showLocationExif = prefs[Keys.SHOW_LOCATION_EXIF] ?: true,
