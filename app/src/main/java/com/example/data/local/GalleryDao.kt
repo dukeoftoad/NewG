@@ -29,7 +29,7 @@ interface GalleryDao {
   @Query("SELECT mediaStoreId FROM media_items WHERE mediaStoreId IS NOT NULL")
   suspend fun getExistingMediaStoreIds(): List<Long>
 
-  @Query("SELECT * FROM media_items WHERE isHidden = 0 AND isTrashed = 0 AND mediaType = 'PHOTO' AND uriString IS NOT NULL AND (:force = 1 OR faceIndexedAt IS NULL) ORDER BY timestamp ASC")
+  @Query("SELECT * FROM media_items WHERE isHidden = 0 AND isTrashed = 0 AND mediaType IN ('PHOTO', 'SCREENSHOT') AND uriString IS NOT NULL AND (:force = 1 OR faceIndexedAt IS NULL) ORDER BY timestamp ASC")
   suspend fun getPhotosForFaceIndex(force: Boolean): List<MediaItemEntity>
 
   @Query("UPDATE media_items SET faceDataJson = :faceDataJson, faceIndexedAt = :indexedAt WHERE id = :id")
