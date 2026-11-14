@@ -37,12 +37,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -399,7 +399,7 @@ fun LightboxOverlay(
                   Modifier.minimumInteractiveComponentSize().testTag("lightbox_edit_button"),
               ) {
                 Icon(
-                  imageVector = Icons.Filled.Tune,
+                  imageVector = Icons.Filled.Edit,
                   contentDescription = "Open Photo Editor",
                   tint =
                     if (item.hasNonDestructiveEdits || item.tonePreset != TonePreset.NATURAL)
@@ -415,7 +415,7 @@ fun LightboxOverlay(
                   Modifier.minimumInteractiveComponentSize().testTag("lightbox_delete_button"),
               ) {
                 Icon(
-                  imageVector = Icons.Filled.Delete,
+                  imageVector = Icons.Outlined.DeleteOutline,
                   contentDescription = "Move to Recycle Bin",
                   tint = Color(0xFFFCA5A5),
                   modifier = Modifier.size(20.dp),
@@ -652,7 +652,7 @@ private fun PhotoExifBottomSheet(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         ExifQuickActionChip(
-          icon = Icons.Filled.Tune,
+          icon = Icons.Filled.Edit,
           label = "Editor",
           bg = MaterialTheme.colorScheme.primaryContainer,
           fg = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -684,7 +684,7 @@ private fun PhotoExifBottomSheet(
           modifier = Modifier.weight(1f),
         )
         ExifQuickActionChip(
-          icon = Icons.Filled.Delete,
+          icon = Icons.Outlined.DeleteOutline,
           label = "Delete",
           bg = extended.dangerContainer,
           fg = extended.onDangerContainer,
