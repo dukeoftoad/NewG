@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
 
 data class FaceIndexState(
@@ -133,8 +134,8 @@ class FaceIndexManager(
   }
 
   fun clear() {
-    pause()
     scope.launch {
+      indexJob?.cancelAndJoin()
       dao.clearFaceIndex()
       _state.value = FaceIndexState(status = "Face index cleared")
     }
