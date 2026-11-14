@@ -34,8 +34,8 @@ data class SettingsUiState(
   val currentSubPage: SettingsSubPage = SettingsSubPage.HUB,
   val searchQuery: String = "",
   val aiIndexing: Boolean = false,
-  val aiProgress: Int = 100,
-  val aiStatusText: String = "All 564 photos indexed • Healthy",
+  val aiProgress: Int = 0,
+  val aiStatusText: String = "Ready to index local photos",
   val semanticDownloading: Boolean = false,
   val semanticDownloadProgress: Int = 0,
   val faceModelState: FaceModelPackState = FaceModelPackState(),
@@ -202,6 +202,7 @@ class SettingsViewModel(
       return
     }
     if (current.isInstalled) {
+      faceIndexManager.pause()
       viewModelScope.launch {
         val freedMb = faceModelManager.deleteModelPack()
         _messages.tryEmit(String.format("Removed Ente face models (%.1f MB freed)", freedMb))
