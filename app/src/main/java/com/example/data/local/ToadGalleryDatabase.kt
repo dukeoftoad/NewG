@@ -10,7 +10,7 @@ import java.lang.ref.WeakReference
 
 @Database(
   entities = [MediaItemEntity::class, AlbumEntity::class],
-  version = 3,
+  version = 4,
   exportSchema = false,
 )
 abstract class ToadGalleryDatabase : RoomDatabase() {
@@ -25,6 +25,14 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
         override fun migrate(db: SupportSQLiteDatabase) {
           db.execSQL("ALTER TABLE media_items ADD COLUMN editedUriString TEXT")
           db.execSQL("ALTER TABLE media_items ADD COLUMN editRecipeJson TEXT")
+        }
+      }
+
+    private val MIGRATION_3_4 =
+      object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+          db.execSQL("ALTER TABLE media_items ADD COLUMN faceDataJson TEXT")
+          db.execSQL("ALTER TABLE media_items ADD COLUMN faceIndexedAt INTEGER")
         }
       }
 
@@ -45,7 +53,7 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
               ToadGalleryDatabase::class.java,
               "toad_gallery_db",
             )
-            .addMigrations(MIGRATION_2_3)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
             .also {
