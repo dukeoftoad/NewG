@@ -410,19 +410,6 @@ fun LightboxOverlay(
               }
 
               IconButton(
-                onClick = onHideToVault,
-                modifier =
-                  Modifier.minimumInteractiveComponentSize().testTag("lightbox_hide_button"),
-              ) {
-                Icon(
-                  imageVector = Icons.Filled.Lock,
-                  contentDescription = "Hide to vault",
-                  tint = Color.White,
-                  modifier = Modifier.size(20.dp),
-                )
-              }
-
-              IconButton(
                 onClick = onMoveToTrash,
                 modifier =
                   Modifier.minimumInteractiveComponentSize().testTag("lightbox_delete_button"),
