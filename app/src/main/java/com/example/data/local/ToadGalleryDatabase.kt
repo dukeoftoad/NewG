@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.lang.ref.WeakReference
 
 @Database(
-  entities = [MediaItemEntity::class, AlbumEntity::class, FacePersonEntity::class],
-  version = 5,
+  entities = [MediaItemEntity::class, AlbumEntity::class, FacePersonEntity::class, FaceExclusionEntity::class],
+  version = 6,
   exportSchema = false,
 )
 abstract class ToadGalleryDatabase : RoomDatabase() {
@@ -45,6 +45,15 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
         }
       }
 
+    private val MIGRATION_5_6 =
+      object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+          db.execSQL(
+            "CREATE TABLE IF NOT EXISTS face_exclusions (photoId INTEGER NOT NULL, faceIndex INTEGER NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(photoId, faceIndex))"
+          )
+        }
+      }
+
     fun getInstance(context: Context): ToadGalleryDatabase {
       val appContext = context.applicationContext
       val current = instance
@@ -62,7 +71,7 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
               ToadGalleryDatabase::class.java,
               "toad_gallery_db",
             )
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
             .also {
