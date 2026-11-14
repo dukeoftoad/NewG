@@ -46,7 +46,13 @@ jobs:
           store_password="$(openssl rand -hex 24)"
           key_password="$(openssl rand -hex 24)"
 
+          # Mask generated credentials before exporting them to later steps.
+          echo "::add-mask::${store_password}"
+          echo "::add-mask::${key_password}"
+
+          # Use JKS explicitly so the distinct store/key passwords are honored.
           keytool -genkeypair -v \
+            -storetype JKS \
             -keystore "${keystore_path}" \
             -storepass "${store_password}" \
             -alias upload \
