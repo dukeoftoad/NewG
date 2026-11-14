@@ -1,4 +1,4 @@
-# Ente face-model assets
+# Ente face-model assets and NewG integration
 
 NewG downloads two ONNX model files from the public Ente Photos FlutterFace demonstration repository:
 
@@ -9,41 +9,39 @@ Upstream project: https://github.com/laurenspriem/flutterface
 Pinned source commit: https://github.com/laurenspriem/flutterface/commit/dbcbc2b183b516a859323ee7bd5ed269aa9eeaa0
 Upstream project license: GNU General Public License v3.0 (GPL-3.0); see [ENTE-FLUTTERFACE-GPL-3.0.txt](ENTE-FLUTTERFACE-GPL-3.0.txt).
 
-The downloaded artifacts are verified against their upstream Git blob object IDs (SHA-1, including Git's `blob <length>\\0` header) and exact byte lengths before installation:
+The downloaded artifacts are verified against their upstream Git blob object IDs (SHA-1, including Git's `blob <length>\0` header) and exact byte lengths before installation:
 
 | File | Bytes | Git blob object ID |
 |---|---:|---|
 | `yolov5s_face_640_640.onnx` | 32,369,479 | `11c42e4909997c9dab9eb318ba919fe10110ee16` |
 | `mobilefacenet_opset15.onnx` | 5,286,998 | `d5468a5e0df5209ed088db9d6eef4a7eb36c97f2` |
 
-The source project describes these models as YOLOv5Face for face detection and MobileFaceNet for embeddings. This downloader only installs the model artifacts; it does not copy FlutterFace's Dart implementation into NewG.
+The FlutterFace repository's GPL-3.0 license covers its source code. Do not assume that this automatically settles the separate licensing terms of the downloaded model weights; review any model-specific terms from the upstream authors before distributing the application.
 
-## What each model does
+## Model roles and tensor contracts
 
 ### YOLOv5Face Small detector
 
-The detector analyzes a full photo and proposes face bounding boxes plus five facial landmarks (eye, nose and mouth-corner positions). NewG's future inference stage must apply the detector's expected 640 × 640 preprocessing and decode its output correctly. Non-Maximum Suppression (NMS) is then used to remove duplicate overlapping detections. The detector locates faces; it does not identify people.
+The detector analyzes a full photo and proposes face bounding boxes plus five facial landmarks (left eye, right eye, nose, and two mouth corners). NewG letterboxes images to 640 × 640, converts RGB pixels to float values in [0, 1], and supplies an NCHW tensor. The pinned model export returns 25,200 candidate rows with 16 values per row. NewG filters low-confidence rows and applies Non-Maximum Suppression (NMS) at an IoU threshold of 0.4 to remove duplicate overlapping detections. The detector locates faces; it does not identify people.
 
 ### Face alignment
 
-Detected face crops are aligned from their five landmarks using a geometric similarity transform (rotation, scale and translation). This is preprocessing code, not a third model file. Alignment makes the subsequent face comparison less sensitive to pose and position.
+NewG maps the five detected landmarks to the 112 × 112 ArcFace reference template with a least-squares 2D similarity transform (uniform scale, rotation and translation). This is preprocessing code, not a third model file.
 
 ### MobileFaceNet embedder
 
-The aligned face crop is passed to MobileFaceNet. It produces a numeric face embedding intended for comparing face similarity. The embedding is not a person's name and does not itself create People groups. NewG must implement the exact input normalization, tensor dimensions, output normalization and similarity metric expected by this ONNX export.
+Each aligned crop is resized to 112 × 112 and passed as an NHWC RGB float tensor normalized to [-1, 1]. MobileFaceNet returns a 192-value face embedding, which NewG L2-normalizes before storing. An embedding is a numeric representation for similarity comparison; it is not a person's name or identity by itself.
 
-## Intended NewG usage
+## NewG face-index workflow
 
-The intended pipeline is:
-
-1. Read eligible gallery images on-device.
-2. Run YOLOv5Face and decode detections.
-3. Apply NMS and align each retained face using landmarks.
-4. Run MobileFaceNet and persist embeddings with the source media ID and face geometry.
-5. Cluster similar embeddings into People groups and expose user correction controls.
-
-Only steps 1–4 are prerequisites for producing usable face indexes; clustering and People UI are separate follow-up work. The current PR implements **model downloading and integrity checks only**. It does not yet execute either ONNX model, index photos, generate embeddings, or create People groups.
+1. The user downloads and verifies both model files from AI Engine & Models settings.
+2. Re-index Library reads eligible photo records already in NewG's gallery database. Videos, Hidden Vault items and trashed items are excluded.
+3. Each photo is decoded locally, respecting its EXIF orientation, and passed through YOLOv5Face, NMS, five-point alignment and MobileFaceNet.
+4. Face boxes, landmarks and normalized embeddings are stored as JSON in the corresponding local Room media row. Per-photo progress is persisted, so a paused run can continue with remaining photos. Reset clears the local face index.
+5. Similarity clustering, People albums, names and manual correction controls are not implemented in this change.
 
 ## Runtime and privacy
 
-The repository already includes ONNX Runtime Android. The planned runtime will load the downloaded files from app-private storage. After models are installed, inference can be performed locally and does not require a model download connection. Photo access must respect NewG's gallery permissions and exclusions; this downloader itself does not read or upload photos. Any future persistence/sync behavior for face embeddings must be designed separately and must not be inferred from Ente's own server-sync implementation.
+NewG uses ONNX Runtime Android to load the downloaded files from app-private storage. Inference and face-index persistence happen on-device; this indexer does not upload photos or embeddings. It processes only items already indexed in NewG's local gallery database and does not request additional media permissions. Model download itself requires an internet connection; inference after installation does not.
+
+The face-index JSON is local application data. Any future backup, export or synchronization of face embeddings must be explicitly designed and disclosed rather than inferred from Ente's own implementation.
