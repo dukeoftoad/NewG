@@ -347,6 +347,7 @@ fun ToadGalleryApp(
                   onNamePerson = galleryViewModel::setFacePersonName,
                   onExcludeFace = galleryViewModel::excludeFaceFromPerson,
                   onSetPersonCover = galleryViewModel::setFacePersonCover,
+                  onSetPersonIgnored = galleryViewModel::setFacePersonIgnored,
                 )
               }
               composable(TopLevelTab.SETTINGS.route) {
