@@ -72,7 +72,12 @@ class GalleryRepository(
     )
   }
 
-  suspend fun setFacePersonCover(clusterId: String, photoId: Long) {\n    val existing = dao.getFacePerson(clusterId) ?: FacePersonEntity(clusterId = clusterId)\n    dao.upsertFacePerson(existing.copy(coverPhotoId = photoId, updatedAt = System.currentTimeMillis()))\n  }\n\n  suspend fun removeFacePersonLabel(clusterId: String) = dao.deleteFacePerson(clusterId)
+  suspend fun setFacePersonCover(clusterId: String, photoId: Long) {
+    val existing = dao.getFacePerson(clusterId) ?: FacePersonEntity(clusterId = clusterId)
+    dao.upsertFacePerson(existing.copy(coverPhotoId = photoId, updatedAt = System.currentTimeMillis()))
+  }
+
+  suspend fun removeFacePersonLabel(clusterId: String) = dao.deleteFacePerson(clusterId)
 
   suspend fun seedInitialDataIfEmpty() =
     withContext(Dispatchers.IO) {
