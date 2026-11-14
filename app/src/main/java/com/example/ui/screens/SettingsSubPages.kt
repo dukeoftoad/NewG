@@ -486,24 +486,23 @@ internal fun SettingsSubAiEnginePage(
                       style = MaterialTheme.typography.labelMedium,
                     )
                     Text(
-                      "After the inference and indexing stages are added, NewG can scan " +
-                        "eligible gallery photos, save face locations and embeddings, " +
-                        "group likely matches into People albums, and let you correct " +
-                        "mistakes. Clustering and People albums are not part of this " +
-                        "downloader change.",
+                      "Use Re-index Library below to scan eligible photos already in the gallery. " +
+                        "NewG stores each face box, its five landmarks and a normalized " +
+                        "192-value embedding locally. Similarity clustering, People albums " +
+                        "and manual corrections are not implemented yet.",
                       style = MaterialTheme.typography.bodySmall,
                       color = extended.textMuted,
                     )
                     Text(
-                      "Current status: these files are downloaded and integrity-checked " +
-                        "only. This app build does not yet run face detection, create " +
-                        "embeddings, or identify people. Once inference is implemented, " +
-                        "processing can run on-device without sending photos to a server.",
+                      "Current status: NewG can run both ONNX models on eligible local photos and " +
+                        "save face boxes, landmarks and normalized embeddings in its private " +
+                        "gallery database. Face clustering and People albums are still " +
+                        "separate work. Photos and embeddings stay on-device.",
                       style = MaterialTheme.typography.bodySmall,
                       color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                      "Model format: ONNX • Runtime planned: ONNX Runtime Android • " +
+                      "Model format: ONNX • Runtime: ONNX Runtime Android • " +
                         "Source: Ente FlutterFace demo (GPL-3.0 project).",
                       style = MaterialTheme.typography.labelSmall,
                       color = extended.textMuted,
