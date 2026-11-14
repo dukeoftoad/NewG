@@ -616,6 +616,15 @@ fun SearchScreen(
               }) { Text(existing) }
             }
           }
+          if (group.clusterIds.size > 1) {
+            Text("Separate a merged cluster", style = MaterialTheme.typography.labelMedium)
+            group.clusterIds.forEachIndexed { index, clusterId ->
+              TextButton(onClick = {
+                onNamePerson(group.copy(clusterIds = listOf(clusterId)), null)
+                personBeingNamed = null
+              }) { Text("Separate cluster ${index + 1}") }
+            }
+          }
         }
       },
       confirmButton = {
