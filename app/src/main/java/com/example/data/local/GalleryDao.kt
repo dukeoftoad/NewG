@@ -92,6 +92,9 @@ interface GalleryDao {
   @Query("SELECT * FROM face_people ORDER BY name COLLATE NOCASE ASC")
   fun observeFacePeople(): Flow<List<FacePersonEntity>>
 
+  @Query("SELECT * FROM face_people WHERE clusterId = :clusterId LIMIT 1")
+  suspend fun getFacePerson(clusterId: String): FacePersonEntity?
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertFacePerson(person: FacePersonEntity)
 
