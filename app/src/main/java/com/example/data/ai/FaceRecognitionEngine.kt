@@ -98,8 +98,9 @@ class FaceRecognitionEngine {
     val scale = min(INPUT_SIZE.toFloat() / source.width, INPUT_SIZE.toFloat() / source.height)
     val resizedW = (source.width * scale).toInt().coerceAtLeast(1)
     val resizedH = (source.height * scale).toInt().coerceAtLeast(1)
-    val padX = (INPUT_SIZE - resizedW) / 2f
-    val padY = (INPUT_SIZE - resizedH) / 2f
+    // Match FlutterFace: preserve aspect ratio and pad on the right and bottom.
+    val padX = 0f
+    val padY = 0f
     val inputBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(inputBitmap)
     canvas.drawColor(LETTERBOX_COLOR)
