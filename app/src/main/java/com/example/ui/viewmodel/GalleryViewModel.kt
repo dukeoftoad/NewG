@@ -246,17 +246,22 @@ class GalleryViewModel(
         val peopleGroups = FacePersonClusterer.cluster(media.faceRows, prefs.clusteringThreshold)
         val peoplePhotoIds = peopleGroups.flatMap { it.photoIds }.toSet()
         val isPeopleSearch = q == "portraits"
+        val selectedPersonGroup = peopleGroups.firstOrNull { q == "person:${it.id}" }
         val searchMatches =
           media.visible.filter { item ->
             val locOk = !searchCtrl.onlyLoc || item.hasGps
             val typeOk = searchCtrl.typeFilter == null || item.mediaType == searchCtrl.typeFilter
             val queryOk =
-              if (isPeopleSearch) item.id in peoplePhotoIds else q.isEmpty() ||
+              when {
+                isPeopleSearch -> item.id in peoplePhotoIds
+                selectedPersonGroup != null -> item.id in selectedPersonGroup.photoIds
+                else -> q.isEmpty() ||
                 item.title.lowercase().contains(q) ||
                 item.locationName.lowercase().contains(q) ||
                 item.bucketName.lowercase().contains(q) ||
                 item.ocrText.lowercase().contains(q) ||
                 item.tags.any { it.lowercase().contains(q) }
+              }
             locOk && typeOk && queryOk
           }
 
