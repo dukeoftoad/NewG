@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.ai.DepthModelManager
+import com.example.data.ai.FaceModelManager
+import com.example.data.ai.FaceModelPackState
 import com.example.data.ai.DepthModelPackState
 import com.example.data.model.AppearanceMode
 import com.example.data.model.GroupByMode
@@ -34,6 +36,7 @@ data class SettingsUiState(
   val aiStatusText: String = "All 564 photos indexed • Healthy",
   val semanticDownloading: Boolean = false,
   val semanticDownloadProgress: Int = 0,
+  val faceModelState: FaceModelPackState = FaceModelPackState(),
   val depthModelState: DepthModelPackState = DepthModelPackState(),
   val showDiagnostics: Boolean = false,
   val selfTestOutput: String? = null,
@@ -42,6 +45,7 @@ data class SettingsUiState(
 class SettingsViewModel(
   private val prefsRepo: UserPreferencesRepository,
   private val depthModelManager: DepthModelManager,
+  private val faceModelManager: FaceModelManager,
 ) : ViewModel() {
 
   private val currentSubPage = MutableStateFlow(SettingsSubPage.HUB)
@@ -68,6 +72,7 @@ class SettingsViewModel(
       semanticDownloading,
       semanticDownloadProgress,
       depthModelManager.state,
+      faceModelManager.state,
     ) { arr ->
       AiMonitorState(
         indexing = arr[0] as Boolean,
@@ -76,6 +81,7 @@ class SettingsViewModel(
         downloading = arr[3] as Boolean,
         downloadProgress = arr[4] as Int,
         depthState = arr[5] as DepthModelPackState,
+        faceState = arr[6] as FaceModelPackState,
       )
     }
 
@@ -105,6 +111,7 @@ class SettingsViewModel(
           semanticDownloading = ai.downloading,
           semanticDownloadProgress = ai.downloadProgress,
           depthModelState = ai.depthState,
+          faceModelState = ai.faceState,
           showDiagnostics = diag,
           selfTestOutput = selfTest,
         )
@@ -189,14 +196,21 @@ class SettingsViewModel(
     viewModelScope.launch { prefsRepo.setClusteringThreshold(threshold) }
   }
 
-  fun toggleFaceModelPack() {
-    viewModelScope.launch {
-      val next = !uiState.value.preferences.faceModelInstalled
-      prefsRepo.setFaceModelInstalled(next)
-      _messages.tryEmit(
-        if (next) "Face models verified & installed" else "Deleted face model pack"
-      )
+  fun handleFacePackAction() {
+    val current = faceModelManager.state.value
+    if (current.isDownloading) {
+      faceModelManager.cancelDownload()
+      _messages.tryEmit("Cancelled Ente face-model download")
+      return
     }
+    if (current.isInstalled) {
+      viewModelScope.launch {
+        val freedMb = faceModelManager.deleteModelPack()
+        _messages.tryEmit(String.format("Removed Ente face models (%.1f MB freed)", freedMb))
+      }
+      return
+    }
+    faceModelManager.startDownload { _, message -> _messages.tryEmit(message) }
   }
 
   fun handleSemanticPackAction() {
@@ -359,6 +373,7 @@ class SettingsViewModel(
     val downloading: Boolean,
     val downloadProgress: Int,
     val depthState: DepthModelPackState,
+    val faceState: FaceModelPackState,
   )
 
   companion object {
@@ -369,6 +384,7 @@ class SettingsViewModel(
           SettingsViewModel(
             container.preferencesRepository,
             container.depthModelManager,
+            container.faceModelManager,
           ) as T
       }
   }
