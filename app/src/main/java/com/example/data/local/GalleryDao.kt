@@ -89,6 +89,9 @@ interface GalleryDao {
   @Query("DELETE FROM media_items WHERE id IN (:ids)")
   suspend fun deletePermanentlyBatch(ids: List<Long>)
 
+  @Query("DELETE FROM face_exclusions")
+  suspend fun clearFaceExclusions()
+
   @Query("SELECT * FROM face_exclusions")
   fun observeFaceExclusions(): Flow<List<FaceExclusionEntity>>
 
