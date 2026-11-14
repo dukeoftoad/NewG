@@ -19,7 +19,8 @@ object FacePersonClusterer {
   fun cluster(rows: List<MediaItemEntity>, distanceThreshold: Float): List<FacePersonGroup> {
     val clusters = mutableListOf<Cluster>()
     rows.sortedBy { it.timestamp }.forEach { row ->
-      val json = runCatching { JSONObject(row.faceDataJson ?: return@forEach) }.getOrNull() ?: return@forEach
+      val rawJson = row.faceDataJson ?: return@forEach
+      val json = runCatching { JSONObject(rawJson) }.getOrNull() ?: return@forEach
       val faces = json.optJSONArray("faces") ?: return@forEach
       for (index in 0 until faces.length()) {
         val values = faces.optJSONObject(index)?.optJSONArray("embedding") ?: continue
@@ -40,8 +41,10 @@ object FacePersonClusterer {
         } else {
           val group = match.first
           group.samples += sample
-          val mean = FloatArray(EMBEDDING_SIZE)
-          group.samples.forEach { member -> for (i in mean.indices) mean[i] += member.vector[i] }
+          val count = group.samples.size.toFloat()
+          val mean = FloatArray(EMBEDDING_SIZE) { i ->
+            group.centroid[i] * ((count - 1f) / count) + vector[i] / count
+          }
           val meanNorm = sqrt(mean.sumOf { (it * it).toDouble() }).toFloat().coerceAtLeast(1e-8f)
           for (i in mean.indices) mean[i] /= meanNorm
           group.centroid = mean
