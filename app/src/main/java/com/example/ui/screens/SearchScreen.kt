@@ -388,7 +388,7 @@ fun SearchScreen(
                 } else {
                   uiState.peopleGroups.forEachIndexed { index, group ->
                     Surface(
-                      onClick = { onOpenLightbox(group.coverPhotoId) },
+                      onClick = { onQueryChange("person:${group.id}") },
                       modifier = Modifier.fillMaxWidth().testTag("people_group_${index + 1}"),
                       shape = RoundedCornerShape(16.dp),
                       color = MaterialTheme.colorScheme.surface,
@@ -420,6 +420,14 @@ fun SearchScreen(
                     }
                   }
                 }
+              }
+            }
+          }
+
+          if (uiState.searchQuery.startsWith("person:")) {
+            item {
+              androidx.compose.material3.TextButton(onClick = { onQueryChange("portraits") }) {
+                Text("← Back to People")
               }
             }
           }
