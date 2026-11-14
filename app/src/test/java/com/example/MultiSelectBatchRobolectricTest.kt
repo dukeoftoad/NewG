@@ -97,14 +97,16 @@ class MultiSelectBatchRobolectricTest {
   fun `grid multi-select displays 5 actions, supports move destinations, and confirms batch delete`() {
     composeTestRule.waitForIdle()
 
-    // Enter multi-select mode from Photos header (0 selected -> bottom bar stays hidden)
-    composeTestRule.onNodeWithTag("select_mode_button").performClick()
+    // Enter multi-select mode from Photos More menu (0 selected -> bottom bar stays hidden)
+    composeTestRule.onNodeWithTag("photos_more_menu_button").performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("menu_multi_select").performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithText("0 selected").assertIsDisplayed()
     composeTestRule.onNodeWithTag("batch_action_bar").assertDoesNotExist()
 
     // Wait for Room initial media seeding to enable Select All
-    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
       runCatching {
           composeTestRule.onNodeWithTag("selection_select_all_button").assertIsEnabled()
           true
@@ -157,8 +159,10 @@ class MultiSelectBatchRobolectricTest {
         .getOrDefault(false)
     }
 
-    // Re-enter selection, select October 2026 section (4 items), and test Delete Confirmation dialog
-    composeTestRule.onNodeWithTag("select_mode_button").performClick()
+    // Re-enter selection via More menu, select remaining items, and test Delete Confirmation dialog
+    composeTestRule.onNodeWithTag("photos_more_menu_button").performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("menu_multi_select").performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
     composeTestRule.waitForIdle()

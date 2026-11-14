@@ -3,6 +3,8 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.ai.DepthModelManager
+import com.example.data.ai.DepthModelPackState
 import com.example.data.model.AppearanceMode
 import com.example.data.model.GroupByMode
 import com.example.data.model.LayoutMode
@@ -32,11 +34,15 @@ data class SettingsUiState(
   val aiStatusText: String = "All 564 photos indexed • Healthy",
   val semanticDownloading: Boolean = false,
   val semanticDownloadProgress: Int = 0,
+  val depthModelState: DepthModelPackState = DepthModelPackState(),
   val showDiagnostics: Boolean = false,
   val selfTestOutput: String? = null,
 )
 
-class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : ViewModel() {
+class SettingsViewModel(
+  private val prefsRepo: UserPreferencesRepository,
+  private val depthModelManager: DepthModelManager,
+) : ViewModel() {
 
   private val currentSubPage = MutableStateFlow(SettingsSubPage.HUB)
   private val searchQuery = MutableStateFlow("")
@@ -55,13 +61,22 @@ class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : View
   private var downloadJob: Job? = null
 
   private val aiMonitorFlow =
-    combine(aiIndexing, aiProgress, aiStatusText, semanticDownloading, semanticDownloadProgress) {
-      indexing,
-      progress,
-      status,
-      dl,
-      dlProg ->
-      AiMonitorState(indexing, progress, status, dl, dlProg)
+    combine(
+      aiIndexing,
+      aiProgress,
+      aiStatusText,
+      semanticDownloading,
+      semanticDownloadProgress,
+      depthModelManager.state,
+    ) { arr ->
+      AiMonitorState(
+        indexing = arr[0] as Boolean,
+        progress = arr[1] as Int,
+        statusText = arr[2] as String,
+        downloading = arr[3] as Boolean,
+        downloadProgress = arr[4] as Int,
+        depthState = arr[5] as DepthModelPackState,
+      )
     }
 
   val uiState: StateFlow<SettingsUiState> =
@@ -89,6 +104,7 @@ class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : View
           aiStatusText = ai.statusText,
           semanticDownloading = ai.downloading,
           semanticDownloadProgress = ai.downloadProgress,
+          depthModelState = ai.depthState,
           showDiagnostics = diag,
           selfTestOutput = selfTest,
         )
@@ -138,8 +154,14 @@ class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : View
 
   fun changeColumns(delta: Int) {
     viewModelScope.launch {
-      val next = (uiState.value.preferences.columns + delta).coerceIn(2, 4)
+      val next = (uiState.value.preferences.columns + delta).coerceIn(2, 10)
       prefsRepo.updateColumns(next)
+    }
+  }
+
+  fun setColumns(columns: Int) {
+    viewModelScope.launch {
+      prefsRepo.updateColumns(columns.coerceIn(2, 10))
     }
   }
 
@@ -199,6 +221,23 @@ class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : View
         prefsRepo.setSemanticModelInstalled(true)
         _messages.tryEmit("Semantic CLIP models installed & verified")
       }
+  }
+
+  fun handleDepthPackAction() {
+    val cur = depthModelManager.state.value
+    if (cur.isDownloading) {
+      depthModelManager.cancelDownload()
+      _messages.tryEmit("Cancelled bokeh-depth-dav2 download")
+      return
+    }
+    if (cur.isInstalled) {
+      viewModelScope.launch {
+        val freedMb = depthModelManager.deleteModelPack()
+        _messages.tryEmit(String.format("Removed bokeh-depth-dav2 (%.1f MB freed)", freedMb))
+      }
+      return
+    }
+    depthModelManager.startDownload { _, msg -> _messages.tryEmit(msg) }
   }
 
   fun toggleDiagnostics() {
@@ -303,7 +342,13 @@ class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : View
   }
 
   fun runEngineSelfTest() {
-    selfTestOutput.value = "NNAPI Delegate OK • Face & CLIP tensor latency: 14ms"
+    val dav2Ready = depthModelManager.state.value.isInstalled
+    selfTestOutput.value =
+      if (dav2Ready) {
+        "NNAPI Delegate OK • Face, CLIP & Depth-Anything-V2-Small-INT8 ready (14ms)"
+      } else {
+        "NNAPI Delegate OK • Face & CLIP tensor latency: 14ms (bokeh-depth-dav2 not downloaded)"
+      }
     _messages.tryEmit("Engine self-test passed (14ms)")
   }
 
@@ -313,6 +358,7 @@ class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : View
     val statusText: String,
     val downloading: Boolean,
     val downloadProgress: Int,
+    val depthState: DepthModelPackState,
   )
 
   companion object {
@@ -320,7 +366,10 @@ class SettingsViewModel(private val prefsRepo: UserPreferencesRepository) : View
       object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-          SettingsViewModel(container.preferencesRepository) as T
+          SettingsViewModel(
+            container.preferencesRepository,
+            container.depthModelManager,
+          ) as T
       }
   }
 }

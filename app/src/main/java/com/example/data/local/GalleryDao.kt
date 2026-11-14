@@ -35,6 +35,9 @@ interface GalleryDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertMedia(items: List<MediaItemEntity>)
 
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertSingleMedia(item: MediaItemEntity): Long
+
   @Query("UPDATE media_items SET isFavorite = :favorite WHERE id = :id")
   suspend fun setFavorite(id: Long, favorite: Boolean)
 
@@ -46,6 +49,9 @@ interface GalleryDao {
   )
   suspend fun updateVaultState(id: Long, hidden: Boolean, encryptedPath: String?)
 
+  @Query("UPDATE media_items SET isHidden = 0, encryptedVaultFile = NULL WHERE id IN (:ids)")
+  suspend fun unhideBatch(ids: List<Long>)
+
   @Query("UPDATE media_items SET isTrashed = :trashed WHERE id = :id")
   suspend fun setTrashed(id: Long, trashed: Boolean)
 
@@ -54,6 +60,11 @@ interface GalleryDao {
 
   @Query("UPDATE media_items SET tonePreset = :preset WHERE id = :id")
   suspend fun setTonePreset(id: Long, preset: String)
+
+  @Query(
+    "UPDATE media_items SET editedUriString = :editedUri, editRecipeJson = :recipeJson WHERE id = :id"
+  )
+  suspend fun updateNonDestructiveEdit(id: Long, editedUri: String?, recipeJson: String?)
 
   @Query("UPDATE media_items SET albumId = :albumId WHERE id IN (:ids)")
   suspend fun assignToAlbumBatch(ids: List<Long>, albumId: Long?)
@@ -66,6 +77,9 @@ interface GalleryDao {
 
   @Query("DELETE FROM media_items WHERE id = :id")
   suspend fun deletePermanently(id: Long)
+
+  @Query("DELETE FROM media_items WHERE id IN (:ids)")
+  suspend fun deletePermanentlyBatch(ids: List<Long>)
 
   @Query("SELECT * FROM albums ORDER BY createdAt DESC")
   fun observeAlbums(): Flow<List<AlbumEntity>>

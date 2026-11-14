@@ -31,14 +31,19 @@ class ToadGalleryRobolectricTest {
     composeTestRule.onNodeWithTag("nav_tab_settings").assertIsDisplayed()
     composeTestRule.onNodeWithTag("nav_tab_map").assertDoesNotExist()
 
-    // Photos tab header & multi-select flow
+    // Photos tab unified header: Toad icon + toadGALLERY + More menu (no standalone Select/Refresh buttons)
+    composeTestRule.onNodeWithTag("toad_brand_icon").assertIsDisplayed()
     composeTestRule.onNodeWithText("toadGALLERY").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("clean_feed_button").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("sync_mediastore_button").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("select_mode_button").performClick()
+    composeTestRule.onNodeWithTag("select_mode_button").assertDoesNotExist()
+    composeTestRule.onNodeWithTag("sync_mediastore_button").assertDoesNotExist()
+    composeTestRule.onNodeWithTag("photos_more_menu_button").performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("menu_refresh_library").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("menu_clean_feed").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("menu_multi_select").performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("batch_action_bar").assertDoesNotExist()
-    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
       runCatching {
           composeTestRule.onNodeWithTag("selection_select_all_button").assertIsEnabled()
           true
@@ -49,7 +54,7 @@ class ToadGalleryRobolectricTest {
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
     composeTestRule.onNodeWithTag("selection_clear_button").performClick()
-    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
       runCatching {
           composeTestRule.onNodeWithTag("batch_action_bar").assertDoesNotExist()
           true

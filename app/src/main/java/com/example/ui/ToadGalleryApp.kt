@@ -65,8 +65,9 @@ import android.content.Intent
 import com.example.data.security.BiometricAuthHelper
 import com.example.ui.overlays.BatchDeleteConfirmDialog
 import com.example.ui.overlays.BatchMoveDestinationDialog
-import com.example.ui.overlays.HiddenVaultDialog
+import com.example.ui.overlays.HiddenVaultScreen
 import com.example.ui.overlays.LightboxOverlay
+import com.example.ui.overlays.PhotoEditorScreen
 import com.example.ui.overlays.RecycleBinDialog
 import com.example.ui.overlays.StoryViewerOverlay
 import com.example.ui.screens.AlbumsScreen
@@ -275,6 +276,12 @@ fun ToadGalleryApp(
                   onClearFolderFilter = galleryViewModel::clearFolderFilter,
                   onToggleCleanFeed = galleryViewModel::toggleHideScreenshots,
                   onToggleQuickLayout = galleryViewModel::toggleQuickLayout,
+                  onSetColumns = galleryViewModel::setColumns,
+                  onNavigateToTimelineSettings = {
+                    navigateToTab(TopLevelTab.SETTINGS)
+                    settingsViewModel.openSubPage(SettingsSubPage.LAYOUT)
+                  },
+                  onOpenVault = galleryViewModel::openVaultDialog,
                   onSyncOrRequestMediaPermissions = ::triggerSyncOrPermissions,
                   onDismissPermissionBanner = galleryViewModel::dismissPermissionBanner,
                   onResetFilters = galleryViewModel::resetPhotoFilters,
@@ -336,6 +343,7 @@ fun ToadGalleryApp(
                     )
                   },
                   onOpenLightbox = galleryViewModel::openLightbox,
+                  onSetColumns = galleryViewModel::setColumns,
                 )
               }
               composable(TopLevelTab.SETTINGS.route) {
@@ -370,11 +378,47 @@ fun ToadGalleryApp(
           onNext = { galleryViewModel.stepLightbox(1) },
           onClose = galleryViewModel::closeLightbox,
           onToggleFavorite = { galleryViewModel.toggleFavorite(activeLightboxItem) },
+          onShare = {
+            galleryViewModel.shareMediaItem(activeLightboxItem) { chooserIntent ->
+              if (context !is Activity) {
+                chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              }
+              runCatching { context.startActivity(chooserIntent) }
+                .onFailure {
+                  galleryViewModel.showMessage("No compatible share app available")
+                }
+            }
+          },
           onHideToVault = { galleryViewModel.hideToVault(activeLightboxItem.id) },
           onMoveToTrash = { galleryViewModel.moveToTrash(activeLightboxItem.id) },
           onSelectTonePreset = { preset ->
             galleryViewModel.setTonePreset(activeLightboxItem.id, preset)
           },
+          onOpenEditor = { galleryViewModel.openEditor(activeLightboxItem.id) },
+          onRevertToOriginal = { galleryViewModel.revertNonDestructiveEdit(activeLightboxItem) },
+        )
+      }
+
+      // Full-Screen Photo Editor Studio Overlay
+      val activeEditorItem =
+        galleryState.activeEditorId?.let { editId ->
+          galleryState.visibleMedia.firstOrNull { it.id == editId }
+        }
+      if (activeEditorItem != null) {
+        PhotoEditorScreen(
+          item = activeEditorItem,
+          depthModelState = galleryState.depthModelState,
+          isSaving = galleryState.isSavingEdit,
+          onEstimateDepth = galleryViewModel::estimateDepthMap,
+          onStartDepthDownload = galleryViewModel::startDepthModelDownload,
+          onCancelDepthDownload = galleryViewModel::cancelDepthModelDownload,
+          onDeleteDepthModel = galleryViewModel::deleteDepthModelPack,
+          onSaveAsCopy = { recipe -> galleryViewModel.saveEditedAsCopy(activeEditorItem, recipe) },
+          onApplyNonDestructive = { recipe ->
+            galleryViewModel.applyEditNonDestructively(activeEditorItem, recipe)
+          },
+          onRevertToOriginal = { galleryViewModel.revertNonDestructiveEdit(activeEditorItem) },
+          onClose = galleryViewModel::closeEditor,
         )
       }
 
@@ -389,13 +433,16 @@ fun ToadGalleryApp(
         )
       }
 
-      // Encrypted Hidden Vault Modal
+      // Full-Page Encrypted Hidden Vault Screen
       if (galleryState.showVaultDialog) {
-        HiddenVaultDialog(
+        HiddenVaultScreen(
           vaultItems = galleryState.vaultMedia,
+          visibleGalleryMedia = galleryState.visibleMedia,
           decryptedPreviews = galleryState.vaultDecryptedPreviews,
+          columns = prefs.columns,
           isUnlocked = galleryState.isVaultUnlocked,
           biometricsEnabled = prefs.vaultBiometrics,
+          onColumnsChange = galleryViewModel::setColumns,
           onVerifyPinAsync = galleryViewModel::verifyVaultPinAsync,
           onBiometricUnlockClick = {
             BiometricAuthHelper.authenticate(
@@ -405,7 +452,11 @@ fun ToadGalleryApp(
             )
           },
           onUnhideItem = galleryViewModel::unhideFromVault,
+          onUnhideBatch = galleryViewModel::unhideBatchFromVault,
           onDeletePermanentItem = galleryViewModel::deletePermanentlyFromVault,
+          onDeletePermanentBatch = galleryViewModel::deletePermanentlyBatchFromVault,
+          onImportUris = galleryViewModel::importUrisToVault,
+          onImportGalleryItems = galleryViewModel::hideGalleryItemsToVault,
           onLockNow = galleryViewModel::lockVaultNow,
           onClose = galleryViewModel::closeVaultDialog,
         )

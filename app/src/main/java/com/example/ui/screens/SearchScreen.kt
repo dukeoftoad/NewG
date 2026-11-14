@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.MediaType
 import com.example.data.model.SearchTabMode
 import com.example.ui.components.GalleryMediaImage
+import com.example.ui.components.pinchToZoomGridColumns
 import com.example.ui.theme.LocalToadColors
 import com.example.ui.viewmodel.GalleryUiState
 import com.example.ui.viewmodel.MapDisplayMode
@@ -76,13 +78,16 @@ fun SearchScreen(
   onSelectMapPin: (Long) -> Unit,
   onNotifyMissingGps: () -> Unit,
   onOpenLightbox: (Long) -> Unit,
+  onSetColumns: (Int) -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
   val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
   val suggestions = remember { listOf("sunset", "receipt", "5,000", "dogs", "nature", "notice", "coffee") }
   var typeMenuExpanded by remember { mutableStateOf(false) }
-  val resultColumns = if (isWideLayout) 3 else 2
+  val prefsCols = uiState.preferences.columns.coerceIn(2, 10)
+  val resultColumns = if (isWideLayout) (prefsCols + 1).coerceIn(2, 10) else prefsCols
+  val compactResults = resultColumns >= 6
 
   Box(
     modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -165,7 +170,15 @@ fun SearchScreen(
         )
       } else {
         LazyColumn(
-          modifier = Modifier.weight(1f).fillMaxWidth(),
+          modifier =
+            Modifier.weight(1f)
+              .fillMaxWidth()
+              .pinchToZoomGridColumns(
+                currentColumns = prefsCols,
+                minColumns = 2,
+                maxColumns = 10,
+                onColumnsChange = onSetColumns,
+              ),
           contentPadding = PaddingValues(bottom = 110.dp),
           verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -423,53 +436,70 @@ fun SearchScreen(
             }
           } else {
             val rows = uiState.searchResults.chunked(resultColumns)
+            val rowSpacing = if (compactResults) 4.dp else 10.dp
+            val corner =
+              when {
+                resultColumns >= 6 -> 8.dp
+                resultColumns >= 4 -> 14.dp
+                else -> 20.dp
+              }
             items(rows) { rowItems ->
               Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(rowSpacing),
               ) {
                 rowItems.forEach { item ->
                   Surface(
                     modifier =
                       Modifier.weight(1f)
-                        .height(160.dp)
+                        .then(
+                          if (compactResults) Modifier.aspectRatio(1f)
+                          else if (resultColumns >= 4) Modifier.height(126.dp)
+                          else Modifier.height(160.dp)
+                        )
                         .testTag("search_result_${item.id}")
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(corner))
                         .clickable { onOpenLightbox(item.id) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(corner),
                     color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, extended.borderSubtle),
+                    border =
+                      BorderStroke(
+                        width = if (compactResults) 0.5.dp else 1.dp,
+                        color = extended.borderSubtle,
+                      ),
                   ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                       GalleryMediaImage(item = item, modifier = Modifier.fillMaxSize())
-                      Box(
-                        modifier =
-                          Modifier.fillMaxSize()
-                            .background(
-                              Brush.verticalGradient(
-                                0.35f to Color.Transparent,
-                                1.0f to Color.Black.copy(alpha = 0.88f),
+                      if (!compactResults) {
+                        Box(
+                          modifier =
+                            Modifier.fillMaxSize()
+                              .background(
+                                Brush.verticalGradient(
+                                  0.35f to Color.Transparent,
+                                  1.0f to Color.Black.copy(alpha = 0.88f),
+                                )
                               )
-                            )
-                      )
-                      Column(
-                        modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                      ) {
-                        Text(
-                          text = item.title,
-                          style = MaterialTheme.typography.labelMedium,
-                          color = Color.White,
-                          maxLines = 1,
-                          overflow = TextOverflow.Ellipsis,
                         )
-                        Text(
-                          text = item.tags.take(3).joinToString(" • "),
-                          style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                          color = Color(0xFF6EE7B7),
-                          maxLines = 1,
-                          overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(
+                          modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
+                          verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                          Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                          )
+                          Text(
+                            text = item.tags.take(3).joinToString(" • "),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                            color = Color(0xFF6EE7B7),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                          )
+                        }
                       }
                     }
                   }

@@ -36,6 +36,8 @@ data class MediaItemEntity(
   val exifSummary: String,
   val tonePreset: String = TonePreset.NATURAL.name,
   val albumId: Long? = null,
+  val editedUriString: String? = null,
+  val editRecipeJson: String? = null,
 ) {
   fun toDomain(): GalleryMediaItem =
     GalleryMediaItem(
@@ -66,5 +68,7 @@ data class MediaItemEntity(
       exifSummary = exifSummary,
       tonePreset = runCatching { TonePreset.valueOf(tonePreset) }.getOrDefault(TonePreset.NATURAL),
       albumId = albumId,
+      editedUriString = editedUriString,
+      editRecipeJson = editRecipeJson,
     )
 }

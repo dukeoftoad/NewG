@@ -7,12 +7,16 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,17 +44,28 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -67,6 +82,154 @@ import com.example.data.model.GalleryMediaItem
 import com.example.data.model.MediaType
 import com.example.data.model.TonePreset
 import com.example.ui.theme.LocalToadColors
+
+@Composable
+fun ToadBrandIcon(
+  modifier: Modifier = Modifier,
+) {
+  val containerColor = MaterialTheme.colorScheme.primary
+  val silhouetteColor = MaterialTheme.colorScheme.onPrimary
+
+  Box(
+    modifier =
+      modifier
+        .size(32.dp)
+        .clip(RoundedCornerShape(10.dp))
+        .background(containerColor)
+        .semantics { contentDescription = "toadGALLERY brand mark" }
+        .testTag("toad_brand_icon"),
+    contentAlignment = Alignment.Center,
+  ) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+      val w = size.width
+      val h = size.height
+
+      // Raised left and right toad eye ridges
+      drawCircle(
+        color = silhouetteColor,
+        radius = w * 0.16f,
+        center = Offset(w * 0.30f, h * 0.32f),
+      )
+      drawCircle(
+        color = silhouetteColor,
+        radius = w * 0.16f,
+        center = Offset(w * 0.70f, h * 0.32f),
+      )
+
+      // Wide rounded toad head & body silhouette
+      drawOval(
+        color = silhouetteColor,
+        topLeft = Offset(w * 0.08f, h * 0.32f),
+        size = Size(w * 0.84f, h * 0.56f),
+      )
+
+      // Subtle toad hind legs tucked at the bottom corners
+      drawRoundRect(
+        color = silhouetteColor,
+        topLeft = Offset(w * 0.05f, h * 0.64f),
+        size = Size(w * 0.24f, h * 0.26f),
+        cornerRadius = CornerRadius(w * 0.12f, h * 0.12f),
+      )
+      drawRoundRect(
+        color = silhouetteColor,
+        topLeft = Offset(w * 0.71f, h * 0.64f),
+        size = Size(w * 0.24f, h * 0.26f),
+        cornerRadius = CornerRadius(w * 0.12f, h * 0.12f),
+      )
+
+      // Cutout eye pupils using badge container color
+      drawCircle(
+        color = containerColor,
+        radius = w * 0.068f,
+        center = Offset(w * 0.30f, h * 0.32f),
+      )
+      drawCircle(
+        color = containerColor,
+        radius = w * 0.068f,
+        center = Offset(w * 0.70f, h * 0.32f),
+      )
+
+      // Gentle toad smile line
+      drawArc(
+        color = containerColor,
+        startAngle = 20f,
+        sweepAngle = 140f,
+        useCenter = false,
+        topLeft = Offset(w * 0.26f, h * 0.42f),
+        size = Size(w * 0.48f, h * 0.24f),
+        style = Stroke(width = w * 0.065f, cap = StrokeCap.Round),
+      )
+    }
+  }
+}
+
+fun Modifier.pinchToZoomGridColumns(
+  currentColumns: Int,
+  minColumns: Int = 2,
+  maxColumns: Int = 10,
+  onColumnsChange: (Int) -> Unit,
+  onPinchActiveChange: (Boolean) -> Unit = {},
+): Modifier = composed {
+  val latestColumns by rememberUpdatedState(currentColumns)
+  val latestOnColumnsChange by rememberUpdatedState(onColumnsChange)
+  val latestOnPinchActive by rememberUpdatedState(onPinchActiveChange)
+  val haptics = LocalHapticFeedback.current
+
+  pointerInput(minColumns, maxColumns) {
+    val stepThreshold = 1.16f
+    awaitEachGesture {
+      awaitFirstDown(requireUnconsumed = false)
+      var cumulativeZoom = 1f
+      var trackedColumns = latestColumns.coerceIn(minColumns, maxColumns)
+      var pinchActive = false
+
+      while (true) {
+        val event = awaitPointerEvent(PointerEventPass.Initial)
+        val pressedCount = event.changes.count { it.pressed }
+        if (pressedCount == 0) {
+          if (pinchActive) {
+            latestOnPinchActive(false)
+          }
+          break
+        }
+        if (pressedCount >= 2) {
+          if (!pinchActive) {
+            pinchActive = true
+            trackedColumns = latestColumns.coerceIn(minColumns, maxColumns)
+            cumulativeZoom = 1f
+            latestOnPinchActive(true)
+          }
+          val zoomChange = event.calculateZoom()
+          if (zoomChange != 1f && !zoomChange.isNaN()) {
+            cumulativeZoom *= zoomChange
+            while (cumulativeZoom >= stepThreshold) {
+              val next = (trackedColumns - 1).coerceIn(minColumns, maxColumns)
+              if (next != trackedColumns) {
+                trackedColumns = next
+                latestOnColumnsChange(next)
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+              }
+              cumulativeZoom /= stepThreshold
+            }
+            while (cumulativeZoom <= 1f / stepThreshold) {
+              val next = (trackedColumns + 1).coerceIn(minColumns, maxColumns)
+              if (next != trackedColumns) {
+                trackedColumns = next
+                latestOnColumnsChange(next)
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+              }
+              cumulativeZoom *= stepThreshold
+            }
+          }
+          event.changes.forEach { it.consume() }
+        } else if (pinchActive) {
+          // Consume remaining single-finger lift transition after pinch so scroll does not jump
+          event.changes.forEach { it.consume() }
+        }
+      }
+    }
+  }
+}
 
 @Composable
 fun ToadSwitch(
@@ -163,12 +326,14 @@ fun GalleryMediaImage(
   contentScale: ContentScale = ContentScale.Crop,
   modifier: Modifier = Modifier,
 ) {
-  val filter = toneColorFilter(item.tonePreset)
-  if (!item.uriString.isNullOrBlank()) {
+  val hasNonDestructiveBitmap = !item.editedUriString.isNullOrBlank()
+  val filter = if (hasNonDestructiveBitmap) null else toneColorFilter(item.tonePreset)
+  val effectiveUri = item.editedUriString?.takeIf { it.isNotBlank() } ?: item.uriString
+  if (!effectiveUri.isNullOrBlank()) {
     AsyncImage(
       model =
         ImageRequest.Builder(LocalContext.current)
-          .data(item.uriString)
+          .data(effectiveUri)
           .crossfade(true)
           .build(),
       contentDescription = item.title,
@@ -234,10 +399,12 @@ fun MediaThumbnailCard(
   onLongClick: (() -> Unit)? = null,
   isSelectionMode: Boolean = false,
   isSelected: Boolean = false,
+  compactMode: Boolean = false,
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
   val ratio = if (forceSquare) 1f else item.aspectRatio.coerceIn(0.62f, 1.45f)
+  val cornerRadius = if (compactMode) 6.dp else 12.dp
   val scale by
     animateFloatAsState(
       targetValue = if (isSelected) 0.92f else 1f,
@@ -254,16 +421,18 @@ fun MediaThumbnailCard(
           scaleY = scale
         }
         .testTag("media_card_${item.id}")
-        .clip(RoundedCornerShape(18.dp))
+        .clip(RoundedCornerShape(cornerRadius))
         .combinedClickable(
           onClick = onClick,
           onLongClick = onLongClick,
         ),
-    shape = RoundedCornerShape(18.dp),
+    shape = RoundedCornerShape(cornerRadius),
     color = MaterialTheme.colorScheme.surface,
     border =
       BorderStroke(
-        width = if (isSelected) 2.5.dp else 1.dp,
+        width =
+          if (isSelected) (if (compactMode) 2.dp else 2.5.dp)
+          else (if (compactMode) 0.5.dp else 1.dp),
         color = if (isSelected) MaterialTheme.colorScheme.primary else extended.borderSubtle,
       ),
   ) {
@@ -282,15 +451,15 @@ fun MediaThumbnailCard(
         Box(
           modifier =
             Modifier.align(Alignment.TopStart)
-              .padding(7.dp)
-              .size(22.dp)
+              .padding(if (compactMode) 3.dp else 6.dp)
+              .size(if (compactMode) 16.dp else 22.dp)
               .clip(CircleShape)
               .background(
                 if (isSelected) MaterialTheme.colorScheme.primary
                 else Color.Black.copy(alpha = 0.50f)
               )
               .border(
-                width = 1.5.dp,
+                width = if (compactMode) 1.dp else 1.5.dp,
                 color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
                 shape = CircleShape,
               ),
@@ -301,18 +470,18 @@ fun MediaThumbnailCard(
               imageVector = Icons.Filled.Check,
               contentDescription = "Selected",
               tint = MaterialTheme.colorScheme.onPrimary,
-              modifier = Modifier.size(14.dp),
+              modifier = Modifier.size(if (compactMode) 10.dp else 14.dp),
             )
           }
         }
-      } else if (item.mediaType == MediaType.SCREENSHOT) {
+      } else if (!compactMode && item.mediaType == MediaType.SCREENSHOT) {
         Box(
           modifier =
             Modifier.align(Alignment.TopStart)
-              .padding(6.dp)
+              .padding(5.dp)
               .clip(RoundedCornerShape(6.dp))
               .background(Color.Black.copy(alpha = 0.68f))
-              .padding(horizontal = 6.dp, vertical = 2.dp)
+              .padding(horizontal = 5.dp, vertical = 2.dp)
         ) {
           Text(
             text = "OCR",
@@ -322,12 +491,12 @@ fun MediaThumbnailCard(
         }
       }
 
-      if (item.isFavorite) {
+      if (!compactMode && item.isFavorite) {
         Box(
           modifier =
             Modifier.align(Alignment.TopEnd)
-              .padding(6.dp)
-              .size(22.dp)
+              .padding(5.dp)
+              .size(20.dp)
               .clip(CircleShape)
               .background(Color.Black.copy(alpha = 0.52f)),
           contentAlignment = Alignment.Center,
@@ -336,19 +505,19 @@ fun MediaThumbnailCard(
             imageVector = Icons.Filled.Favorite,
             contentDescription = "Favorited",
             tint = Color(0xFFFB7185),
-            modifier = Modifier.size(13.dp),
+            modifier = Modifier.size(12.dp),
           )
         }
       }
 
-      if (item.mediaType == MediaType.VIDEO && !item.durationLabel.isNullOrBlank()) {
+      if (!compactMode && item.mediaType == MediaType.VIDEO && !item.durationLabel.isNullOrBlank()) {
         Row(
           modifier =
             Modifier.align(Alignment.BottomEnd)
-              .padding(6.dp)
-              .clip(RoundedCornerShape(8.dp))
+              .padding(5.dp)
+              .clip(RoundedCornerShape(6.dp))
               .background(Color.Black.copy(alpha = 0.74f))
-              .padding(horizontal = 6.dp, vertical = 3.dp),
+              .padding(horizontal = 5.dp, vertical = 2.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(3.dp),
         ) {
@@ -366,14 +535,14 @@ fun MediaThumbnailCard(
         }
       }
 
-      if (item.mediaType == MediaType.GIF) {
+      if (!compactMode && item.mediaType == MediaType.GIF) {
         Box(
           modifier =
             Modifier.align(Alignment.BottomEnd)
-              .padding(6.dp)
-              .clip(RoundedCornerShape(8.dp))
+              .padding(5.dp)
+              .clip(RoundedCornerShape(6.dp))
               .background(Color.Black.copy(alpha = 0.78f))
-              .padding(horizontal = 6.dp, vertical = 2.dp)
+              .padding(horizontal = 5.dp, vertical = 2.dp)
         ) {
           Text(
             text = "GIF",
@@ -394,13 +563,16 @@ fun MediaThumbnailCard(
 fun StorageBreakdownBar(
   faceModelInstalled: Boolean,
   semanticModelInstalled: Boolean,
+  depthModelInstalled: Boolean = false,
   mlIndexMb: Float,
   cacheMb: Float,
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
   val modelsMb =
-    (if (faceModelInstalled) 37.6f else 0f) + (if (semanticModelInstalled) 213.0f else 0f)
+    (if (faceModelInstalled) 37.6f else 0f) +
+      (if (semanticModelInstalled) 213.0f else 0f) +
+      (if (depthModelInstalled) 27.3f else 0f)
   val total = (14.2f + modelsMb + mlIndexMb + cacheMb).coerceAtLeast(1f)
 
   val dbWeight = (14.2f / total).coerceAtLeast(0.06f)

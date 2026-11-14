@@ -2,6 +2,7 @@ package com.example.data.preferences
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -9,7 +10,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.preferencesDataStoreFile
 import com.example.data.model.AppearanceMode
 import com.example.data.model.GroupByMode
 import com.example.data.model.LayoutMode
@@ -17,13 +18,27 @@ import com.example.data.model.ThemePalette
 import com.example.data.model.UserPreferences
 import com.example.data.model.VaultAutoLock
 import com.example.data.security.PinHasher
+import java.util.WeakHashMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "toad_gallery_prefs")
+private val dataStoreLock = Any()
+private val dataStoreInstances = WeakHashMap<Context, DataStore<Preferences>>()
 
-class UserPreferencesRepository(private val context: Context) {
+private fun Context.toadDataStore(): DataStore<Preferences> {
+  val appCtx = applicationContext
+  return synchronized(dataStoreLock) {
+    dataStoreInstances.getOrPut(appCtx) {
+      PreferenceDataStoreFactory.create(
+        produceFile = { appCtx.preferencesDataStoreFile("toad_gallery_prefs") }
+      )
+    }
+  }
+}
+
+class UserPreferencesRepository(context: Context) {
+  private val dataStore: DataStore<Preferences> = context.toadDataStore()
 
   private object Keys {
     val PALETTE = stringPreferencesKey("palette")
@@ -40,6 +55,7 @@ class UserPreferencesRepository(private val context: Context) {
     val CLUSTERING_THRESHOLD = floatPreferencesKey("clustering_threshold")
     val FACE_MODEL_INSTALLED = booleanPreferencesKey("face_model_installed")
     val SEMANTIC_MODEL_INSTALLED = booleanPreferencesKey("semantic_model_installed")
+    val DEPTH_MODEL_INSTALLED = booleanPreferencesKey("depth_model_installed")
     val SHOW_LOCATION_EXIF = booleanPreferencesKey("show_location_exif")
     val VAULT_BIOMETRICS = booleanPreferencesKey("vault_biometrics")
     val VAULT_AUTO_LOCK = stringPreferencesKey("vault_auto_lock")
@@ -52,7 +68,7 @@ class UserPreferencesRepository(private val context: Context) {
   }
 
   val preferences: Flow<UserPreferences> =
-    context.dataStore.data.map { prefs ->
+    dataStore.data.map { prefs ->
       UserPreferences(
         palette =
           prefs[Keys.PALETTE]?.let { runCatching { ThemePalette.valueOf(it) }.getOrNull() }
@@ -65,7 +81,7 @@ class UserPreferencesRepository(private val context: Context) {
         layoutMode =
           prefs[Keys.LAYOUT_MODE]?.let { runCatching { LayoutMode.valueOf(it) }.getOrNull() }
             ?: LayoutMode.COLLAGE,
-        columns = (prefs[Keys.COLUMNS] ?: 3).coerceIn(2, 4),
+        columns = (prefs[Keys.COLUMNS] ?: 3).coerceIn(2, 10),
         groupBy =
           prefs[Keys.GROUP_BY]?.let { runCatching { GroupByMode.valueOf(it) }.getOrNull() }
             ?: GroupByMode.MONTH,
@@ -77,6 +93,7 @@ class UserPreferencesRepository(private val context: Context) {
         clusteringThreshold = (prefs[Keys.CLUSTERING_THRESHOLD] ?: 0.24f).coerceIn(0.10f, 0.40f),
         faceModelInstalled = prefs[Keys.FACE_MODEL_INSTALLED] ?: true,
         semanticModelInstalled = prefs[Keys.SEMANTIC_MODEL_INSTALLED] ?: false,
+        depthModelInstalled = prefs[Keys.DEPTH_MODEL_INSTALLED] ?: false,
         showLocationExif = prefs[Keys.SHOW_LOCATION_EXIF] ?: true,
         vaultBiometrics = prefs[Keys.VAULT_BIOMETRICS] ?: true,
         vaultAutoLock =
@@ -93,7 +110,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
   suspend fun ensurePinInitialized() {
-    context.dataStore.edit { prefs ->
+    dataStore.edit { prefs ->
       if (prefs[Keys.VAULT_PIN_HASH].isNullOrBlank() || prefs[Keys.VAULT_PIN_SALT].isNullOrBlank()) {
         val salt = PinHasher.generateSalt()
         prefs[Keys.VAULT_PIN_SALT] = salt
@@ -104,7 +121,7 @@ class UserPreferencesRepository(private val context: Context) {
 
   suspend fun verifyPin(enteredPin: String): Boolean {
     ensurePinInitialized()
-    val snap = context.dataStore.data.first()
+    val snap = dataStore.data.first()
     val salt = snap[Keys.VAULT_PIN_SALT].orEmpty()
     val expectedHash = snap[Keys.VAULT_PIN_HASH].orEmpty()
     return PinHasher.verifyPin(enteredPin, salt, expectedHash)
@@ -113,26 +130,26 @@ class UserPreferencesRepository(private val context: Context) {
   suspend fun updateVaultPin(newPin: String) {
     val salt = PinHasher.generateSalt()
     val hash = PinHasher.hashPin(newPin, salt)
-    context.dataStore.edit {
+    dataStore.edit {
       it[Keys.VAULT_PIN_SALT] = salt
       it[Keys.VAULT_PIN_HASH] = hash
     }
   }
 
   suspend fun recordVaultUnlocked(timestampMs: Long = System.currentTimeMillis()) {
-    context.dataStore.edit { it[Keys.VAULT_LAST_UNLOCKED_AT] = timestampMs }
+    dataStore.edit { it[Keys.VAULT_LAST_UNLOCKED_AT] = timestampMs }
   }
 
   suspend fun clearVaultUnlockSession() {
-    context.dataStore.edit { it[Keys.VAULT_LAST_UNLOCKED_AT] = 0L }
+    dataStore.edit { it[Keys.VAULT_LAST_UNLOCKED_AT] = 0L }
   }
 
   suspend fun setLastMediaSyncCount(count: Int) {
-    context.dataStore.edit { it[Keys.LAST_MEDIA_SYNC_COUNT] = count }
+    dataStore.edit { it[Keys.LAST_MEDIA_SYNC_COUNT] = count }
   }
 
   suspend fun updatePalette(palette: ThemePalette) {
-    context.dataStore.edit {
+    dataStore.edit {
       it[Keys.PALETTE] = palette.name
       it[Keys.APPEARANCE_MODE] =
         if (palette == ThemePalette.BOTANICAL_LIGHT) AppearanceMode.LIGHT.name
@@ -141,7 +158,7 @@ class UserPreferencesRepository(private val context: Context) {
   }
 
   suspend fun updateAppearanceMode(mode: AppearanceMode) {
-    context.dataStore.edit {
+    dataStore.edit {
       it[Keys.APPEARANCE_MODE] = mode.name
       if (mode == AppearanceMode.LIGHT) {
         it[Keys.PALETTE] = ThemePalette.BOTANICAL_LIGHT.name
@@ -152,71 +169,75 @@ class UserPreferencesRepository(private val context: Context) {
   }
 
   suspend fun setUseDynamicColors(enabled: Boolean) {
-    context.dataStore.edit { it[Keys.USE_DYNAMIC_COLORS] = enabled }
+    dataStore.edit { it[Keys.USE_DYNAMIC_COLORS] = enabled }
   }
 
   suspend fun updateLayoutMode(mode: LayoutMode) {
-    context.dataStore.edit { it[Keys.LAYOUT_MODE] = mode.name }
+    dataStore.edit { it[Keys.LAYOUT_MODE] = mode.name }
   }
 
   suspend fun updateColumns(columns: Int) {
-    context.dataStore.edit { it[Keys.COLUMNS] = columns.coerceIn(2, 4) }
+    dataStore.edit { it[Keys.COLUMNS] = columns.coerceIn(2, 10) }
   }
 
   suspend fun updateGroupBy(groupBy: GroupByMode) {
-    context.dataStore.edit { it[Keys.GROUP_BY] = groupBy.name }
+    dataStore.edit { it[Keys.GROUP_BY] = groupBy.name }
   }
 
   suspend fun setShowStories(show: Boolean) {
-    context.dataStore.edit { it[Keys.SHOW_STORIES] = show }
+    dataStore.edit { it[Keys.SHOW_STORIES] = show }
   }
 
   suspend fun setHideScreenshots(hide: Boolean) {
-    context.dataStore.edit { it[Keys.HIDE_SCREENSHOTS] = hide }
+    dataStore.edit { it[Keys.HIDE_SCREENSHOTS] = hide }
   }
 
   suspend fun setAiPeople(enabled: Boolean) {
-    context.dataStore.edit { it[Keys.AI_PEOPLE] = enabled }
+    dataStore.edit { it[Keys.AI_PEOPLE] = enabled }
   }
 
   suspend fun setAiMagicSearch(enabled: Boolean) {
-    context.dataStore.edit { it[Keys.AI_MAGIC_SEARCH] = enabled }
+    dataStore.edit { it[Keys.AI_MAGIC_SEARCH] = enabled }
   }
 
   suspend fun setAiThings(enabled: Boolean) {
-    context.dataStore.edit { it[Keys.AI_THINGS] = enabled }
+    dataStore.edit { it[Keys.AI_THINGS] = enabled }
   }
 
   suspend fun setClusteringThreshold(threshold: Float) {
-    context.dataStore.edit { it[Keys.CLUSTERING_THRESHOLD] = threshold.coerceIn(0.10f, 0.40f) }
+    dataStore.edit { it[Keys.CLUSTERING_THRESHOLD] = threshold.coerceIn(0.10f, 0.40f) }
   }
 
   suspend fun setFaceModelInstalled(installed: Boolean) {
-    context.dataStore.edit { it[Keys.FACE_MODEL_INSTALLED] = installed }
+    dataStore.edit { it[Keys.FACE_MODEL_INSTALLED] = installed }
   }
 
   suspend fun setSemanticModelInstalled(installed: Boolean) {
-    context.dataStore.edit { it[Keys.SEMANTIC_MODEL_INSTALLED] = installed }
+    dataStore.edit { it[Keys.SEMANTIC_MODEL_INSTALLED] = installed }
+  }
+
+  suspend fun setDepthModelInstalled(installed: Boolean) {
+    dataStore.edit { it[Keys.DEPTH_MODEL_INSTALLED] = installed }
   }
 
   suspend fun setShowLocationExif(enabled: Boolean) {
-    context.dataStore.edit { it[Keys.SHOW_LOCATION_EXIF] = enabled }
+    dataStore.edit { it[Keys.SHOW_LOCATION_EXIF] = enabled }
   }
 
   suspend fun setVaultBiometrics(enabled: Boolean) {
-    context.dataStore.edit { it[Keys.VAULT_BIOMETRICS] = enabled }
+    dataStore.edit { it[Keys.VAULT_BIOMETRICS] = enabled }
   }
 
   suspend fun setVaultAutoLock(autoLock: VaultAutoLock) {
-    context.dataStore.edit { it[Keys.VAULT_AUTO_LOCK] = autoLock.name }
+    dataStore.edit { it[Keys.VAULT_AUTO_LOCK] = autoLock.name }
   }
 
   suspend fun setCacheSizeMb(sizeMb: Float) {
-    context.dataStore.edit { it[Keys.CACHE_SIZE_MB] = sizeMb }
+    dataStore.edit { it[Keys.CACHE_SIZE_MB] = sizeMb }
   }
 
   suspend fun setMlIndexSizeMb(sizeMb: Float) {
-    context.dataStore.edit { it[Keys.ML_INDEX_SIZE_MB] = sizeMb }
+    dataStore.edit { it[Keys.ML_INDEX_SIZE_MB] = sizeMb }
   }
 
   companion object {

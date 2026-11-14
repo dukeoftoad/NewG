@@ -2,9 +2,16 @@ package com.example.ui.viewmodel
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.ai.DepthAnythingV2Engine
+import com.example.data.ai.DepthMapResult
+import com.example.data.ai.DepthModelManager
+import com.example.data.ai.DepthModelPackState
+import com.example.data.editor.PhotoEditorRenderer
 import com.example.data.local.AlbumEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaAccessLevel
@@ -15,6 +22,7 @@ import com.example.data.model.GalleryMediaItem
 import com.example.data.model.LayoutMode
 import com.example.data.model.MediaCategory
 import com.example.data.model.MediaType
+import com.example.data.model.PhotoEditRecipe
 import com.example.data.model.SearchTabMode
 import com.example.data.model.StorySlide
 import com.example.data.model.TimelineFolderFilter
@@ -68,16 +76,21 @@ data class GalleryUiState(
   val mapMode: MapDisplayMode = MapDisplayMode.PINS,
   val selectedMapPinId: Long? = null,
   val activeLightboxId: Long? = null,
+  val activeEditorId: Long? = null,
   val activeStoryIndex: Int? = null,
   val showVaultDialog: Boolean = false,
   val isVaultUnlocked: Boolean = false,
   val showRecycleBinSheet: Boolean = false,
+  val depthModelState: DepthModelPackState = DepthModelPackState(),
+  val isSavingEdit: Boolean = false,
 )
 
 class GalleryViewModel(
   private val appContext: Context,
   private val galleryRepo: GalleryRepository,
   private val prefsRepo: UserPreferencesRepository,
+  private val depthModelManager: DepthModelManager,
+  private val depthEngine: DepthAnythingV2Engine,
 ) : ViewModel() {
 
   private val mediaShareHelper = MediaShareHelper(appContext)
@@ -101,6 +114,8 @@ class GalleryViewModel(
   private val mapMode = MutableStateFlow(MapDisplayMode.PINS)
   private val selectedMapPinId = MutableStateFlow<Long?>(null)
   private val activeLightboxId = MutableStateFlow<Long?>(null)
+  private val activeEditorId = MutableStateFlow<Long?>(null)
+  private val isSavingEdit = MutableStateFlow(false)
   private val activeStoryIndex = MutableStateFlow<Int?>(null)
   private val showVaultDialog = MutableStateFlow(false)
   private val isVaultUnlocked = MutableStateFlow(false)
@@ -153,21 +168,27 @@ class GalleryViewModel(
     combine(
       selectedMapPinId,
       activeLightboxId,
+      activeEditorId,
       activeStoryIndex,
       showVaultDialog,
       isVaultUnlocked,
       vaultDecryptedPreviews,
       showRecycleBinSheet,
+      depthModelManager.state,
+      isSavingEdit,
     ) { arr ->
       @Suppress("UNCHECKED_CAST")
       ModalControls(
         selectedPinId = arr[0] as Long?,
         lightboxId = arr[1] as Long?,
-        storyIdx = arr[2] as Int?,
-        vaultDialog = arr[3] as Boolean,
-        vaultUnlocked = arr[4] as Boolean,
-        vaultPreviews = arr[5] as Map<Long, ByteArray>,
-        recycleSheet = arr[6] as Boolean,
+        editorId = arr[2] as Long?,
+        storyIdx = arr[3] as Int?,
+        vaultDialog = arr[4] as Boolean,
+        vaultUnlocked = arr[5] as Boolean,
+        vaultPreviews = arr[6] as Map<Long, ByteArray>,
+        recycleSheet = arr[7] as Boolean,
+        depthState = arr[8] as DepthModelPackState,
+        savingEdit = arr[9] as Boolean,
       )
     }
 
@@ -315,10 +336,13 @@ class GalleryViewModel(
           mapMode = searchCtrl.mapMode,
           selectedMapPinId = resolvedPinId,
           activeLightboxId = modals.lightboxId,
+          activeEditorId = modals.editorId,
           activeStoryIndex = modals.storyIdx,
           showVaultDialog = modals.vaultDialog,
           isVaultUnlocked = modals.vaultUnlocked,
           showRecycleBinSheet = modals.recycleSheet,
+          depthModelState = modals.depthState,
+          isSavingEdit = modals.savingEdit,
         )
       }
       .stateIn(
@@ -399,6 +423,12 @@ class GalleryViewModel(
       prefsRepo.updateLayoutMode(next)
       emitMessage("Switched to ${next.label} layout")
     }
+  }
+
+  fun setColumns(columns: Int) {
+    val clamped = columns.coerceIn(2, 10)
+    if (clamped == uiState.value.preferences.columns) return
+    viewModelScope.launch { prefsRepo.updateColumns(clamped) }
   }
 
   fun resetPhotoFilters() {
@@ -634,6 +664,20 @@ class GalleryViewModel(
     }
   }
 
+  fun shareMediaItem(item: GalleryMediaItem, onLaunchIntent: (Intent) -> Unit) {
+    if (isPreparingShare.value) return
+    viewModelScope.launch {
+      isPreparingShare.value = true
+      val payload = mediaShareHelper.buildShareIntent(listOf(item))
+      isPreparingShare.value = false
+      if (payload == null) {
+        emitMessage("Unable to prepare media for sharing")
+        return@launch
+      }
+      onLaunchIntent(payload.chooserIntent)
+    }
+  }
+
   fun hideToVault(id: Long) {
     viewModelScope.launch {
       galleryRepo.hideToVaultEncrypted(listOf(id))
@@ -649,10 +693,45 @@ class GalleryViewModel(
     }
   }
 
+  fun unhideBatchFromVault(ids: List<Long>) {
+    if (ids.isEmpty()) return
+    viewModelScope.launch {
+      val count = galleryRepo.unhideBatchFromVaultEncrypted(ids)
+      emitMessage("Decrypted & restored $count ${if (count == 1) "item" else "items"}")
+    }
+  }
+
   fun deletePermanentlyFromVault(id: Long) {
     viewModelScope.launch {
       galleryRepo.deletePermanentlyFromVault(id)
       emitMessage("Encrypted vault file deleted permanently")
+    }
+  }
+
+  fun deletePermanentlyBatchFromVault(ids: List<Long>) {
+    if (ids.isEmpty()) return
+    viewModelScope.launch {
+      val count = galleryRepo.deletePermanentlyBatchFromVault(ids)
+      emitMessage("Permanently deleted $count encrypted ${if (count == 1) "item" else "items"}")
+    }
+  }
+
+  fun importUrisToVault(uris: List<Uri>) {
+    if (uris.isEmpty()) return
+    viewModelScope.launch {
+      val count = galleryRepo.importExternalUrisToVault(uris)
+      emitMessage(
+        if (count > 0) "Encrypted & imported $count ${if (count == 1) "item" else "items"} to Vault"
+        else "Could not import selected media"
+      )
+    }
+  }
+
+  fun hideGalleryItemsToVault(ids: List<Long>) {
+    if (ids.isEmpty()) return
+    viewModelScope.launch {
+      val count = galleryRepo.hideToVaultEncrypted(ids)
+      emitMessage("Encrypted & moved $count ${if (count == 1) "item" else "items"} to Vault")
     }
   }
 
@@ -682,6 +761,126 @@ class GalleryViewModel(
     viewModelScope.launch {
       galleryRepo.setTonePreset(id, preset)
       emitMessage("Applied ${preset.label} tone preset")
+    }
+  }
+
+  // Full Photo Editor & Depth Anything V2 (bokeh-depth-dav2) Actions
+  fun openEditor(id: Long) {
+    activeEditorId.value = id
+  }
+
+  fun closeEditor() {
+    activeEditorId.value = null
+  }
+
+  fun startDepthModelDownload() {
+    depthModelManager.startDownload { _, msg -> emitMessage(msg) }
+  }
+
+  fun cancelDepthModelDownload() {
+    depthModelManager.cancelDownload()
+    emitMessage("Cancelled bokeh-depth-dav2 download")
+  }
+
+  fun deleteDepthModelPack() {
+    viewModelScope.launch {
+      val freed = depthModelManager.deleteModelPack()
+      emitMessage(String.format("Removed bokeh-depth-dav2 (%.1f MB freed)", freed))
+    }
+  }
+
+  suspend fun estimateDepthMap(bitmap: Bitmap): Result<DepthMapResult> =
+    depthEngine.estimateDepth(bitmap, depthModelManager.modelFile)
+
+  fun saveEditedAsCopy(sourceItem: GalleryMediaItem, recipe: PhotoEditRecipe) {
+    if (isSavingEdit.value) return
+    viewModelScope.launch {
+      isSavingEdit.value = true
+      try {
+        val fullSource = PhotoEditorRenderer.loadSourceBitmap(appContext, sourceItem, maxDimension = 2048)
+        if (fullSource == null) {
+          emitMessage("Unable to load source photo for export")
+          return@launch
+        }
+        val depthMap =
+          if (recipe.bokeh.enabled && depthModelManager.state.value.isInstalled) {
+            val geom = PhotoEditorRenderer.applyGeometryOnly(fullSource, recipe.crop)
+            val res = depthEngine.estimateDepth(geom, depthModelManager.modelFile).getOrNull()
+            if (geom !== fullSource) geom.recycle()
+            res
+          } else {
+            null
+          }
+        val rendered =
+          PhotoEditorRenderer.renderFullPreview(
+            source = fullSource,
+            recipe = recipe,
+            depthMap = depthMap,
+            includeCrop = true,
+          )
+        val newId = galleryRepo.saveEditedCopy(sourceItem, rendered, recipe)
+        if (rendered !== fullSource) rendered.recycle()
+        fullSource.recycle()
+        activeEditorId.value = null
+        activeLightboxId.value = newId
+        emitMessage("Saved edited copy to gallery")
+      } catch (t: Throwable) {
+        emitMessage("Save copy failed: ${t.message?.take(48) ?: "unknown error"}")
+      } finally {
+        isSavingEdit.value = false
+      }
+    }
+  }
+
+  fun applyEditNonDestructively(sourceItem: GalleryMediaItem, recipe: PhotoEditRecipe) {
+    if (isSavingEdit.value) return
+    viewModelScope.launch {
+      isSavingEdit.value = true
+      try {
+        if (recipe.isIdentity) {
+          galleryRepo.revertNonDestructiveEdit(sourceItem)
+          activeEditorId.value = null
+          emitMessage("Reverted photo to original")
+          return@launch
+        }
+        val fullSource = PhotoEditorRenderer.loadSourceBitmap(appContext, sourceItem, maxDimension = 2048)
+        if (fullSource == null) {
+          emitMessage("Unable to render non-destructive edit")
+          return@launch
+        }
+        val depthMap =
+          if (recipe.bokeh.enabled && depthModelManager.state.value.isInstalled) {
+            val geom = PhotoEditorRenderer.applyGeometryOnly(fullSource, recipe.crop)
+            val res = depthEngine.estimateDepth(geom, depthModelManager.modelFile).getOrNull()
+            if (geom !== fullSource) geom.recycle()
+            res
+          } else {
+            null
+          }
+        val rendered =
+          PhotoEditorRenderer.renderFullPreview(
+            source = fullSource,
+            recipe = recipe,
+            depthMap = depthMap,
+            includeCrop = true,
+          )
+        galleryRepo.applyNonDestructiveEdit(sourceItem, rendered, recipe)
+        if (rendered !== fullSource) rendered.recycle()
+        fullSource.recycle()
+        activeEditorId.value = null
+        emitMessage("Applied non-destructive edit (reversible)")
+      } catch (t: Throwable) {
+        emitMessage("Apply failed: ${t.message?.take(48) ?: "unknown error"}")
+      } finally {
+        isSavingEdit.value = false
+      }
+    }
+  }
+
+  fun revertNonDestructiveEdit(sourceItem: GalleryMediaItem) {
+    viewModelScope.launch {
+      galleryRepo.revertNonDestructiveEdit(sourceItem)
+      emitMessage("Reverted \"${sourceItem.title}\" to original")
     }
   }
 
@@ -807,11 +1006,14 @@ class GalleryViewModel(
   private data class ModalControls(
     val selectedPinId: Long?,
     val lightboxId: Long?,
+    val editorId: Long?,
     val storyIdx: Int?,
     val vaultDialog: Boolean,
     val vaultUnlocked: Boolean,
     val vaultPreviews: Map<Long, ByteArray>,
     val recycleSheet: Boolean,
+    val depthState: DepthModelPackState,
+    val savingEdit: Boolean,
   )
 
   private data class MediaBundle(
@@ -837,6 +1039,8 @@ class GalleryViewModel(
             container.appContext,
             container.galleryRepository,
             container.preferencesRepository,
+            container.depthModelManager,
+            container.depthAnythingV2Engine,
           ) as T
       }
   }

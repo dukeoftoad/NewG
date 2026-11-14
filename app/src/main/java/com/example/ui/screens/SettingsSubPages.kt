@@ -149,7 +149,7 @@ internal fun SettingsSubAiEnginePage(
     )
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
       LazyColumn(
-        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp),
+        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp).testTag("settings_ai_list"),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
@@ -475,6 +475,112 @@ internal fun SettingsSubAiEnginePage(
                   }
                 }
               }
+            }
+          }
+        }
+
+        // Depth Anything V2 Small int8 ONNX Pack (bokeh-depth-dav2)
+        item {
+          val depthPack = uiState.depthModelState
+          SettingsGroupCard {
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = extended.surfaceHigh,
+                border = BorderStroke(1.dp, extended.borderSubtle),
+                modifier = Modifier.testTag("depth_model_pack_card"),
+              ) {
+                Column(
+                  modifier = Modifier.fillMaxWidth().padding(14.dp),
+                  verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                      Text(
+                        "Bokeh Depth (bokeh-depth-dav2)",
+                        style = MaterialTheme.typography.labelLarge,
+                      )
+                      Text(
+                        "~27.3 MB • Depth Anything V2 Small INT8 ONNX",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = extended.textMuted,
+                      )
+                    }
+                    Surface(
+                      shape = CircleShape,
+                      color =
+                        if (depthPack.isInstalled) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surface,
+                    ) {
+                      Text(
+                        text =
+                          when {
+                            depthPack.isInstalled -> "Installed"
+                            depthPack.isDownloading -> "${depthPack.progressPercent}%"
+                            else -> "On-Demand"
+                          },
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color =
+                          if (depthPack.isInstalled)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                          else extended.textMuted,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                      )
+                    }
+                  }
+
+                  if (depthPack.isDownloading) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                      LinearProgressIndicator(
+                        progress = { depthPack.progressPercent / 100f },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                      )
+                      Text(
+                        text = depthPack.progressLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                      )
+                    }
+                  } else if (!depthPack.errorMessage.isNullOrBlank()) {
+                    Text(
+                      text = depthPack.errorMessage,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.error,
+                    )
+                  }
+
+                  Button(
+                    onClick = viewModel::handleDepthPackAction,
+                    modifier = Modifier.testTag("toggle_depth_pack_btn"),
+                    colors =
+                      ButtonDefaults.buttonColors(
+                        containerColor =
+                          if (depthPack.isInstalled) extended.dangerContainer
+                          else MaterialTheme.colorScheme.primary,
+                        contentColor =
+                          if (depthPack.isInstalled) extended.onDangerContainer
+                          else MaterialTheme.colorScheme.onPrimary,
+                      ),
+                  ) {
+                    Text(
+                      text =
+                        when {
+                          depthPack.isInstalled -> "Delete bokeh-depth-dav2"
+                          depthPack.isDownloading -> "Cancel Download"
+                          else -> "Download (~27.3 MB)"
+                        },
+                      style = MaterialTheme.typography.labelMedium,
+                    )
+                  }
+                }
+              }
 
               // Collapsible Developer Diagnostics Accordion
               Row(
@@ -516,7 +622,7 @@ internal fun SettingsSubAiEnginePage(
                         fontSize = 11.sp,
                       )
                     Text(
-                      "• Engine library: present (ONNX Runtime 1.19)",
+                      "• Engine library: present (ONNX Runtime 1.20)",
                       style = diagStyle,
                       color = extended.textMuted,
                     )
@@ -532,6 +638,11 @@ internal fun SettingsSubAiEnginePage(
                     )
                     Text(
                       "• mobileclip_s2_image.onnx — ${if (prefs.semanticModelInstalled) "installed" else "missing"}",
+                      style = diagStyle,
+                      color = extended.textMuted,
+                    )
+                    Text(
+                      "• depth_anything_v2_small_int8.onnx — ${if (depthPack.isInstalled) "installed" else "on-demand"}",
                       style = diagStyle,
                       color = extended.textMuted,
                     )
@@ -742,7 +853,8 @@ internal fun SettingsSubStoragePage(
   val prefs = uiState.preferences
   val mlModelsMb =
     (if (prefs.faceModelInstalled) 37.6f else 0f) +
-      (if (prefs.semanticModelInstalled) 213.0f else 0f)
+      (if (prefs.semanticModelInstalled) 213.0f else 0f) +
+      (if (uiState.depthModelState.isInstalled || prefs.depthModelInstalled) 27.3f else 0f)
   val totalMb = 14.2f + mlModelsMb + prefs.mlIndexSizeMb + prefs.cacheSizeMb
 
   Column(modifier = Modifier.fillMaxSize()) {
@@ -782,6 +894,7 @@ internal fun SettingsSubStoragePage(
               StorageBreakdownBar(
                 faceModelInstalled = prefs.faceModelInstalled,
                 semanticModelInstalled = prefs.semanticModelInstalled,
+                depthModelInstalled = uiState.depthModelState.isInstalled || prefs.depthModelInstalled,
                 mlIndexMb = prefs.mlIndexSizeMb,
                 cacheMb = prefs.cacheSizeMb,
               )
