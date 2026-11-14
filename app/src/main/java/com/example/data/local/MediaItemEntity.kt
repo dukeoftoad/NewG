@@ -38,6 +38,9 @@ data class MediaItemEntity(
   val albumId: Long? = null,
   val editedUriString: String? = null,
   val editRecipeJson: String? = null,
+  /** JSON-encoded local face boxes and normalized embeddings; null means not indexed. */
+  val faceDataJson: String? = null,
+  val faceIndexedAt: Long? = null,
 ) {
   fun toDomain(): GalleryMediaItem =
     GalleryMediaItem(
