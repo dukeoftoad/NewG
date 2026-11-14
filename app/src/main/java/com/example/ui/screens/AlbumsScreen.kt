@@ -91,7 +91,7 @@ fun AlbumsScreen(
   var newAlbumName by remember { mutableStateOf("") }
 
   val smartCollections =
-    remember(prefs.aiPeople, prefs.aiThings, uiState.geoItems.size) {
+    remember(prefs.aiPeople, prefs.aiThings, uiState.geoItems.size, uiState.peopleGroups.size) {
       listOf(
         SmartCollectionTile(
           name = "People",
