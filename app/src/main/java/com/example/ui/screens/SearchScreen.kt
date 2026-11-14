@@ -104,8 +104,10 @@ fun SearchScreen(
       Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
           text =
-            if (uiState.searchTabMode == SearchTabMode.MAGIC_SEARCH) "Magic Search"
-            else "Discover Places",
+            if (uiState.searchTabMode == SearchTabMode.PLACES_MAP) "Discover Places"
+            else if (uiState.searchQuery.trim().equals("portraits", ignoreCase = true)) "People"
+            else if (uiState.searchQuery.startsWith("person:")) "Person Photos"
+            else "Magic Search",
           style = MaterialTheme.typography.headlineLarge,
           color = MaterialTheme.colorScheme.onBackground,
         )
@@ -184,7 +186,7 @@ fun SearchScreen(
         ) {
           item {
             Text(
-              text = "100% on-device semantic, folder & screenshot OCR search",
+              text = if (uiState.searchQuery.trim().equals("portraits", ignoreCase = true) || uiState.searchQuery.startsWith("person:")) "On-device face matching • private local embeddings" else "100% on-device semantic, folder & screenshot OCR search",
               style = MaterialTheme.typography.bodySmall,
               color = extended.textMuted,
             )
@@ -447,7 +449,8 @@ fun SearchScreen(
               Surface(shape = CircleShape, color = extended.surfaceHigh) {
                 Text(
                   text =
-                    if (uiState.preferences.aiMagicSearch) "CLIP + OCR Active"
+                    if (uiState.searchQuery.trim().equals("portraits", ignoreCase = true) || uiState.searchQuery.startsWith("person:")) "Face Groups"
+                    else if (uiState.preferences.aiMagicSearch) "CLIP + OCR Active"
                     else "Metadata Only",
                   style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                   color = MaterialTheme.colorScheme.primary,
