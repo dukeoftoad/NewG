@@ -279,6 +279,7 @@ class GalleryViewModel(
         val peoplePhotoIds = peopleGroups.flatMap { it.photoIds }.toSet()
         val isPeopleSearch = q == "portraits"
         val selectedPersonGroup = peopleGroups.firstOrNull { q == "person:${it.id}" }
+        val namedPersonSearch = peopleGroups.firstOrNull { it.name?.equals(q, ignoreCase = true) == true }
         val searchMatches =
           media.visible.filter { item ->
             val locOk = !searchCtrl.onlyLoc || item.hasGps
@@ -287,6 +288,7 @@ class GalleryViewModel(
               when {
                 isPeopleSearch -> item.id in peoplePhotoIds
                 selectedPersonGroup != null -> item.id in selectedPersonGroup.photoIds
+                namedPersonSearch != null -> item.id in namedPersonSearch.photoIds
                 else -> q.isEmpty() ||
                 item.title.lowercase().contains(q) ||
                 item.locationName.lowercase().contains(q) ||
