@@ -331,11 +331,13 @@ internal fun SettingsSubAiEnginePage(
                 color = MaterialTheme.colorScheme.primary,
               )
 
-              // Face Pack
+              // Ente face detector + MobileFaceNet pack
+              val facePack = uiState.faceModelState
               Surface(
                 shape = RoundedCornerShape(18.dp),
                 color = extended.surfaceHigh,
                 border = BorderStroke(1.dp, extended.borderSubtle),
+                modifier = Modifier.testTag("face_model_pack_card"),
               ) {
                 Column(
                   modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -348,11 +350,11 @@ internal fun SettingsSubAiEnginePage(
                   ) {
                     Column(modifier = Modifier.weight(1f)) {
                       Text(
-                        "Face Detection & Embeddings",
+                        "Ente Face Detection & Embeddings",
                         style = MaterialTheme.typography.labelLarge,
                       )
                       Text(
-                        "~37.6 MB • SHA-256 verified",
+                        "YOLOv5Face Small + MobileFaceNet • ~35.9 MiB",
                         style = MaterialTheme.typography.bodySmall,
                         color = extended.textMuted,
                       )
@@ -360,34 +362,67 @@ internal fun SettingsSubAiEnginePage(
                     Surface(
                       shape = CircleShape,
                       color =
-                        if (prefs.faceModelInstalled) MaterialTheme.colorScheme.primaryContainer
+                        if (facePack.isInstalled) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surface,
                     ) {
                       Text(
-                        text = if (prefs.faceModelInstalled) "Installed" else "Removed",
+                        text = when {
+                          facePack.isInstalled -> "Installed"
+                          facePack.isDownloading -> "${facePack.progressPercent}%"
+                          facePack.status == com.example.data.ai.FaceModelStatus.ERROR -> "Error"
+                          else -> "On-Demand"
+                        },
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         color =
-                          if (prefs.faceModelInstalled) MaterialTheme.colorScheme.onPrimaryContainer
+                          if (facePack.isInstalled) MaterialTheme.colorScheme.onPrimaryContainer
                           else extended.textMuted,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                       )
                     }
                   }
+                  if (facePack.isDownloading) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                      LinearProgressIndicator(
+                        progress = { facePack.progressPercent / 100f },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                      )
+                      Text(
+                        text = facePack.progressLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                      )
+                    }
+                  } else if (!facePack.errorMessage.isNullOrBlank()) {
+                    Text(
+                      text = facePack.errorMessage,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.error,
+                    )
+                  } else if (facePack.isInstalled) {
+                    Text(
+                      text = facePack.progressLabel,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = extended.textMuted,
+                    )
+                  }
                   Button(
-                    onClick = viewModel::toggleFaceModelPack,
+                    onClick = viewModel::handleFacePackAction,
                     modifier = Modifier.testTag("toggle_face_pack_btn"),
-                    colors =
-                      ButtonDefaults.buttonColors(
-                        containerColor =
-                          if (prefs.faceModelInstalled) extended.dangerContainer
-                          else MaterialTheme.colorScheme.primary,
-                        contentColor =
-                          if (prefs.faceModelInstalled) extended.onDangerContainer
-                          else MaterialTheme.colorScheme.onPrimary,
-                      ),
+                    colors = ButtonDefaults.buttonColors(
+                      containerColor =
+                        if (facePack.isInstalled) extended.dangerContainer
+                        else MaterialTheme.colorScheme.primary,
+                      contentColor =
+                        if (facePack.isInstalled) extended.onDangerContainer
+                        else MaterialTheme.colorScheme.onPrimary,
+                    ),
                   ) {
                     Text(
-                      if (prefs.faceModelInstalled) "Delete Pack" else "Download (~37.6 MB)",
+                      text = when {
+                        facePack.isInstalled -> "Delete Face Pack"
+                        facePack.isDownloading -> "Cancel Download"
+                        else -> "Download (~35.9 MiB)"
+                      },
                       style = MaterialTheme.typography.labelMedium,
                     )
                   }
