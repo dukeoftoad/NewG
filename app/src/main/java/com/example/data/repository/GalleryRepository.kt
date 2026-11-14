@@ -72,6 +72,11 @@ class GalleryRepository(
     )
   }
 
+  suspend fun setFacePersonIgnored(clusterId: String, ignored: Boolean) {
+    val existing = dao.getFacePerson(clusterId) ?: FacePersonEntity(clusterId = clusterId)
+    dao.upsertFacePerson(existing.copy(isIgnored = ignored, updatedAt = System.currentTimeMillis()))
+  }
+
   suspend fun setFacePersonCover(clusterId: String, photoId: Long) {
     val existing = dao.getFacePerson(clusterId) ?: FacePersonEntity(clusterId = clusterId)
     dao.upsertFacePerson(existing.copy(coverPhotoId = photoId, updatedAt = System.currentTimeMillis()))
