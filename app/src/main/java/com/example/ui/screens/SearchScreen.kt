@@ -370,6 +370,60 @@ fun SearchScreen(
             }
           }
 
+          // Real face groups appear when opened from the People smart collection.
+          if (uiState.searchQuery.trim().equals("portraits", ignoreCase = true)) {
+            item {
+              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                  text = "PEOPLE ON THIS DEVICE",
+                  style = MaterialTheme.typography.labelSmall,
+                  color = extended.textMuted,
+                )
+                if (uiState.peopleGroups.isEmpty()) {
+                  Text(
+                    text = "No people groups yet. Download the face models and run Re-index Library to find recurring faces.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extended.textMuted,
+                  )
+                } else {
+                  uiState.peopleGroups.forEachIndexed { index, group ->
+                    Surface(
+                      onClick = { onOpenLightbox(group.coverPhotoId) },
+                      modifier = Modifier.fillMaxWidth().testTag("people_group_${index + 1}"),
+                      shape = RoundedCornerShape(16.dp),
+                      color = MaterialTheme.colorScheme.surface,
+                      border = BorderStroke(1.dp, extended.borderSubtle),
+                    ) {
+                      Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                      ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                          Text(
+                            text = "Person ${index + 1}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                          )
+                          Text(
+                            text = "${group.photoIds.size} photos • ${group.faceCount} face matches",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = extended.textMuted,
+                          )
+                        }
+                        Text(
+                          text = "View",
+                          style = MaterialTheme.typography.labelMedium,
+                          color = MaterialTheme.colorScheme.primary,
+                        )
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
           // Results Header
           item {
             Row(
