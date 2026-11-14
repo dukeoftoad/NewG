@@ -4,7 +4,7 @@ import com.example.data.local.MediaItemEntity
 import org.json.JSONObject
 import kotlin.math.sqrt
 
-data class FacePersonGroup(
+data class FaceReference(val photoId: Long, val faceIndex: Int)\n\ndata class FacePersonGroup(
   val id: String,
   val photoIds: List<Long>,
   val faceCount: Int,
@@ -18,7 +18,7 @@ object FacePersonClusterer {
   private data class Cluster(val id: String, val samples: MutableList<Sample>, var centroid: FloatArray)
 
   /** Chronological cosine-distance clustering. A photo contributes at most one face per group. */
-  fun cluster(rows: List<MediaItemEntity>, distanceThreshold: Float): List<FacePersonGroup> {
+  fun cluster(\n    rows: List<MediaItemEntity>,\n    distanceThreshold: Float,\n    excludedFaces: Set<FaceReference> = emptySet(),\n  ): List<FacePersonGroup> {
     val clusters = mutableListOf<Cluster>()
     rows.sortedBy { it.timestamp }.forEach { row ->
       val rawJson = row.faceDataJson ?: return@forEach
@@ -56,7 +56,7 @@ object FacePersonClusterer {
     return clusters.filter { it.samples.map(Sample::photoId).distinct().size >= MIN_PHOTOS }
       .map { group ->
         val ids = group.samples.map(Sample::photoId).distinct().sortedDescending()
-        FacePersonGroup(group.id, ids, group.samples.size, ids.first(), clusterIds = listOf(group.id))
+        FacePersonGroup(\n          group.id, ids, group.samples.size, ids.first(),\n          clusterIds = listOf(group.id),\n          faces = group.samples.map { FaceReference(it.photoId, it.faceIndex) },\n        )
       }
       .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.id })
   }
