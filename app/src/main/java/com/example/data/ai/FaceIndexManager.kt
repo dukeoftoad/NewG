@@ -142,6 +142,7 @@ class FaceIndexManager(
     scope.launch {
       indexJob?.cancelAndJoin()
       dao.clearFaceIndex()
+      dao.clearFaceExclusions()
       _state.value = FaceIndexState(status = "Face index cleared")
     }
   }
