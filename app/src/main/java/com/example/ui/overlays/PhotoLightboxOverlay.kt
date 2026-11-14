@@ -36,16 +36,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -345,7 +342,7 @@ fun LightboxOverlay(
       }
     }
 
-    // Overlaid Slim Bottom Action Strip + Swipe-Up Hint Pill
+    // Overlaid Slim Bottom Action Strip
     AnimatedVisibility(
       visible = showChrome,
       enter = fadeIn(),
@@ -373,32 +370,6 @@ fun LightboxOverlay(
           verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           Surface(
-            onClick = { showExifSheet = true },
-            modifier = Modifier.testTag("lightbox_details_pill"),
-            shape = CircleShape,
-            color = Color.Black.copy(alpha = 0.48f),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-          ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-              Icon(
-                imageVector = Icons.Filled.KeyboardArrowUp,
-                contentDescription = null,
-                tint = Color(0xFF6EE7B7),
-                modifier = Modifier.size(16.dp),
-              )
-              Text(
-                text = "Details • Swipe up for EXIF",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.92f),
-              )
-            }
-          }
-
-          Surface(
             modifier = Modifier.fillMaxWidth().testTag("lightbox_bottom_bar"),
             shape = CircleShape,
             color = Color.Black.copy(alpha = 0.56f),
@@ -409,19 +380,6 @@ fun LightboxOverlay(
               horizontalArrangement = Arrangement.SpaceEvenly,
               verticalAlignment = Alignment.CenterVertically,
             ) {
-              IconButton(
-                onClick = onPrevious,
-                enabled = hasPrevious,
-                modifier =
-                  Modifier.minimumInteractiveComponentSize().testTag("lightbox_prev_button"),
-              ) {
-                Icon(
-                  imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                  contentDescription = "Previous photo",
-                  tint = if (hasPrevious) Color.White else Color.White.copy(alpha = 0.30f),
-                )
-              }
-
               IconButton(
                 onClick = onShare,
                 modifier =
@@ -441,7 +399,7 @@ fun LightboxOverlay(
                   Modifier.minimumInteractiveComponentSize().testTag("lightbox_edit_button"),
               ) {
                 Icon(
-                  imageVector = Icons.Filled.Tune,
+                  imageVector = Icons.Filled.Edit,
                   contentDescription = "Open Photo Editor",
                   tint =
                     if (item.hasNonDestructiveEdits || item.tonePreset != TonePreset.NATURAL)
@@ -452,43 +410,18 @@ fun LightboxOverlay(
               }
 
               IconButton(
-                onClick = onHideToVault,
-                modifier =
-                  Modifier.minimumInteractiveComponentSize().testTag("lightbox_hide_button"),
-              ) {
-                Icon(
-                  imageVector = Icons.Filled.Lock,
-                  contentDescription = "Hide to vault",
-                  tint = Color.White,
-                  modifier = Modifier.size(20.dp),
-                )
-              }
-
-              IconButton(
                 onClick = onMoveToTrash,
                 modifier =
                   Modifier.minimumInteractiveComponentSize().testTag("lightbox_delete_button"),
               ) {
                 Icon(
-                  imageVector = Icons.Filled.Delete,
+                  imageVector = Icons.Outlined.DeleteOutline,
                   contentDescription = "Move to Recycle Bin",
                   tint = Color(0xFFFCA5A5),
                   modifier = Modifier.size(20.dp),
                 )
               }
 
-              IconButton(
-                onClick = onNext,
-                enabled = hasNext,
-                modifier =
-                  Modifier.minimumInteractiveComponentSize().testTag("lightbox_next_button"),
-              ) {
-                Icon(
-                  imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                  contentDescription = "Next photo",
-                  tint = if (hasNext) Color.White else Color.White.copy(alpha = 0.30f),
-                )
-              }
             }
           }
         }
@@ -719,7 +652,7 @@ private fun PhotoExifBottomSheet(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         ExifQuickActionChip(
-          icon = Icons.Filled.Tune,
+          icon = Icons.Filled.Edit,
           label = "Editor",
           bg = MaterialTheme.colorScheme.primaryContainer,
           fg = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -751,7 +684,7 @@ private fun PhotoExifBottomSheet(
           modifier = Modifier.weight(1f),
         )
         ExifQuickActionChip(
-          icon = Icons.Filled.Delete,
+          icon = Icons.Outlined.DeleteOutline,
           label = "Delete",
           bg = extended.dangerContainer,
           fg = extended.onDangerContainer,

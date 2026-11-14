@@ -173,7 +173,7 @@ fun PhotoEditorScreen(
   LaunchedEffect(sourceBitmap, recipe.crop, activeTab) {
     val src = sourceBitmap ?: return@LaunchedEffect
     croppedSourceBitmap =
-      if (activeTab == EditorToolTab.CROP) src
+      if (activeTab == EditorToolTab.CROP) PhotoEditorRenderer.applyTransformOnly(src, recipe.crop)
       else PhotoEditorRenderer.applyGeometryOnly(src, recipe.crop)
     depthMap = null
   }
@@ -385,7 +385,7 @@ fun PhotoEditorScreen(
                 selectedMarkupColorHex = selectedMarkupColorHex,
                 strokeWidthNorm = strokeWidthNorm,
                 sourceAspect =
-                  (sourceBitmap?.let { it.width.toFloat() / it.height.coerceAtLeast(1) })
+                  ((croppedSourceBitmap ?: sourceBitmap)?.let { it.width.toFloat() / it.height.coerceAtLeast(1) })
                     ?: item.aspectRatio,
                 depthState = depthModelState,
                 depthInferenceMs = depthMap?.inferenceTimeMs,
@@ -451,7 +451,7 @@ fun PhotoEditorScreen(
               selectedMarkupColorHex = selectedMarkupColorHex,
               strokeWidthNorm = strokeWidthNorm,
               sourceAspect =
-                (sourceBitmap?.let { it.width.toFloat() / it.height.coerceAtLeast(1) })
+                ((croppedSourceBitmap ?: sourceBitmap)?.let { it.width.toFloat() / it.height.coerceAtLeast(1) })
                   ?: item.aspectRatio,
               depthState = depthModelState,
               depthInferenceMs = depthMap?.inferenceTimeMs,
