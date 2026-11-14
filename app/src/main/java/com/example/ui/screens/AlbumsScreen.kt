@@ -95,7 +95,7 @@ fun AlbumsScreen(
       listOf(
         SmartCollectionTile(
           name = "People",
-          subtitle = if (prefs.aiPeople) "4 clusters" else "Disabled in AI",
+          subtitle = if (prefs.aiPeople) "${uiState.peopleGroups.size} people found" else "Disabled in AI",
           drawableName = "sample_portrait_warm",
           icon = Icons.Filled.Group,
           enabled = prefs.aiPeople,
