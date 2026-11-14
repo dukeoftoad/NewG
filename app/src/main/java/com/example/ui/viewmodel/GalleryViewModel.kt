@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.ai.DepthAnythingV2Engine
+import com.example.data.ai.FacePersonClusterer
+import com.example.data.ai.FacePersonGroup
 import com.example.data.ai.DepthMapResult
 import com.example.data.ai.DepthModelManager
 import com.example.data.ai.DepthModelPackState
@@ -56,6 +58,7 @@ data class GalleryUiState(
   val visibleMedia: List<GalleryMediaItem> = emptyList(),
   val filteredTimelineMedia: List<GalleryMediaItem> = emptyList(),
   val customAlbums: List<AlbumEntity> = emptyList(),
+  val peopleGroups: List<FacePersonGroup> = emptyList(),
   val folderDestinations: List<String> = listOf("Camera", "Travel", "Screenshots", "Downloads"),
   val stories: List<StorySlide> = SampleMediaCatalog.stories,
   val folderAlbums: List<AlbumFolder> = emptyList(),
@@ -198,8 +201,9 @@ class GalleryViewModel(
       galleryRepo.vaultMedia,
       galleryRepo.trashedMedia,
       galleryRepo.customAlbums,
-    ) { visible, vault, trashed, albums ->
-      MediaBundle(visible, vault, trashed, albums)
+      galleryRepo.faceIndexedMedia,
+    ) { visible, vault, trashed, albums, faceRows ->
+      MediaBundle(visible, vault, trashed, albums, faceRows)
     }
 
   private val uiControlsBundleFlow =
@@ -239,12 +243,15 @@ class GalleryViewModel(
           }
 
         val q = searchCtrl.query.trim().lowercase()
+        val peopleGroups = FacePersonClusterer.cluster(media.faceRows, prefs.clusteringThreshold)
+        val peoplePhotoIds = peopleGroups.flatMap { it.photoIds }.toSet()
+        val isPeopleSearch = q == "portraits"
         val searchMatches =
           media.visible.filter { item ->
             val locOk = !searchCtrl.onlyLoc || item.hasGps
             val typeOk = searchCtrl.typeFilter == null || item.mediaType == searchCtrl.typeFilter
             val queryOk =
-              q.isEmpty() ||
+              if (isPeopleSearch) item.id in peoplePhotoIds else q.isEmpty() ||
                 item.title.lowercase().contains(q) ||
                 item.locationName.lowercase().contains(q) ||
                 item.bucketName.lowercase().contains(q) ||
@@ -317,6 +324,7 @@ class GalleryViewModel(
           visibleMedia = media.visible,
           filteredTimelineMedia = filteredTimeline,
           customAlbums = media.customAlbums,
+          peopleGroups = peopleGroups,
           folderDestinations = folderDestSet.toList(),
           folderAlbums = listOf(favoritesFolder) + deviceBucketFolders + userFolders,
           vaultMedia = media.vault,
@@ -1021,6 +1029,7 @@ class GalleryViewModel(
     val vault: List<GalleryMediaItem>,
     val trashed: List<GalleryMediaItem>,
     val customAlbums: List<AlbumEntity>,
+    val faceRows: List<com.example.data.local.MediaItemEntity>,
   )
 
   private data class UiControlsBundle(
