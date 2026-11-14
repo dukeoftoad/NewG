@@ -9,6 +9,8 @@ data class FacePersonGroup(
   val photoIds: List<Long>,
   val faceCount: Int,
   val coverPhotoId: Long,
+  val name: String? = null,
+  val clusterIds: List<String> = listOf(id),
 )
 
 object FacePersonClusterer {
@@ -54,7 +56,7 @@ object FacePersonClusterer {
     return clusters.filter { it.samples.map(Sample::photoId).distinct().size >= MIN_PHOTOS }
       .map { group ->
         val ids = group.samples.map(Sample::photoId).distinct().sortedDescending()
-        FacePersonGroup(group.id, ids, group.samples.size, ids.first())
+        FacePersonGroup(group.id, ids, group.samples.size, ids.first(), clusterIds = listOf(group.id))
       }
       .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.id })
   }
