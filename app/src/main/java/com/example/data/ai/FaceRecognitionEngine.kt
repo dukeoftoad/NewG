@@ -179,7 +179,7 @@ class FaceRecognitionEngine {
       input[i * 3 + 2] = (Color.blue(color) - 127.5f) / 127.5f
     }
     val inputName = session.inputNames.firstOrNull() ?: "img_inputs"
-    OnnxTensor.createTensor(
+    return OnnxTensor.createTensor(
       environment,
       FloatBuffer.wrap(input),
       longArrayOf(1, EMBED_SIZE.toLong(), EMBED_SIZE.toLong(), 3),
