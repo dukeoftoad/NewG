@@ -84,6 +84,7 @@ fun SearchScreen(
   onOpenLightbox: (Long) -> Unit,
   onSetColumns: (Int) -> Unit = {},
   onNamePerson: (FacePersonGroup, String?) -> Unit = { _, _ -> },
+  onExcludeFace: (Long, Int) -> Unit = { _, _ -> },
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
@@ -614,6 +615,17 @@ fun SearchScreen(
                 onNamePerson(group, existing)
                 personBeingNamed = null
               }) { Text(existing) }
+            }
+          }
+          if (group.faces.isNotEmpty()) {
+            Text("Remove an incorrectly grouped face", style = MaterialTheme.typography.labelMedium)
+            group.faces.forEach { face ->
+              TextButton(onClick = {
+                onExcludeFace(face.photoId, face.faceIndex)
+                personBeingNamed = null
+              }) {
+                Text("Remove face from photo ${face.photoId} (face ${face.faceIndex + 1})")
+              }
             }
           }
           if (group.clusterIds.size > 1) {
