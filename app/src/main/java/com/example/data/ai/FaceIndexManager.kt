@@ -8,9 +8,6 @@ import android.media.ExifInterface
 import android.net.Uri
 import com.example.data.local.GalleryDao
 import com.example.data.local.MediaItemEntity
-import java.io.IOException
-import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
@@ -18,11 +15,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 data class FaceIndexState(
@@ -79,6 +76,7 @@ class FaceIndexManager(
             val bitmap = decodePhoto(photo)
             if (bitmap == null) {
               failures++
+              dao.updateFaceIndex(photo.id, EMPTY_FACE_RESULT, System.currentTimeMillis())
             } else {
               val result = try {
                 engine.analyze(bitmap, modelManager.detectorFile, modelManager.embedderFile).getOrThrow()
@@ -137,8 +135,7 @@ class FaceIndexManager(
   fun clear() {
     pause()
     scope.launch {
-      val indexed = dao.getPhotosForFaceIndex(force = true)
-      indexed.forEach { dao.updateFaceIndex(it.id, EMPTY_FACE_RESULT, 0L) }
+      dao.clearFaceIndex()
       _state.value = FaceIndexState(status = "Face index cleared")
     }
   }
