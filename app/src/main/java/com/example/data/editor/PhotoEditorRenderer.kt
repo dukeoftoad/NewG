@@ -104,44 +104,42 @@ object PhotoEditorRenderer {
     return sample
   }
 
-  fun applyGeometryOnly(source: Bitmap, crop: CropParams): Bitmap {
-    var working = source
+  /** Returns an independent bitmap with orientation transforms but without cropping. */
+  fun applyTransformOnly(source: Bitmap, crop: CropParams): Bitmap {
     val turns = ((crop.rotationQuarterTurns % 4) + 4) % 4
-    if (turns != 0 || crop.flipHorizontal || crop.flipVertical || abs(crop.straightenDegrees) > 0.1f) {
-      val matrix = Matrix()
-      val cx = working.width / 2f
-      val cy = working.height / 2f
-      if (crop.flipHorizontal || crop.flipVertical) {
-        matrix.postScale(if (crop.flipHorizontal) -1f else 1f, if (crop.flipVertical) -1f else 1f, cx, cy)
-      }
-      if (turns != 0) {
-        matrix.postRotate(turns * 90f, cx, cy)
-      }
-      if (abs(crop.straightenDegrees) > 0.1f) {
-        matrix.postRotate(crop.straightenDegrees, cx, cy)
-      }
-      val transformed = Bitmap.createBitmap(working, 0, 0, working.width, working.height, matrix, true)
-      if (abs(crop.straightenDegrees) > 0.1f) {
-        val rad = abs(crop.straightenDegrees) * PI.toFloat() / 180f
-        val origW = if (turns % 2 == 1) source.height.toFloat() else source.width.toFloat()
-        val origH = if (turns % 2 == 1) source.width.toFloat() else source.height.toFloat()
-        val scale =
-          max(
-            (origW * cos(rad) + origH * sin(rad)) / origW,
-            (origW * sin(rad) + origH * cos(rad)) / origH,
-          )
-        val innerW = (origW / scale).roundToInt().coerceIn(8, transformed.width)
-        val innerH = (origH / scale).roundToInt().coerceIn(8, transformed.height)
-        val leftX = ((transformed.width - innerW) / 2).coerceIn(0, transformed.width - innerW)
-        val topY = ((transformed.height - innerH) / 2).coerceIn(0, transformed.height - innerH)
-        val trimmed = Bitmap.createBitmap(transformed, leftX, topY, innerW, innerH)
-        transformed.recycle()
-        working = trimmed
-      } else {
-        working = transformed
-      }
+    if (turns == 0 && !crop.flipHorizontal && !crop.flipVertical && abs(crop.straightenDegrees) <= 0.1f) {
+      return source.copy(Bitmap.Config.ARGB_8888, true)
     }
+    val matrix = Matrix()
+    val cx = source.width / 2f
+    val cy = source.height / 2f
+    if (crop.flipHorizontal || crop.flipVertical) {
+      matrix.postScale(if (crop.flipHorizontal) -1f else 1f, if (crop.flipVertical) -1f else 1f, cx, cy)
+    }
+    if (turns != 0) matrix.postRotate(turns * 90f, cx, cy)
+    if (abs(crop.straightenDegrees) > 0.1f) matrix.postRotate(crop.straightenDegrees, cx, cy)
+    val transformed = Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+    if (abs(crop.straightenDegrees) <= 0.1f) return transformed
 
+    val rad = abs(crop.straightenDegrees) * PI.toFloat() / 180f
+    val origW = if (turns % 2 == 1) source.height.toFloat() else source.width.toFloat()
+    val origH = if (turns % 2 == 1) source.width.toFloat() else source.height.toFloat()
+    val scale =
+      max(
+        (origW * cos(rad) + origH * sin(rad)) / origW,
+        (origW * sin(rad) + origH * cos(rad)) / origH,
+      )
+    val innerW = (origW / scale).roundToInt().coerceIn(8, transformed.width)
+    val innerH = (origH / scale).roundToInt().coerceIn(8, transformed.height)
+    val leftX = ((transformed.width - innerW) / 2).coerceIn(0, transformed.width - innerW)
+    val topY = ((transformed.height - innerH) / 2).coerceIn(0, transformed.height - innerH)
+    val trimmed = Bitmap.createBitmap(transformed, leftX, topY, innerW, innerH)
+    transformed.recycle()
+    return trimmed
+  }
+
+  fun applyGeometryOnly(source: Bitmap, crop: CropParams): Bitmap {
+    val working = applyTransformOnly(source, crop)
     val cropLeft = (crop.left.coerceIn(0f, 0.92f) * working.width).roundToInt().coerceIn(0, working.width - 4)
     val cropTop = (crop.top.coerceIn(0f, 0.92f) * working.height).roundToInt().coerceIn(0, working.height - 4)
     val cropRight =
@@ -171,7 +169,7 @@ object PhotoEditorRenderer {
     withContext(Dispatchers.Default) {
       var canvasBmp =
         if (includeCrop) applyGeometryOnly(source, recipe.crop)
-        else source.copy(Bitmap.Config.ARGB_8888, true)
+        else applyTransformOnly(source, recipe.crop)
 
       canvasBmp = ensureMutablePixelBacked(canvasBmp, recycleInput = canvasBmp !== source)
 
