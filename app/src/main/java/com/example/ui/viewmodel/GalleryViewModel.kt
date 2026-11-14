@@ -252,7 +252,10 @@ class GalleryViewModel(
         val q = searchCtrl.query.trim().lowercase()
         val personRecords = media.facePeople.associateBy { it.clusterId }
         val detectedGroups =
-          FacePersonClusterer.cluster(\n            media.faceRows, prefs.clusteringThreshold,\n            media.faceExclusions.map { FaceReference(it.photoId, it.faceIndex) }.toSet(),\n          ).map { group ->
+          FacePersonClusterer.cluster(
+            media.faceRows, prefs.clusteringThreshold,
+            media.faceExclusions.map { FaceReference(it.photoId, it.faceIndex) }.toSet(),
+          ).map { group ->
             val record = personRecords[group.id]
             group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId)
           }
@@ -1091,6 +1094,7 @@ class GalleryViewModel(
     val customAlbums: List<AlbumEntity>,
     val faceRows: List<com.example.data.local.MediaItemEntity>,
     val facePeople: List<FacePersonEntity>,
+    val faceExclusions: List<com.example.data.local.FaceExclusionEntity>,
   )
 
   private data class UiControlsBundle(
