@@ -4,13 +4,16 @@ import com.example.data.local.MediaItemEntity
 import org.json.JSONObject
 import kotlin.math.sqrt
 
-data class FaceReference(val photoId: Long, val faceIndex: Int)\n\ndata class FacePersonGroup(
+data class FaceReference(val photoId: Long, val faceIndex: Int)
+
+data class FacePersonGroup(
   val id: String,
   val photoIds: List<Long>,
   val faceCount: Int,
   val coverPhotoId: Long,
   val name: String? = null,
   val clusterIds: List<String> = listOf(id),
+  val faces: List<FaceReference> = emptyList(),
 )
 
 object FacePersonClusterer {
@@ -18,13 +21,18 @@ object FacePersonClusterer {
   private data class Cluster(val id: String, val samples: MutableList<Sample>, var centroid: FloatArray)
 
   /** Chronological cosine-distance clustering. A photo contributes at most one face per group. */
-  fun cluster(\n    rows: List<MediaItemEntity>,\n    distanceThreshold: Float,\n    excludedFaces: Set<FaceReference> = emptySet(),\n  ): List<FacePersonGroup> {
+  fun cluster(
+    rows: List<MediaItemEntity>,
+    distanceThreshold: Float,
+    excludedFaces: Set<FaceReference> = emptySet(),
+  ): List<FacePersonGroup> {
     val clusters = mutableListOf<Cluster>()
     rows.sortedBy { it.timestamp }.forEach { row ->
       val rawJson = row.faceDataJson ?: return@forEach
       val json = runCatching { JSONObject(rawJson) }.getOrNull() ?: return@forEach
       val faces = json.optJSONArray("faces") ?: return@forEach
       for (index in 0 until faces.length()) {
+        if (FaceReference(row.id, index) in excludedFaces) continue
         val values = faces.optJSONObject(index)?.optJSONArray("embedding") ?: continue
         if (values.length() != EMBEDDING_SIZE) continue
         val vector = FloatArray(EMBEDDING_SIZE) { i -> values.optDouble(i, Double.NaN).toFloat() }
@@ -56,7 +64,11 @@ object FacePersonClusterer {
     return clusters.filter { it.samples.map(Sample::photoId).distinct().size >= MIN_PHOTOS }
       .map { group ->
         val ids = group.samples.map(Sample::photoId).distinct().sortedDescending()
-        FacePersonGroup(\n          group.id, ids, group.samples.size, ids.first(),\n          clusterIds = listOf(group.id),\n          faces = group.samples.map { FaceReference(it.photoId, it.faceIndex) },\n        )
+        FacePersonGroup(
+          group.id, ids, group.samples.size, ids.first(),
+          clusterIds = listOf(group.id),
+          faces = group.samples.map { FaceReference(it.photoId, it.faceIndex) },
+        )
       }
       .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.id })
   }
