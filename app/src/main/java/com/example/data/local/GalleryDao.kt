@@ -89,6 +89,15 @@ interface GalleryDao {
   @Query("DELETE FROM media_items WHERE id IN (:ids)")
   suspend fun deletePermanentlyBatch(ids: List<Long>)
 
+  @Query("SELECT * FROM face_people ORDER BY name COLLATE NOCASE ASC")
+  fun observeFacePeople(): Flow<List<FacePersonEntity>>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertFacePerson(person: FacePersonEntity)
+
+  @Query("DELETE FROM face_people WHERE clusterId = :clusterId")
+  suspend fun deleteFacePerson(clusterId: String)
+
   @Query("SELECT * FROM albums ORDER BY createdAt DESC")
   fun observeAlbums(): Flow<List<AlbumEntity>>
 
