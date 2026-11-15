@@ -194,6 +194,23 @@ class FacePersonClustererTest {
     assertTrue(groups.all { it.faceCount == 2 })
   }
 
+  @Test
+  fun clusterRankingUsesMedianMemberDistanceToResistOutlierCentroids() {
+    val query = floatArrayOf(1f, 0f)
+    val centroidOnlyWinner = FaceClusterRanker.score(
+      query = query,
+      centroid = floatArrayOf(1f, 0f),
+      members = listOf(floatArrayOf(0f, 1f), floatArrayOf(0f, 1f), floatArrayOf(1f, 0f)),
+    )
+    val consistentGroup = FaceClusterRanker.score(
+      query = query,
+      centroid = floatArrayOf(0.8f, 0.6f),
+      members = listOf(floatArrayOf(0.8f, 0.6f), floatArrayOf(0.8f, 0.6f), floatArrayOf(0.8f, 0.6f)),
+    )
+
+    assertTrue(consistentGroup < centroidOnlyWinner)
+  }
+
   private fun media(
     id: Long,
     timestamp: Long,
