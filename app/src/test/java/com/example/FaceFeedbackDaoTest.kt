@@ -105,7 +105,7 @@ class FaceFeedbackDaoTest {
       faceId = "face-a",
     )
 
-    dao.updateFaceIndex(91L, faceJson("face-b", "face-a"), 200L)
+    dao.updateFaceIndexAndReconcile(91L, faceJson("face-b", "face-a"), 200L)
     dao.assignFaceWithHistory(
       photoId = 91L,
       faceIndex = 1,
@@ -146,13 +146,48 @@ class FaceFeedbackDaoTest {
       )
     )
     dao.excludeFaceWithHistory(92L, 0, 100L, "face-a")
-    dao.updateFaceIndex(92L, faceJson("face-b", "face-a"), 200L)
+    dao.updateFaceIndexAndReconcile(92L, faceJson("face-b", "face-a"), 200L)
     assertTrue(dao.isFaceExcludedByFaceId(92L, "face-a"))
 
     dao.restoreFaceWithHistory(92L, 1, 300L, "face-a")
     assertFalse(dao.isFaceExcludedByFaceId(92L, "face-a"))
     assertTrue(dao.undoLatestFaceCorrection())
     assertTrue(dao.isFaceExcludedByFaceId(92L, "face-a"))
+  }
+
+  @Test
+  fun reindexReconcilesMultipleAssignmentsWithoutOverwritingAnotherFace() = runBlocking {
+    dao.insertSingleMedia(
+      MediaItemEntity(
+        id = 93L,
+        title = "Two assigned faces",
+        category = "CAMERA",
+        mediaType = "PHOTO",
+        dateLabel = "",
+        weekGroup = "",
+        monthGroup = "",
+        timestamp = 1L,
+        locationName = "",
+        hasGps = false,
+        mapX = 0f,
+        mapY = 0f,
+        aspectRatio = 1f,
+        tagsCsv = "",
+        ocrText = "",
+        exifSummary = "",
+        faceDataJson = faceJson("face-a", "face-b"),
+      )
+    )
+    dao.assignFaceWithHistory(93L, 0, "person-a", 100L, "face-a")
+    dao.assignFaceWithHistory(93L, 1, "person-b", 110L, "face-b")
+
+    dao.updateFaceIndexAndReconcile(93L, faceJson("face-b", "face-a"), 200L)
+
+    assertNull(dao.getFaceAssignment(93L, 2))
+    assertEquals("person-b", dao.getFaceAssignment(93L, 0)?.personClusterId)
+    assertEquals("face-b", dao.getFaceAssignment(93L, 0)?.faceId)
+    assertEquals("person-a", dao.getFaceAssignment(93L, 1)?.personClusterId)
+    assertEquals("face-a", dao.getFaceAssignment(93L, 1)?.faceId)
   }
 
   private fun faceJson(vararg ids: String): String {
