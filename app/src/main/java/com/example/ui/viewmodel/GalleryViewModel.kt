@@ -322,23 +322,12 @@ class GalleryViewModel(
       MediaBundle(visible, vault, trashed, albums)
     }
 
-  private val uiControlsBundleFlow =
-    combine(syncControlsFlow, selectionControlsFlow, searchControlsFlow, modalControlsFlow) {
-      syncCtrl,
-      selCtrl,
-      searchCtrl,
-      modals ->
-      UiControlsBundle(syncCtrl, selCtrl, searchCtrl, modals)
-    }
-
   private val baseUiState: StateFlow<GalleryUiState> =
-    combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow) { prefs, media, ctrls ->
+    combine(prefsRepo.preferences, mediaBundleFlow, syncControlsFlow, searchControlsFlow) {
+        prefs, media, syncCtrl, searchCtrl ->
       // Derive gallery filters and folder summaries away from the main thread.
+      // Selection and modal changes are overlaid separately and do not rebuild these lists.
       withContext(Dispatchers.Default) {
-        val syncCtrl = ctrls.sync
-        val selCtrl = ctrls.selection
-        val searchCtrl = ctrls.search
-        val modals = ctrls.modals
 
         val filteredTimeline =
           media.visible.filter { item ->
@@ -376,9 +365,6 @@ class GalleryViewModel(
           }
 
         val geo = media.visible.filter { it.hasGps }
-        val resolvedPinId =
-          modals.selectedPinId?.takeIf { id -> geo.any { it.id == id } } ?: geo.firstOrNull()?.id
-
         val favoritesList = media.visible.filter { it.isFavorite }
         val favoritesFolder =
           AlbumFolder(
@@ -424,7 +410,6 @@ class GalleryViewModel(
             )
           }
 
-        val validSelection = selCtrl.selectedIds.filter { id -> media.visible.any { it.id == id } }.toSet()
         val folderDestSet = linkedSetOf<String>()
         deviceBucketFolders.forEach { folderDestSet.add(it.name) }
         listOf("Camera", "Travel", "Screenshots", "Downloads").forEach { folderDestSet.add(it) }
@@ -450,11 +435,11 @@ class GalleryViewModel(
           vaultMedia = media.vault,
           vaultDecryptedPreviews = modals.vaultPreviews,
           trashedMedia = media.trashed,
-          selectedMediaIds = validSelection,
-          isSelectionMode = selCtrl.isSelectionMode && (validSelection.isNotEmpty() || explicitSelectionMode.value),
-          showBatchMoveDialog = selCtrl.showMoveDialog,
-          showBatchDeleteConfirmDialog = selCtrl.showDeleteConfirm,
-          isPreparingShare = selCtrl.isPreparingShare,
+          selectedMediaIds = emptySet(),
+          isSelectionMode = false,
+          showBatchMoveDialog = false,
+          showBatchDeleteConfirmDialog = false,
+          isPreparingShare = false,
           searchTabMode = searchCtrl.tabMode,
           searchQuery = searchCtrl.query,
           searchOnlyLocation = searchCtrl.onlyLoc,
@@ -462,15 +447,15 @@ class GalleryViewModel(
           searchResults = searchMatches,
           geoItems = geo,
           mapMode = searchCtrl.mapMode,
-          selectedMapPinId = resolvedPinId,
-          activeLightboxId = modals.lightboxId,
-          activeEditorId = modals.editorId,
-          activeStoryIndex = modals.storyIdx,
-          showVaultDialog = modals.vaultDialog,
-          isVaultUnlocked = modals.vaultUnlocked,
-          showRecycleBinSheet = modals.recycleSheet,
-          depthModelState = modals.depthState,
-          isSavingEdit = modals.savingEdit,
+          selectedMapPinId = geo.firstOrNull()?.id,
+          activeLightboxId = null,
+          activeEditorId = null,
+          activeStoryIndex = null,
+          showVaultDialog = false,
+          isVaultUnlocked = false,
+          showRecycleBinSheet = false,
+          depthModelState = DepthModelPackState(),
+          isSavingEdit = false,
         )
       }
       }
@@ -483,7 +468,13 @@ class GalleryViewModel(
   // Face-index updates refresh only the People overlay. They no longer rebuild
   // gallery folders, filters, search text matches, selection, map and modal state.
   val uiState: StateFlow<GalleryUiState> =
-    combine(baseUiState, facePeopleGroupsFlow, facePeopleBundleFlow) { base, groups, faceBundle ->
+    combine(
+      baseUiState,
+      facePeopleGroupsFlow,
+      facePeopleBundleFlow,
+      selectionControlsFlow,
+      modalControlsFlow,
+    ) { base, groups, faceBundle, selection, modals ->
       withContext(Dispatchers.Default) {
         val q = base.searchQuery.trim().lowercase()
         val peoplePhotoIds = groups.peopleGroups.flatMap { it.photoIds }.toSet()
@@ -514,6 +505,11 @@ class GalleryViewModel(
             rows = faceBundle.faceRows,
           )
         } else emptyMap()
+        val visibleIds = base.visibleMedia.mapTo(HashSet()) { it.id }
+        val validSelection = selection.selectedIds.filter { it in visibleIds }.toSet()
+        val geoIds = base.geoItems.mapTo(HashSet()) { it.id }
+        val selectedPinId = modals.selectedPinId?.takeIf { it in geoIds }
+          ?: base.geoItems.firstOrNull()?.id
         base.copy(
           peopleGroups = groups.peopleGroups,
           unassignedFaceGroups = groups.unassignedFaceGroups,
@@ -522,6 +518,22 @@ class GalleryViewModel(
           faceCorrectionHistory = faceBundle.faceCorrectionHistory,
           faceIndexRevisions = faceBundle.faceRows.associate { it.id to (it.faceIndexedAt ?: 0L) },
           searchResults = searchResults,
+          selectedMediaIds = validSelection,
+          isSelectionMode = selection.isSelectionMode &&
+            (validSelection.isNotEmpty() || explicitSelectionMode.value),
+          showBatchMoveDialog = selection.showMoveDialog,
+          showBatchDeleteConfirmDialog = selection.showDeleteConfirm,
+          isPreparingShare = selection.isPreparingShare,
+          selectedMapPinId = selectedPinId,
+          activeLightboxId = modals.lightboxId,
+          activeEditorId = modals.editorId,
+          activeStoryIndex = modals.storyIdx,
+          showVaultDialog = modals.vaultDialog,
+          isVaultUnlocked = modals.vaultUnlocked,
+          vaultDecryptedPreviews = modals.vaultPreviews,
+          showRecycleBinSheet = modals.recycleSheet,
+          depthModelState = modals.depthState,
+          isSavingEdit = modals.savingEdit,
         )
       }
     }.stateIn(
@@ -1268,13 +1280,6 @@ class GalleryViewModel(
     val vault: List<GalleryMediaItem>,
     val trashed: List<GalleryMediaItem>,
     val customAlbums: List<AlbumEntity>,
-  )
-
-  private data class UiControlsBundle(
-    val sync: SyncAndFilterControls,
-    val selection: SelectionControls,
-    val search: SearchControls,
-    val modals: ModalControls,
   )
 
   companion object {
