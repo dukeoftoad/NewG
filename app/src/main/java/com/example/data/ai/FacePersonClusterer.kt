@@ -77,10 +77,20 @@ object FacePersonClusterer {
         val norm = sqrt(vector.sumOf { (it * it).toDouble() }).toFloat()
         if (norm <= 1e-8f || !norm.isFinite()) continue
         for (i in vector.indices) vector[i] /= norm
+        // Rank candidate groups using both centroid distance and the median
+        // distance to member faces. The median is robust to a few poor detections
+        // and avoids letting one outlier dominate the person representation.
+        val matchThreshold = distanceThreshold.coerceIn(0.05f, 0.8f)
         val match = clusters.asSequence()
           .filter { group -> group.samples.none { it.photoId == row.id } }
-          .map { group -> group to cosineDistance(vector, group.centroid) }
-          .filter { it.second <= distanceThreshold.coerceIn(0.05f, 0.8f) }
+          .map { group ->
+            group to FaceClusterRanker.score(
+              query = vector,
+              centroid = group.centroid,
+              members = group.samples.map(Sample::vector),
+            )
+          }
+          .filter { it.second <= matchThreshold }
           .minByOrNull { it.second }
         val sample = Sample(row.id, index, vector, bounds)
         if (match == null) {
@@ -187,4 +197,30 @@ object FacePersonClusterer {
 
   private const val EMBEDDING_SIZE = 192
   private const val MIN_PHOTOS = 2
+}
+
+/**
+ * Ente-inspired candidate ranking: combine the cluster centroid with the median
+ * query-to-member distance. The median reduces sensitivity to outlier face crops.
+ */
+internal object FaceClusterRanker {
+  fun score(query: FloatArray, centroid: FloatArray, members: List<FloatArray>): Float {
+    require(query.size == centroid.size && members.all { it.size == query.size })
+    val centroidDistance = cosineDistance(query, centroid)
+    if (members.isEmpty()) return centroidDistance
+    val sortedDistances = members.map { cosineDistance(query, it) }.sorted()
+    val middle = sortedDistances.size / 2
+    val medianDistance = if (sortedDistances.size % 2 == 0) {
+      (sortedDistances[middle - 1] + sortedDistances[middle]) / 2f
+    } else {
+      sortedDistances[middle]
+    }
+    return medianDistance * 0.7f + centroidDistance * 0.3f
+  }
+
+  private fun cosineDistance(a: FloatArray, b: FloatArray): Float {
+    var similarity = 0f
+    for (i in a.indices) similarity += a[i] * b[i]
+    return (1f - similarity).coerceIn(0f, 2f)
+  }
 }
