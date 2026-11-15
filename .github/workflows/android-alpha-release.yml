@@ -64,29 +64,34 @@ jobs:
 
           version_code=$((10000 + GITHUB_RUN_NUMBER))
           release_tag="alpha-v${version_name}"
-          keystore_path="${RUNNER_TEMP}/alpha-upload-key.jks"
-          store_password="$(openssl rand -hex 24)"
-          key_password="$(openssl rand -hex 24)"
-
-          keytool -genkeypair -v \
-            -keystore "${keystore_path}" \
-            -storepass "${store_password}" \
-            -alias upload \
-            -keypass "${key_password}" \
-            -dname "CN=NewG Alpha,O=NewG,C=US" \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000
-
-          {
-            echo "KEYSTORE_PATH=${keystore_path}"
-            echo "STORE_PASSWORD=${store_password}"
-            echo "KEY_PASSWORD=${key_password}"
-          } >> "${GITHUB_ENV}"
 
           echo "version_name=${version_name}" >> "${GITHUB_OUTPUT}"
           echo "version_code=${version_code}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore permanent alpha signing keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # Permanent signing key shared with android-release.yml: identical
+          # across every run so installed builds stay update-compatible. The
+          # keystore lives in repo secrets, never in the repository itself.
+          keystore_path="${RUNNER_TEMP}/upload-key.jks"
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
+
+          keytool -list -keystore "${keystore_path}" \
+            -storepass "${ANDROID_STORE_PASSWORD}" -alias upload > /dev/null
+
+          {
+            echo "KEYSTORE_PATH=${keystore_path}"
+            echo "STORE_PASSWORD=${ANDROID_STORE_PASSWORD}"
+            echo "KEY_PASSWORD=${ANDROID_KEY_PASSWORD}"
+          } >> "${GITHUB_ENV}"
 
       - name: Build signed alpha APK
         run: |
