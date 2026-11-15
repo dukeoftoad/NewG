@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -14,6 +15,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import com.example.data.ai.DepthMapResult
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.model.BokehShape
@@ -60,12 +62,14 @@ object PhotoEditorRenderer {
     }
 
   private fun ensureMutablePixelBacked(bmp: Bitmap, recycleInput: Boolean): Bitmap {
-    val hasPixels = runCatching {
-      if (bmp.width > 0 && bmp.height > 0) {
-        bmp.getPixels(IntArray(1), 0, 1, 0, 0, 1, 1)
-      }
-      true
-    }.getOrDefault(false)
+    val hasPixels =
+      runCatching {
+          if (bmp.width > 0 && bmp.height > 0) {
+            bmp.getPixels(IntArray(1), 0, 1, 0, 0, 1, 1)
+          }
+          true
+        }
+        .getOrDefault(false)
     if (hasPixels && bmp.config == Bitmap.Config.ARGB_8888 && bmp.isMutable) {
       return bmp
     }
@@ -78,13 +82,49 @@ object PhotoEditorRenderer {
   }
 
   private fun decodeBoundedFromUri(context: Context, uri: Uri, maxDim: Int): Bitmap? {
+    val resolver = context.contentResolver
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
     val sample = computeInSampleSize(opts.outWidth, opts.outHeight, maxDim)
-    val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
-    return context.contentResolver.openInputStream(uri)?.use {
-      BitmapFactory.decodeStream(it, null, decodeOpts)
+    val decodeOpts =
+      BitmapFactory.Options().apply {
+        inSampleSize = sample
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+      }
+    val decoded =
+      resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decodeOpts) }
+        ?: return null
+
+    // Apply EXIF orientation so rotated camera captures open upright in the editor
+    val orientation =
+      runCatching {
+          resolver.openInputStream(uri)?.use { stream ->
+            ExifInterface(stream)
+              .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+          } ?: ExifInterface.ORIENTATION_NORMAL
+        }
+        .getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+    val matrix = Matrix()
+    when (orientation) {
+      ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+      ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+      ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(270f)
+      ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
+      ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f, -1f)
+      ExifInterface.ORIENTATION_TRANSPOSE -> {
+        matrix.setRotate(90f)
+        matrix.postScale(-1f, 1f)
+      }
+      ExifInterface.ORIENTATION_TRANSVERSE -> {
+        matrix.setRotate(270f)
+        matrix.postScale(-1f, 1f)
+      }
+      else -> return decoded
     }
+    val oriented = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+    if (oriented !== decoded && !decoded.isRecycled) decoded.recycle()
+    return oriented
   }
 
   private fun decodeBoundedFromRes(context: Context, resId: Int, maxDim: Int): Bitmap? {
@@ -220,15 +260,19 @@ object PhotoEditorRenderer {
 
     if (bokeh.depthPreviewMode != DepthPreviewMode.OFF) {
       val out = IntArray(count)
+      val invH = 1f / (h - 1).coerceAtLeast(1)
+      val invW = 1f / (w - 1).coerceAtLeast(1)
+      val isGray = bokeh.depthPreviewMode == DepthPreviewMode.GRAYSCALE
       for (y in 0 until h) {
-        val ny = y.toFloat() / (h - 1).coerceAtLeast(1)
+        val ny = y * invH
+        val rowOff = y * w
         for (x in 0 until w) {
-          val nx = x.toFloat() / (w - 1).coerceAtLeast(1)
+          val nx = x * invW
           val d = depthMap.sampleAt(nx, ny)
-          out[y * w + x] =
-            if (bokeh.depthPreviewMode == DepthPreviewMode.GRAYSCALE) {
-              val v = (d * 255f).roundToInt().coerceIn(0, 255)
-              Color.rgb(v, v, v)
+          out[rowOff + x] =
+            if (isGray) {
+              val v = (d * 255f + 0.5f).toInt().coerceIn(0, 255)
+              (0xFF shl 24) or (v shl 16) or (v shl 8) or v
             } else {
               heatmapColor(d)
             }
@@ -257,39 +301,52 @@ object PhotoEditorRenderer {
     val out = IntArray(count)
     val focalD = bokeh.focusDepth.coerceIn(0f, 1f)
     val range = bokeh.focusRange.coerceIn(0.05f, 0.55f)
+    val rangeHalf = range * 0.45f
+    val invRangeSpan = 1f / (range * 1.4f + 0.08f)
     val hasPop = bokeh.foregroundColorPop > 0.01f
     val hasFog = bokeh.depthFog > 0.01f
     val hasRelight = abs(bokeh.subjectRelight) > 0.01f
     val hasBgDim = bokeh.backgroundDim > 0.01f
+    val invH = 1f / (h - 1).coerceAtLeast(1)
+    val invW = 1f / (w - 1).coerceAtLeast(1)
 
     for (y in 0 until h) {
-      val ny = y.toFloat() / (h - 1).coerceAtLeast(1)
+      val ny = y * invH
+      val rowOff = y * w
       for (x in 0 until w) {
-        val idx = y * w + x
-        val nx = x.toFloat() / (w - 1).coerceAtLeast(1)
+        val idx = rowOff + x
+        val nx = x * invW
         val d = depthMap.sampleAt(nx, ny)
         val delta = abs(d - focalD)
-        val blurWeight = ((delta - range * 0.45f) / (range * 1.4f + 0.08f)).coerceIn(0f, 1f)
+        val blurWeight = ((delta - rangeHalf) * invRangeSpan).coerceIn(0f, 1f)
+        val fgWeight = 1f - blurWeight
 
         val sharp = pixels[idx]
         val blur = blurredPixels[idx]
 
-        var r = Color.red(sharp) * (1f - blurWeight) + Color.red(blur) * blurWeight
-        var g = Color.green(sharp) * (1f - blurWeight) + Color.green(blur) * blurWeight
-        var b = Color.blue(sharp) * (1f - blurWeight) + Color.blue(blur) * blurWeight
+        val sr = (sharp ushr 16) and 0xFF
+        val sg = (sharp ushr 8) and 0xFF
+        val sb = sharp and 0xFF
+
+        val br = (blur ushr 16) and 0xFF
+        val bg = (blur ushr 8) and 0xFF
+        val bb = blur and 0xFF
+
+        var r = sr * fgWeight + br * blurWeight
+        var g = sg * fgWeight + bg * blurWeight
+        var b = sb * fgWeight + bb * blurWeight
 
         // Foreground Color Pop (keeps focal plane color, desaturates background)
         if (hasPop && blurWeight > 0.01f) {
           val luma = 0.299f * r + 0.587f * g + 0.114f * b
           val desatAmount = (blurWeight * bokeh.foregroundColorPop).coerceIn(0f, 1f)
-          r = r + (luma - r) * desatAmount
-          g = g + (luma - g) * desatAmount
-          b = b + (luma - b) * desatAmount
+          r += (luma - r) * desatAmount
+          g += (luma - g) * desatAmount
+          b += (luma - b) * desatAmount
         }
 
         // Subject Relight (brightens/sculpts focal plane)
         if (hasRelight) {
-          val fgWeight = 1f - blurWeight
           val gain = 1f + bokeh.subjectRelight * 0.35f * fgWeight
           r *= gain
           g *= gain
@@ -307,17 +364,16 @@ object PhotoEditorRenderer {
         // Atmospheric Depth Fog (cool mist weighted by far depth)
         if (hasFog) {
           val farWeight = ((1f - d) * 0.85f * bokeh.depthFog).coerceIn(0f, 0.78f)
-          r = r * (1f - farWeight) + 216f * farWeight
-          g = g * (1f - farWeight) + 230f * farWeight
-          b = b * (1f - farWeight) + 240f * farWeight
+          val invFar = 1f - farWeight
+          r = r * invFar + 216f * farWeight
+          g = g * invFar + 230f * farWeight
+          b = b * invFar + 240f * farWeight
         }
 
-        out[idx] =
-          Color.rgb(
-            r.roundToInt().coerceIn(0, 255),
-            g.roundToInt().coerceIn(0, 255),
-            b.roundToInt().coerceIn(0, 255),
-          )
+        val ri = (r + 0.5f).toInt().coerceIn(0, 255)
+        val gi = (g + 0.5f).toInt().coerceIn(0, 255)
+        val bi = (b + 0.5f).toInt().coerceIn(0, 255)
+        out[idx] = (0xFF shl 24) or (ri shl 16) or (gi shl 8) or bi
       }
     }
 
@@ -339,9 +395,11 @@ object PhotoEditorRenderer {
     val small = IntArray(dw * dh)
     for (y in 0 until dh) {
       val sy = (y * h / dh).coerceIn(0, h - 1)
+      val srcRow = sy * w
+      val dstRow = y * dw
       for (x in 0 until dw) {
         val sx = (x * w / dw).coerceIn(0, w - 1)
-        small[y * dw + x] = src[sy * w + sx]
+        small[dstRow + x] = src[srcRow + sx]
       }
     }
 
@@ -360,21 +418,20 @@ object PhotoEditorRenderer {
         val x1 = (x + r).coerceAtMost(dw - 1)
         for (kx in x0..x1) {
           val c = small[rowOff + kx]
-          val cr = Color.red(c)
-          val cg = Color.green(c)
-          val cb = Color.blue(c)
+          val cr = (c ushr 16) and 0xFF
+          val cg = (c ushr 8) and 0xFF
+          val cb = c and 0xFF
           val weight = if (boostHighlights && (cr + cg + cb) > 610) 2.2f else 1f
           sr += cr * weight
           sg += cg * weight
           sb += cb * weight
           sw += weight
         }
-        horiz[rowOff + x] =
-          Color.rgb(
-            (sr / sw).roundToInt().coerceIn(0, 255),
-            (sg / sw).roundToInt().coerceIn(0, 255),
-            (sb / sw).roundToInt().coerceIn(0, 255),
-          )
+        val invW = 1f / sw
+        val ri = (sr * invW + 0.5f).toInt().coerceIn(0, 255)
+        val gi = (sg * invW + 0.5f).toInt().coerceIn(0, 255)
+        val bi = (sb * invW + 0.5f).toInt().coerceIn(0, 255)
+        horiz[rowOff + x] = (0xFF shl 24) or (ri shl 16) or (gi shl 8) or bi
       }
     }
 
@@ -388,49 +445,66 @@ object PhotoEditorRenderer {
         val y1 = (y + r).coerceAtMost(dh - 1)
         for (ky in y0..y1) {
           val c = horiz[ky * dw + x]
-          val cr = Color.red(c)
-          val cg = Color.green(c)
-          val cb = Color.blue(c)
+          val cr = (c ushr 16) and 0xFF
+          val cg = (c ushr 8) and 0xFF
+          val cb = c and 0xFF
           val weight = if (boostHighlights && (cr + cg + cb) > 610) 1.6f else 1f
           sr += cr * weight
           sg += cg * weight
           sb += cb * weight
           sw += weight
         }
-        vert[y * dw + x] =
-          Color.rgb(
-            (sr / sw).roundToInt().coerceIn(0, 255),
-            (sg / sw).roundToInt().coerceIn(0, 255),
-            (sb / sw).roundToInt().coerceIn(0, 255),
-          )
+        val invW = 1f / sw
+        val ri = (sr * invW + 0.5f).toInt().coerceIn(0, 255)
+        val gi = (sg * invW + 0.5f).toInt().coerceIn(0, 255)
+        val bi = (sb * invW + 0.5f).toInt().coerceIn(0, 255)
+        vert[y * dw + x] = (0xFF shl 24) or (ri shl 16) or (gi shl 8) or bi
       }
     }
 
     // Upsample smoothly with bilinear interpolation
     val out = IntArray(w * h)
+    val scaleY = (dh - 1).toFloat() / (h - 1).coerceAtLeast(1)
+    val scaleX = (dw - 1).toFloat() / (w - 1).coerceAtLeast(1)
     for (y in 0 until h) {
-      val fy = y.toFloat() * (dh - 1) / (h - 1).coerceAtLeast(1)
+      val fy = y * scaleY
       val y0 = fy.toInt().coerceIn(0, dh - 1)
       val y1 = (y0 + 1).coerceAtMost(dh - 1)
       val ty = fy - y0
+      val row0 = y0 * dw
+      val row1 = y1 * dw
+      val outRow = y * w
       for (x in 0 until w) {
-        val fx = x.toFloat() * (dw - 1) / (w - 1).coerceAtLeast(1)
+        val fx = x * scaleX
         val x0 = fx.toInt().coerceIn(0, dw - 1)
         val x1 = (x0 + 1).coerceAtMost(dw - 1)
         val tx = fx - x0
 
-        val c00 = vert[y0 * dw + x0]
-        val c10 = vert[y0 * dw + x1]
-        val c01 = vert[y1 * dw + x0]
-        val c11 = vert[y1 * dw + x1]
+        val c00 = vert[row0 + x0]
+        val c10 = vert[row0 + x1]
+        val c01 = vert[row1 + x0]
+        val c11 = vert[row1 + x1]
 
         val cr =
-          bilerp(Color.red(c00), Color.red(c10), Color.red(c01), Color.red(c11), tx, ty)
+          bilerp(
+            (c00 ushr 16) and 0xFF,
+            (c10 ushr 16) and 0xFF,
+            (c01 ushr 16) and 0xFF,
+            (c11 ushr 16) and 0xFF,
+            tx,
+            ty,
+          )
         val cg =
-          bilerp(Color.green(c00), Color.green(c10), Color.green(c01), Color.green(c11), tx, ty)
-        val cb =
-          bilerp(Color.blue(c00), Color.blue(c10), Color.blue(c01), Color.blue(c11), tx, ty)
-        out[y * w + x] = Color.rgb(cr, cg, cb)
+          bilerp(
+            (c00 ushr 8) and 0xFF,
+            (c10 ushr 8) and 0xFF,
+            (c01 ushr 8) and 0xFF,
+            (c11 ushr 8) and 0xFF,
+            tx,
+            ty,
+          )
+        val cb = bilerp(c00 and 0xFF, c10 and 0xFF, c01 and 0xFF, c11 and 0xFF, tx, ty)
+        out[outRow + x] = (0xFF shl 24) or (cr shl 16) or (cg shl 8) or cb
       }
     }
     return out
@@ -439,12 +513,11 @@ object PhotoEditorRenderer {
   private fun bilerp(c00: Int, c10: Int, c01: Int, c11: Int, tx: Float, ty: Float): Int {
     val top = c00 + (c10 - c00) * tx
     val bot = c01 + (c11 - c01) * tx
-    return (top + (bot - top) * ty).roundToInt().coerceIn(0, 255)
+    return (top + (bot - top) * ty + 0.5f).toInt().coerceIn(0, 255)
   }
 
   private fun heatmapColor(d: Float): Int {
     val t = d.coerceIn(0f, 1f)
-    // Dark indigo (far) -> Teal -> Emerald -> Amber -> Bright Cream (near)
     return when {
       t < 0.25f -> lerpColor(0xFF1E1B4B.toInt(), 0xFF0E7490.toInt(), t / 0.25f)
       t < 0.50f -> lerpColor(0xFF0E7490.toInt(), 0xFF10B981.toInt(), (t - 0.25f) / 0.25f)
@@ -455,17 +528,23 @@ object PhotoEditorRenderer {
 
   private fun lerpColor(a: Int, b: Int, t: Float): Int {
     val k = t.coerceIn(0f, 1f)
-    val r = (Color.red(a) + (Color.red(b) - Color.red(a)) * k).roundToInt()
-    val g = (Color.green(a) + (Color.green(b) - Color.green(a)) * k).roundToInt()
-    val bl = (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * k).roundToInt()
-    return Color.rgb(r, g, bl)
+    val ar = (a ushr 16) and 0xFF
+    val ag = (a ushr 8) and 0xFF
+    val ab = a and 0xFF
+    val br = (b ushr 16) and 0xFF
+    val bg = (b ushr 8) and 0xFF
+    val bb = b and 0xFF
+    val r = (ar + (br - ar) * k + 0.5f).toInt().coerceIn(0, 255)
+    val g = (ag + (bg - ag) * k + 0.5f).toInt().coerceIn(0, 255)
+    val bl = (ab + (bb - ab) * k + 0.5f).toInt().coerceIn(0, 255)
+    return (0xFF shl 24) or (r shl 16) or (g shl 8) or bl
   }
 
   private fun applyToneAndFilter(bitmap: Bitmap, recipe: PhotoEditRecipe) {
     val adj = recipe.adjust
     val cm = ColorMatrix()
 
-    // Exposure + Brightness
+    // Exposure + Brightness + Contrast + Fade
     val expScale = 1f + adj.exposure * 0.55f
     val brightOff = adj.brightness * 65f + adj.fade * 24f
     val contrastFactor = (1f + adj.contrast * 0.6f) * (1f - adj.fade * 0.16f)
@@ -518,44 +597,52 @@ object PhotoEditorRenderer {
       cm.postConcat(ColorMatrix(blended))
     }
 
+    val hasCurve = abs(adj.highlights) > 0.02f || abs(adj.shadows) > 0.02f
+
+    // Fast path: apply ColorMatrix via native Skia Canvas when no non-linear highlight/shadow curve is active
+    if (!hasCurve) {
+      val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
+      Canvas(bitmap).drawBitmap(bitmap, 0f, 0f, paint)
+      return
+    }
+
     val m = cm.array
+    val m0 = m[0]; val m1 = m[1]; val m2 = m[2]; val m4 = m[4]
+    val m5 = m[5]; val m6 = m[6]; val m7 = m[7]; val m9 = m[9]
+    val m10 = m[10]; val m11 = m[11]; val m12 = m[12]; val m14 = m[14]
+
+    // Precompute 256-entry integer LUT for shadow/highlight luma curve
+    val hlShift = adj.highlights * 42f
+    val shShift = adj.shadows * 48f
+    val curveDeltaLut =
+      IntArray(256) { lumaInt ->
+        val luma = lumaInt / 255f
+        val shadowMask = (1f - luma) * (1f - luma)
+        val highMask = luma * luma
+        (shShift * shadowMask + hlShift * highMask).roundToInt()
+      }
+
     val count = bitmap.width * bitmap.height
     val pixels = IntArray(count)
     bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
-    val hasCurve = abs(adj.highlights) > 0.02f || abs(adj.shadows) > 0.02f
-    val hlShift = adj.highlights * 42f
-    val shShift = adj.shadows * 48f
-
     for (i in 0 until count) {
       val c = pixels[i]
-      val r0 = Color.red(c).toFloat()
-      val g0 = Color.green(c).toFloat()
-      val b0 = Color.blue(c).toFloat()
+      val r0 = ((c ushr 16) and 0xFF).toFloat()
+      val g0 = ((c ushr 8) and 0xFF).toFloat()
+      val b0 = (c and 0xFF).toFloat()
 
-      var r = m[0] * r0 + m[1] * g0 + m[2] * b0 + m[4]
-      var g = m[5] * r0 + m[6] * g0 + m[7] * b0 + m[9]
-      var b = m[10] * r0 + m[11] * g0 + m[12] * b0 + m[14]
+      val rc = (m0 * r0 + m1 * g0 + m2 * b0 + m4).roundToInt().coerceIn(0, 255)
+      val gc = (m5 * r0 + m6 * g0 + m7 * b0 + m9).roundToInt().coerceIn(0, 255)
+      val bc = (m10 * r0 + m11 * g0 + m12 * b0 + m14).roundToInt().coerceIn(0, 255)
 
-      if (hasCurve) {
-        val rc = r.coerceIn(0f, 255f)
-        val gc = g.coerceIn(0f, 255f)
-        val bc = b.coerceIn(0f, 255f)
-        val luma = (0.299f * rc + 0.587f * gc + 0.114f * bc) / 255f
-        val shadowMask = (1f - luma) * (1f - luma)
-        val highMask = luma * luma
-        val delta = shShift * shadowMask + hlShift * highMask
-        r = rc + delta
-        g = gc + delta
-        b = bc + delta
-      }
+      val lumaIdx = ((77 * rc + 150 * gc + 29 * bc) ushr 8).coerceIn(0, 255)
+      val delta = curveDeltaLut[lumaIdx]
+      val r = (rc + delta).coerceIn(0, 255)
+      val g = (gc + delta).coerceIn(0, 255)
+      val b = (bc + delta).coerceIn(0, 255)
 
-      pixels[i] =
-        Color.rgb(
-          r.roundToInt().coerceIn(0, 255),
-          g.roundToInt().coerceIn(0, 255),
-          b.roundToInt().coerceIn(0, 255),
-        )
+      pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
     bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
   }
@@ -623,9 +710,9 @@ object PhotoEditorRenderer {
     val h = bitmap.height
     if (w < 4 || h < 4) return
     val src = IntArray(w * h)
-    val dst = src.copyOf()
     bitmap.getPixels(src, 0, w, 0, 0, w, h)
-    val strength = amount.coerceIn(0f, 1f) * 1.15f
+    val dst = src.copyOf()
+    val strengthFixed = (amount.coerceIn(0f, 1f) * 1.15f * 256f).roundToInt()
 
     for (y in 1 until h - 1) {
       val row = y * w
@@ -636,19 +723,18 @@ object PhotoEditorRenderer {
         val wPx = src[row + x - 1]
         val ePx = src[row + x + 1]
 
-        val avgR = (Color.red(n) + Color.red(s) + Color.red(wPx) + Color.red(ePx)) * 0.25f
-        val avgG = (Color.green(n) + Color.green(s) + Color.green(wPx) + Color.green(ePx)) * 0.25f
-        val avgB = (Color.blue(n) + Color.blue(s) + Color.blue(wPx) + Color.blue(ePx)) * 0.25f
+        val cr = (c ushr 16) and 0xFF
+        val cg = (c ushr 8) and 0xFF
+        val cb = c and 0xFF
 
-        val r = Color.red(c) + (Color.red(c) - avgR) * strength
-        val g = Color.green(c) + (Color.green(c) - avgG) * strength
-        val b = Color.blue(c) + (Color.blue(c) - avgB) * strength
-        dst[row + x] =
-          Color.rgb(
-            r.roundToInt().coerceIn(0, 255),
-            g.roundToInt().coerceIn(0, 255),
-            b.roundToInt().coerceIn(0, 255),
-          )
+        val avgR = (((n ushr 16) and 0xFF) + ((s ushr 16) and 0xFF) + ((wPx ushr 16) and 0xFF) + ((ePx ushr 16) and 0xFF)) ushr 2
+        val avgG = (((n ushr 8) and 0xFF) + ((s ushr 8) and 0xFF) + ((wPx ushr 8) and 0xFF) + ((ePx ushr 8) and 0xFF)) ushr 2
+        val avgB = ((n and 0xFF) + (s and 0xFF) + (wPx and 0xFF) + (ePx and 0xFF)) ushr 2
+
+        val r = (cr + (((cr - avgR) * strengthFixed) shr 8)).coerceIn(0, 255)
+        val g = (cg + (((cg - avgG) * strengthFixed) shr 8)).coerceIn(0, 255)
+        val b = (cb + (((cb - avgB) * strengthFixed) shr 8)).coerceIn(0, 255)
+        dst[row + x] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
       }
     }
     bitmap.setPixels(dst, 0, w, 0, 0, w, h)
@@ -667,7 +753,11 @@ object PhotoEditorRenderer {
             w / 2f,
             h / 2f,
             radius,
-            intArrayOf(Color.TRANSPARENT, Color.argb((edgeAlpha * 0.35f).roundToInt(), 0, 0, 0), Color.argb(edgeAlpha, 0, 0, 0)),
+            intArrayOf(
+              Color.TRANSPARENT,
+              Color.argb((edgeAlpha * 0.35f).roundToInt(), 0, 0, 0),
+              Color.argb(edgeAlpha, 0, 0, 0),
+            ),
             floatArrayOf(0.45f, 0.76f, 1f),
             Shader.TileMode.CLAMP,
           )
@@ -678,22 +768,21 @@ object PhotoEditorRenderer {
   private fun applyFilmGrain(bitmap: Bitmap, amount: Float) {
     val w = bitmap.width
     val h = bitmap.height
-    val pixels = IntArray(w * h)
-    bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
     val maxNoise = (amount.coerceIn(0f, 1f) * 34f).roundToInt()
     if (maxNoise <= 0) return
+
+    val pixels = IntArray(w * h)
+    bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
 
     var seed = 0x517CC1B7
     for (i in pixels.indices) {
       seed = seed * 1664525 + 1013904223
-      val noise = (((seed shr 24) and 0xFF) - 128) * maxNoise / 128
+      val noise = (((seed ushr 24) and 0xFF) - 128) * maxNoise shr 7
       val c = pixels[i]
-      pixels[i] =
-        Color.rgb(
-          (Color.red(c) + noise).coerceIn(0, 255),
-          (Color.green(c) + noise).coerceIn(0, 255),
-          (Color.blue(c) + noise).coerceIn(0, 255),
-        )
+      val r = (((c ushr 16) and 0xFF) + noise).coerceIn(0, 255)
+      val g = (((c ushr 8) and 0xFF) + noise).coerceIn(0, 255)
+      val b = ((c and 0xFF) + noise).coerceIn(0, 255)
+      pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
     bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
   }
@@ -843,20 +932,26 @@ object PhotoEditorRenderer {
 
     strokes.forEach { stroke ->
       val radiusPx = (stroke.strokeWidthNorm * min(w, h) * 1.6f).coerceIn(14f, 72f)
+      val rSq = radiusPx * radiusPx
+      val rInt = radiusPx.roundToInt()
       stroke.points.forEach { pt ->
         val cx = (pt.x * w).roundToInt()
         val cy = (pt.y * h).roundToInt()
-        val rInt = radiusPx.roundToInt()
         val xStart = (cx - rInt).coerceAtLeast(0)
         val xEnd = (cx + rInt).coerceAtMost(w - 1)
         val yStart = (cy - rInt).coerceAtLeast(0)
         val yEnd = (cy + rInt).coerceAtMost(h - 1)
         for (y in yStart..yEnd) {
+          val dy = (y - cy).toFloat()
+          val dySq = dy * dy
           val snapY = ((y / block) * block + block / 2).coerceIn(0, h - 1)
+          val snapRow = snapY * w
+          val outRow = y * w
           for (x in xStart..xEnd) {
-            if (hypot((x - cx).toDouble(), (y - cy).toDouble()) <= radiusPx) {
+            val dx = (x - cx).toFloat()
+            if (dx * dx + dySq <= rSq) {
               val snapX = ((x / block) * block + block / 2).coerceIn(0, w - 1)
-              out[y * w + x] = pixels[snapY * w + snapX]
+              out[outRow + x] = pixels[snapRow + snapX]
             }
           }
         }

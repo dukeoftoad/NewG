@@ -6,28 +6,6 @@ Reference: Ente `ente/ente` revision `94a348f686e3ac98977cd7704d14bd5877832eee`.
 Vendored snapshots: `third_party/ente/mobile/apps/photos/lib/`.  
 Port plan: `docs/ENTE-PEOPLE-PORT-PLAN.md`.
 
-## Current PR implementation status — 2026-11-15
-
-This section supersedes conflicting statements in the historical comparison notes below.
-
-### People-management backlog
-
-1. **Manual face reassignment — implemented.** FaceAssignmentEntity stores a local target personClusterId separately from display names; the clusterer overlays those assignments after automatic similarity grouping. A selected face keeps its stable per-photo faceId through detector reordering, and names remain editable metadata rather than the membership key. Unrecoverable legacy index-only feedback is retained with a negative, dormant index instead of being rebound to a different face.
-2. **Custom person cover — implemented.** FacePersonEntity stores the chosen photo, detector index and stable face ID; the editor offers face-crop candidates and the People list renders the selected crop.
-3. **Ignore/unignore — implemented.** The local isIgnored flag is retained alongside names and covers; ignored people are separated in the People view and can be restored with Unignore.
-4. **Correction review and undo — implemented.** Correction rows show a face/photo thumbnail, photo title and face index rather than a local Room row ID. The Room correction ledger supports ordered history and transactional undo; the history view includes photo/face context. Unresolved legacy entries are retained but excluded from the undoable stack, so they cannot be replayed against another face or block older resolvable undos.
-
-### Persistence and safety notes
-
-- Room v9 adds nullable stable-identity columns without dropping existing feedback.
-- During re-index, legacy IDs are backfilled only when the previous stored face payload contains a valid box and 192-value embedding. If that evidence is missing, the record remains dormant at a negative index; the UI ignores it, and undo refuses to apply it to an arbitrary current face.
-- New feedback, covers and undo use stable face IDs; no face membership, name, cover, embedding or correction history is sent to a server.
-- Focused tests cover name-independent membership persistence, detector reordering, unresolved legacy feedback, custom-cover persistence, ignore/unignore retention, correction undo/history and Compose controls.
-
-### Validation
-
-CI must be checked against the exact current PR head. Historical run notes later in this file are not evidence for a newer commit. Physical-device inference, download and visual/touch validation remain outstanding.
-
 ## How to perform each comparison
 
 For each row:

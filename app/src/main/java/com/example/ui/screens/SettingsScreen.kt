@@ -71,7 +71,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -166,10 +165,12 @@ private fun SettingsHubView(
   val showAbout = matches("about", "version", "0.5.0", "diagnostics", "self-test", "changelog")
   val nothingFound = !showAppearance && !showAi && !showPrivacy && !showStorage && !showAbout
 
+  val faceInstalled = uiState.faceModelState.isInstalled || prefs.faceModelInstalled
+  val depthInstalled = uiState.depthModelState.isInstalled || prefs.depthModelInstalled
   val mlModelsMb =
-    (if (prefs.faceModelInstalled) 37.6f else 0f) +
+    (if (faceInstalled) 35.9f else 0f) +
       (if (prefs.semanticModelInstalled) 213.0f else 0f) +
-      (if (uiState.depthModelState.isInstalled || prefs.depthModelInstalled) 27.3f else 0f)
+      (if (depthInstalled) 27.3f else 0f)
   val totalStorageMb = 14.2f + mlModelsMb + prefs.mlIndexSizeMb + prefs.cacheSizeMb
 
   Column(modifier = Modifier.fillMaxSize()) {
@@ -495,9 +496,9 @@ private fun SettingsHubView(
               SettingsGroupCard {
                 Column(modifier = Modifier.padding(14.dp)) {
                   StorageBreakdownBar(
-                    faceModelInstalled = prefs.faceModelInstalled,
+                    faceModelInstalled = faceInstalled,
                     semanticModelInstalled = prefs.semanticModelInstalled,
-                    depthModelInstalled = uiState.depthModelState.isInstalled || prefs.depthModelInstalled,
+                    depthModelInstalled = depthInstalled,
                     mlIndexMb = prefs.mlIndexSizeMb,
                     cacheMb = prefs.cacheSizeMb,
                   )
@@ -533,7 +534,7 @@ private fun SettingsHubView(
                   iconContainer = extended.surfaceHigh,
                   iconTint = MaterialTheme.colorScheme.primary,
                   title = "About toadGALLERY",
-                  subtitle = "0.4.5-alpha (build 46) • Engine self-test & changelog",
+                  subtitle = "0.5.0-beta (build 52) • Engine self-test & changelog",
                   onClick = { viewModel.openSubPage(SettingsSubPage.ABOUT) },
                   testTag = "settings_row_about",
                 )

@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
@@ -43,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -56,6 +59,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -82,6 +86,31 @@ import com.example.data.model.GalleryMediaItem
 import com.example.data.model.MediaType
 import com.example.data.model.TonePreset
 import com.example.ui.theme.LocalToadColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private val VividToneFilter: ColorFilter by lazy {
+  ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(1.38f) })
+}
+
+private val WarmFilmToneFilter: ColorFilter by lazy {
+  ColorFilter.colorMatrix(
+    ColorMatrix(
+      floatArrayOf(
+        1.12f, 0.05f, 0f, 0f, 10f,
+        0.02f, 1.04f, 0f, 0f, 4f,
+        0f, 0f, 0.86f, 0f, -6f,
+        0f, 0f, 0f, 1f, 0f,
+      )
+    )
+  )
+}
+
+private val MonochromeToneFilter: ColorFilter by lazy {
+  ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+}
+
+private val vaultBitmapCache = LruCache<String, ImageBitmap>(48)
 
 @Composable
 fun ToadBrandIcon(
@@ -298,44 +327,41 @@ fun ToadSwitch(
 fun toneColorFilter(preset: TonePreset): ColorFilter? =
   when (preset) {
     TonePreset.NATURAL -> null
-    TonePreset.BOTANICAL_VIVID -> {
-      val matrix = ColorMatrix().apply { setToSaturation(1.38f) }
-      ColorFilter.colorMatrix(matrix)
-    }
-    TonePreset.WARM_FILM -> {
-      val matrix =
-        ColorMatrix(
-          floatArrayOf(
-            1.12f, 0.05f, 0f, 0f, 10f,
-            0.02f, 1.04f, 0f, 0f, 4f,
-            0f, 0f, 0.86f, 0f, -6f,
-            0f, 0f, 0f, 1f, 0f,
-          )
-        )
-      ColorFilter.colorMatrix(matrix)
-    }
-    TonePreset.MONOCHROME -> {
-      val matrix = ColorMatrix().apply { setToSaturation(0f) }
-      ColorFilter.colorMatrix(matrix)
-    }
+    TonePreset.BOTANICAL_VIVID -> VividToneFilter
+    TonePreset.WARM_FILM -> WarmFilmToneFilter
+    TonePreset.MONOCHROME -> MonochromeToneFilter
   }
 
 @Composable
 fun GalleryMediaImage(
   item: GalleryMediaItem,
   contentScale: ContentScale = ContentScale.Crop,
+  thumbnailSizePx: Int? = 384,
   modifier: Modifier = Modifier,
 ) {
+  val context = LocalContext.current
   val hasNonDestructiveBitmap = !item.editedUriString.isNullOrBlank()
-  val filter = if (hasNonDestructiveBitmap) null else toneColorFilter(item.tonePreset)
+  val filter = remember(hasNonDestructiveBitmap, item.tonePreset) {
+    if (hasNonDestructiveBitmap) null else toneColorFilter(item.tonePreset)
+  }
   val effectiveUri = item.editedUriString?.takeIf { it.isNotBlank() } ?: item.uriString
   if (!effectiveUri.isNullOrBlank()) {
+    val request = remember(context, effectiveUri, thumbnailSizePx) {
+      ImageRequest.Builder(context)
+        .data(effectiveUri)
+        .apply {
+          if (thumbnailSizePx != null) {
+            size(thumbnailSizePx)
+            crossfade(false)
+          } else {
+            crossfade(120)
+          }
+        }
+        .allowHardware(true)
+        .build()
+    }
     AsyncImage(
-      model =
-        ImageRequest.Builder(LocalContext.current)
-          .data(effectiveUri)
-          .crossfade(true)
-          .build(),
+      model = request,
       contentDescription = item.title,
       contentScale = contentScale,
       colorFilter = filter,
@@ -357,18 +383,52 @@ fun DecryptedVaultImage(
   item: GalleryMediaItem,
   decryptedBytes: ByteArray?,
   contentScale: ContentScale = ContentScale.Crop,
+  maxDimensionPx: Int = 512,
   modifier: Modifier = Modifier,
 ) {
-  val bitmap =
-    remember(decryptedBytes) {
-      decryptedBytes?.let { bytes ->
-        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-          .getOrNull()
+  val cacheKey = remember(item.id, decryptedBytes?.size, maxDimensionPx) {
+    if (decryptedBytes == null) null else "${item.id}:${decryptedBytes.size}:$maxDimensionPx"
+  }
+  val cachedImmediate = remember(cacheKey) {
+    cacheKey?.let { synchronized(vaultBitmapCache) { vaultBitmapCache.get(it) } }
+  }
+  val bitmap by
+    produceState<ImageBitmap?>(
+      initialValue = cachedImmediate,
+      cacheKey,
+      decryptedBytes,
+      maxDimensionPx,
+    ) {
+      if (value == null && decryptedBytes != null && cacheKey != null) {
+        value =
+          withContext(Dispatchers.IO) {
+            runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, bounds)
+                var sample = 1
+                val maxEdge = maxOf(bounds.outWidth, bounds.outHeight)
+                if (maxEdge > maxDimensionPx && maxDimensionPx > 0) {
+                  while (maxEdge / sample > maxDimensionPx * 2) sample *= 2
+                }
+                BitmapFactory.decodeByteArray(
+                    decryptedBytes,
+                    0,
+                    decryptedBytes.size,
+                    BitmapFactory.Options().apply { inSampleSize = sample },
+                  )
+                  ?.asImageBitmap()
+                  ?.also { decoded ->
+                    synchronized(vaultBitmapCache) { vaultBitmapCache.put(cacheKey, decoded) }
+                  }
+              }
+              .getOrNull()
+          }
       }
     }
-  if (bitmap != null) {
+  val activeBitmap = bitmap
+  if (activeBitmap != null) {
     Image(
-      bitmap = bitmap,
+      bitmap = activeBitmap,
       contentDescription = item.title,
       contentScale = contentScale,
       colorFilter = toneColorFilter(item.tonePreset),
@@ -407,7 +467,8 @@ fun MediaThumbnailCard(
   val cornerRadius = if (compactMode) 6.dp else 12.dp
   val scale by
     animateFloatAsState(
-      targetValue = if (isSelected) 0.92f else 1f,
+      targetValue = if (isSelectionMode && isSelected) 0.92f else 1f,
+      animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
       label = "selectScale",
     )
 
@@ -437,7 +498,11 @@ fun MediaThumbnailCard(
       ),
   ) {
     Box(modifier = Modifier.fillMaxSize()) {
-      GalleryMediaImage(item = item, modifier = Modifier.fillMaxSize())
+      GalleryMediaImage(
+        item = item,
+        thumbnailSizePx = if (compactMode) 220 else 384,
+        modifier = Modifier.fillMaxSize(),
+      )
 
       if (isSelected) {
         Box(
@@ -487,6 +552,23 @@ fun MediaThumbnailCard(
             text = "OCR",
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
             color = Color.White,
+          )
+        }
+      } else if (!compactMode && item.hasNonDestructiveEdits) {
+        Box(
+          modifier =
+            Modifier.align(Alignment.TopStart)
+              .padding(5.dp)
+              .size(20.dp)
+              .clip(CircleShape)
+              .background(Color.Black.copy(alpha = 0.58f)),
+          contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+            imageVector = Icons.Filled.AutoFixHigh,
+            contentDescription = "Edited",
+            tint = Color(0xFF6EE7B7),
+            modifier = Modifier.size(11.dp),
           )
         }
       }
@@ -570,7 +652,7 @@ fun StorageBreakdownBar(
 ) {
   val extended = LocalToadColors.current
   val modelsMb =
-    (if (faceModelInstalled) 37.6f else 0f) +
+    (if (faceModelInstalled) 35.9f else 0f) +
       (if (semanticModelInstalled) 213.0f else 0f) +
       (if (depthModelInstalled) 27.3f else 0f)
   val total = (14.2f + modelsMb + mlIndexMb + cacheMb).coerceAtLeast(1f)

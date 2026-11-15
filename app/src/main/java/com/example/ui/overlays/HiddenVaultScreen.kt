@@ -628,7 +628,7 @@ fun HiddenVaultScreen(
                   }
                 }
               } else {
-                items(rows) { rowItems ->
+                items(items = rows, key = { row -> "vault_row_${row.first().id}" }, contentType = { "vault_row" }) { rowItems ->
                   Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(gridSpacing),
