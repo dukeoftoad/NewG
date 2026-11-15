@@ -15,6 +15,26 @@ import org.robolectric.annotation.Config
 class FacePersonClustererTest {
 
   @Test
+  fun assignmentTargetsPutRankedPeopleFirstAndKeepOtherPeopleAsFallbacks() {
+    val alice = FacePersonGroup("alice", listOf(1L), 1, 1L, name = "Alice")
+    val bob = FacePersonGroup("bob", listOf(2L), 1, 2L, name = "Bob")
+    val carol = FacePersonGroup("carol", listOf(3L), 1, 3L, name = "Carol")
+
+    val ordered = orderFaceAssignmentTargets(
+      people = listOf(alice, bob, carol),
+      suggestions = listOf(
+        FacePersonSuggestion("carol", 0.08f, 0.12f),
+        FacePersonSuggestion("alice", 0.10f, 0.18f),
+        FacePersonSuggestion("missing", 0.01f, 0.02f),
+      ),
+    )
+
+    assertEquals(listOf("carol", "alice", "bob"), ordered.map { it.id })
+  }
+
+
+
+  @Test
   fun resolvesStableFaceIdentityWhenDetectorOrderingChanges() {
     val original = media(
       id = 20L,
