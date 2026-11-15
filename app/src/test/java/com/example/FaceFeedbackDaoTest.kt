@@ -191,6 +191,57 @@ class FaceFeedbackDaoTest {
   }
 
   @Test
+  fun legacyIndexOnlyAssignmentHistoryAndCoverAreBackfilledBeforeReindex() = runBlocking {
+    dao.insertSingleMedia(
+      MediaItemEntity(
+        id = 95L,
+        title = "Legacy identity fixture",
+        category = "CAMERA",
+        mediaType = "PHOTO",
+        dateLabel = "",
+        weekGroup = "",
+        monthGroup = "",
+        timestamp = 1L,
+        locationName = "",
+        hasGps = false,
+        mapX = 0f,
+        mapY = 0f,
+        aspectRatio = 1f,
+        tagsCsv = "",
+        ocrText = "",
+        exifSummary = "",
+        faceDataJson = legacyFaceJson(0, 1),
+      )
+    )
+    dao.assignFaceWithHistory(95L, 0, "person-legacy", 100L)
+    dao.upsertFacePerson(
+      FacePersonEntity(
+        clusterId = "person-legacy",
+        name = "Legacy",
+        coverPhotoId = 95L,
+        coverFaceIndex = 0,
+      )
+    )
+    val expectedFaceId = stableFaceIdForFixture(95L, 0)
+
+    dao.updateFaceIndexAndReconcile(
+      95L,
+      faceJson("face-other", expectedFaceId),
+      200L,
+    )
+
+    val assignment = dao.getFaceAssignment(95L, 1)
+    assertEquals("person-legacy", assignment?.personClusterId)
+    assertEquals(expectedFaceId, assignment?.faceId)
+    val history = dao.getFaceCorrectionHistoryForPhoto(95L).single()
+    assertEquals(1, history.faceIndex)
+    assertEquals(expectedFaceId, history.faceId)
+    val cover = dao.getFacePerson("person-legacy")
+    assertEquals(1, cover?.coverFaceIndex)
+    assertEquals(expectedFaceId, cover?.coverFaceId)
+  }
+
+  @Test
   fun correctionHistoryAndCustomCoverFollowStableFaceAfterReindex() = runBlocking {
     dao.insertSingleMedia(
       MediaItemEntity(
@@ -293,6 +344,39 @@ class FaceFeedbackDaoTest {
     dao.updateFaceIndexAndReconcile(94L, """{"version":1,"faces":[]}""", 200L)
 
     assertEquals("person-a", dao.getFaceAssignmentByFaceId(94L, "face-a")?.personClusterId)
+  }
+
+  private fun legacyFaceJson(vararg axes: Int): String {
+    val faces = JSONArray()
+    axes.forEach { axis ->
+      val embedding = JSONArray()
+      repeat(192) { index -> embedding.put(if (index == axis) 1.0 else 0.0) }
+      faces.put(
+        JSONObject()
+          .put("box", JSONArray().put(0.1).put(0.2).put(0.6).put(0.8))
+          .put("embedding", embedding)
+      )
+    }
+    return JSONObject()
+      .put("version", 1)
+      .put("model", "ente-face-recognition")
+      .put("faces", faces)
+      .toString()
+  }
+
+  private fun stableFaceIdForFixture(photoId: Long, axis: Int): String {
+    val signature = buildString {
+      append("ente-face-recognition").append('|').append(photoId)
+      listOf(0.1f, 0.2f, 0.6f, 0.8f).forEach {
+        append('|').append(kotlin.math.round(it * 100f).toInt())
+      }
+      repeat(192) { index ->
+        append('|').append(if (index == axis) 1000 else 0)
+      }
+    }
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+      .digest(signature.toByteArray(Charsets.UTF_8))
+    return "face-" + digest.take(16).joinToString("") { "%02x".format(it) }
   }
 
   private fun faceJson(vararg ids: String): String {
