@@ -1,7 +1,9 @@
 package com.example.ui.components.people
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import android.graphics.Bitmap
@@ -9,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import com.example.data.ai.FacePersonGroup
 import com.example.data.ai.FaceReference
 import com.example.data.model.AppearanceMode
@@ -212,7 +215,10 @@ class PersonManagementSheetTest {
       }
     }
 
-    compose.onNodeWithText("Unignore").performScrollTo().assertIsDisplayed().performClick()
+    compose
+      .onNodeWithTag("search_results_list")
+      .performScrollToNode(hasText("Unignore"))
+    compose.onNodeWithText("Unignore").assertIsDisplayed().performClick()
     compose.runOnIdle { assertEquals("alice" to false, restored) }
   }
 }

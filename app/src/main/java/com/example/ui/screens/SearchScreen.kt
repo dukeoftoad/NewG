@@ -214,6 +214,7 @@ fun SearchScreen(
           modifier =
             Modifier.weight(1f)
               .fillMaxWidth()
+              .testTag("search_results_list")
               .pinchToZoomGridColumns(
                 currentColumns = prefsCols,
                 minColumns = 2,

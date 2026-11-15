@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -599,12 +598,10 @@ object PhotoEditorRenderer {
 
     val hasCurve = abs(adj.highlights) > 0.02f || abs(adj.shadows) > 0.02f
 
-    // Fast path: apply ColorMatrix via native Skia Canvas when no non-linear highlight/shadow curve is active
-    if (!hasCurve) {
-      val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
-      Canvas(bitmap).drawBitmap(bitmap, 0f, 0f, paint)
-      return
-    }
+    // NOTE: do not short-circuit to a Canvas self-draw with a ColorMatrixColorFilter
+    // here. Drawing a bitmap onto itself through a filter is not reliably applied in
+    // Robolectric's native graphics, which lets unfiltered pixels through the whole
+    // pipeline; the explicit pixel loop below is deterministic everywhere.
 
     val m = cm.array
     val m0 = m[0]; val m1 = m[1]; val m2 = m[2]; val m4 = m[4]
