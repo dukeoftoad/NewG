@@ -49,6 +49,15 @@ interface GalleryDao {
   @Query("DELETE FROM face_exclusions WHERE photoId = :photoId")
   suspend fun deleteFaceExclusionsForPhoto(photoId: Long)
 
+  @Query("SELECT * FROM face_correction_history WHERE photoId = :photoId")
+  suspend fun getFaceCorrectionHistoryForPhoto(photoId: Long): List<FaceCorrectionHistoryEntity>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertFaceCorrectionHistory(entry: FaceCorrectionHistoryEntity)
+
+  @Query("SELECT * FROM face_people WHERE coverPhotoId = :photoId AND coverFaceIndex IS NOT NULL")
+  suspend fun getPeopleWithCoverForPhoto(photoId: Long): List<FacePersonEntity>
+
   @Transaction
   suspend fun updateFaceIndexAndReconcile(id: Long, faceDataJson: String, indexedAt: Long) {
     updateFaceIndex(id, faceDataJson, indexedAt)
@@ -68,10 +77,19 @@ interface GalleryDao {
       .mapNotNull { row -> resolve(row.faceId, row.faceIndex)?.let { row.copy(faceIndex = it) } }
       .sortedByDescending { it.faceId != null }
       .distinctBy { it.faceIndex }
+    val corrections = getFaceCorrectionHistoryForPhoto(id)
+      .mapNotNull { row -> resolve(row.faceId, row.faceIndex)?.let { row.copy(faceIndex = it) } }
+    val people = getPeopleWithCoverForPhoto(id).mapNotNull { person ->
+      val oldIndex = person.coverFaceIndex ?: return@mapNotNull null
+      val newIndex = resolve(person.coverFaceId, oldIndex) ?: return@mapNotNull null
+      person.copy(coverFaceIndex = newIndex)
+    }
     deleteFaceAssignmentsForPhoto(id)
     deleteFaceExclusionsForPhoto(id)
     assignments.forEach { upsertFaceAssignment(it) }
     exclusions.forEach { upsertFaceExclusion(it) }
+    corrections.forEach { upsertFaceCorrectionHistory(it) }
+    people.forEach { upsertFacePerson(it) }
   }
 
   @Query("SELECT * FROM media_items WHERE isHidden = 0 AND isTrashed = 0 AND faceDataJson IS NOT NULL ORDER BY timestamp ASC")
