@@ -87,7 +87,7 @@ fun SearchScreen(
   onSetColumns: (Int) -> Unit = {},
   onNamePerson: (FacePersonGroup, String?) -> Unit = { _, _ -> },
   onExcludeFace: (Long, Int) -> Unit = { _, _ -> },
-  onSetPersonCover: (FacePersonGroup, Long) -> Unit = { _, _ -> },
+  onSetPersonCover: (FacePersonGroup, Long, Int) -> Unit = { _, _, _ -> },
   onSetPersonIgnored: (FacePersonGroup, Boolean) -> Unit = { _, _ -> },
   onAssignFace: (Long, Int, FacePersonGroup) -> Unit = { _, _, _ -> },
   onUndoFaceCorrection: () -> Unit = {},
@@ -646,16 +646,34 @@ fun SearchScreen(
               }) { Text(existing) }
             }
           }
-          Text("Choose a cover photo", style = MaterialTheme.typography.labelMedium)
-          group.photoIds.sortedByDescending { it == group.coverPhotoId }.take(8).mapNotNull { photoId -> uiState.visibleMedia.firstOrNull { it.id == photoId } }.forEach { photo ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-              GalleryMediaImage(item = photo, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)))
-              TextButton(onClick = {
-                onSetPersonCover(group, photo.id)
-                personBeingNamed = null
-              }) { Text(if (photo.id == group.coverPhotoId) "Current cover" else "Set as cover") }
+          Text("Choose a face as cover", style = MaterialTheme.typography.labelMedium)
+          group.faces
+            .sortedByDescending { it.photoId == group.coverPhotoId && it.faceIndex == group.coverFaceIndex }
+            .take(16)
+            .forEach { face ->
+              val photo = uiState.visibleMedia.firstOrNull { it.id == face.photoId }
+              if (photo != null) {
+                val selected = face.photoId == group.coverPhotoId && face.faceIndex == group.coverFaceIndex
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                  FaceThumbnail(
+                    item = photo,
+                    bounds = group.faceBounds[face],
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
+                  )
+                  Column(modifier = Modifier.weight(1f)) {
+                    Text(photo.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Face ${face.faceIndex + 1}", style = MaterialTheme.typography.labelSmall, color = extended.textMuted)
+                  }
+                  TextButton(onClick = {
+                    onSetPersonCover(group, face.photoId, face.faceIndex)
+                    personBeingNamed = null
+                  }) { Text(if (selected) "Current cover" else "Use as cover") }
+                }
+              }
             }
-          }
           if (group.faces.isNotEmpty()) {
             Text("Remove an incorrectly grouped face", style = MaterialTheme.typography.labelMedium)
             group.faces.take(10).forEach { face ->
