@@ -65,7 +65,7 @@ interface GalleryDao {
     val previousJson = getMediaById(id)?.faceDataJson
     val previousRoot = runCatching { previousJson?.let(::JSONObject) }.getOrNull()
     val previousFaces = previousRoot?.optJSONArray("faces")
-    if (previousFaces != null) {
+    if (previousRoot != null && previousFaces != null) {
       fun legacyId(index: Int): String? = previousFaces.optJSONObject(index)?.let { face ->
         stableFaceIdFromLegacyPayload(id, previousRoot, face)
       }
