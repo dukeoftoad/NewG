@@ -7,6 +7,8 @@ import androidx.compose.ui.test.performClick
 import android.graphics.Bitmap
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performScrollTo
 import com.example.data.ai.FacePersonGroup
 import com.example.data.ai.FaceReference
 import com.example.data.model.AppearanceMode
@@ -126,7 +128,7 @@ class PersonManagementSheetTest {
       }
     }
 
-    compose.onNodeWithText("Use as cover").performClick()
+    compose.onNodeWithText("Use as cover").performScrollTo().assertIsDisplayed().performClick()
     compose.runOnIdle {
       assertEquals(Triple("alice", 2L, 0), selected)
     }
@@ -156,7 +158,7 @@ class PersonManagementSheetTest {
     // Each detected face exposes its own assignment entry point. The
     // deterministic suggestion ordering is covered by FacePersonClustererTest;
     // Robolectric does not reliably expose Compose DropdownMenu popup semantics.
-    compose.onNodeWithText("Assign").assertIsDisplayed()
+    compose.onAllNodesWithText("Assign").onFirst().performScrollTo().assertIsDisplayed()
   }
 
   @Test
