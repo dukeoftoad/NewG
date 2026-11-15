@@ -433,7 +433,7 @@ class GalleryViewModel(
           folderDestinations = folderDestSet.toList(),
           folderAlbums = listOf(favoritesFolder) + deviceBucketFolders + userFolders,
           vaultMedia = media.vault,
-          vaultDecryptedPreviews = modals.vaultPreviews,
+          vaultDecryptedPreviews = emptyMap(),
           trashedMedia = media.trashed,
           selectedMediaIds = emptySet(),
           isSelectionMode = false,
