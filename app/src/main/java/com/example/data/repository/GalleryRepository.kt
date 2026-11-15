@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import com.example.data.ai.FacePersonFeedbackManager
 import com.example.data.local.AlbumEntity
 import com.example.data.local.GalleryDao
 import com.example.data.local.FacePersonEntity
@@ -42,6 +43,7 @@ class GalleryRepository(
   val vaultCryptoManager: VaultCryptoManager = VaultCryptoManager(context),
   private val mediaStoreScanner: MediaStoreScanner = MediaStoreScanner(context),
 ) {
+  private val faceFeedback = FacePersonFeedbackManager(dao)
 
   val visibleMedia: Flow<List<GalleryMediaItem>> =
     dao.observeVisibleMedia().map { list -> list.map { it.toDomain() } }
@@ -65,41 +67,25 @@ class GalleryRepository(
   val faceCorrectionHistory: Flow<List<FaceCorrectionHistoryEntity>> =
     dao.observeFaceCorrectionHistory()
 
-  suspend fun assignFaceToPerson(photoId: Long, faceIndex: Int, personClusterId: String) {
-    dao.assignFaceWithHistory(
-      photoId = photoId,
-      faceIndex = faceIndex,
-      personClusterId = personClusterId,
-      changedAt = System.currentTimeMillis(),
-    )
-  }
+  suspend fun assignFaceToPerson(photoId: Long, faceIndex: Int, personClusterId: String) =
+    faceFeedback.assignFace(photoId, faceIndex, personClusterId)
 
-  suspend fun excludeFace(photoId: Long, faceIndex: Int) {
-    dao.excludeFaceWithHistory(photoId, faceIndex, System.currentTimeMillis())
-  }
+  suspend fun excludeFace(photoId: Long, faceIndex: Int) =
+    faceFeedback.rejectFace(photoId, faceIndex)
 
-  suspend fun restoreFace(photoId: Long, faceIndex: Int) {
-    dao.restoreFaceWithHistory(photoId, faceIndex, System.currentTimeMillis())
-  }
+  suspend fun restoreFace(photoId: Long, faceIndex: Int) =
+    faceFeedback.restoreFace(photoId, faceIndex)
 
-  suspend fun undoLastFaceCorrection(): Boolean = dao.undoLatestFaceCorrection()
+  suspend fun undoLastFaceCorrection(): Boolean = faceFeedback.undoLastCorrection()
 
-  suspend fun saveFacePerson(person: FacePersonEntity) {
-    val existing = dao.getFacePerson(person.clusterId)
-    dao.upsertFacePerson(
-      existing?.copy(name = person.name, updatedAt = person.updatedAt) ?: person
-    )
-  }
+  suspend fun saveFacePerson(person: FacePersonEntity) =
+    faceFeedback.setPersonName(person.clusterId, person.name)
 
-  suspend fun setFacePersonIgnored(clusterId: String, ignored: Boolean) {
-    val existing = dao.getFacePerson(clusterId) ?: FacePersonEntity(clusterId = clusterId)
-    dao.upsertFacePerson(existing.copy(isIgnored = ignored, updatedAt = System.currentTimeMillis()))
-  }
+  suspend fun setFacePersonIgnored(clusterId: String, ignored: Boolean) =
+    faceFeedback.setPersonIgnored(clusterId, ignored)
 
-  suspend fun setFacePersonCover(clusterId: String, photoId: Long, faceIndex: Int) {
-    val existing = dao.getFacePerson(clusterId) ?: FacePersonEntity(clusterId = clusterId)
-    dao.upsertFacePerson(existing.copy(coverPhotoId = photoId, coverFaceIndex = faceIndex, updatedAt = System.currentTimeMillis()))
-  }
+  suspend fun setFacePersonCover(clusterId: String, photoId: Long, faceIndex: Int) =
+    faceFeedback.setPersonCover(clusterId, photoId, faceIndex)
 
   suspend fun removeFacePersonLabel(clusterId: String) = dao.deleteFacePerson(clusterId)
 
