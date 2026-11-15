@@ -108,7 +108,14 @@ class ToadGalleryRobolectricTest {
         .getOrDefault(false)
     }
     composeTestRule.onNodeWithTag("search_mode_map").performClick()
-    composeTestRule.waitForIdle()
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("map_mode_pins").assertIsDisplayed()
+          composeTestRule.onNodeWithTag("map_gps_summary_pill").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("map_mode_pins").assertIsDisplayed()
     composeTestRule.onNodeWithTag("map_gps_summary_pill").assertIsDisplayed()
 
