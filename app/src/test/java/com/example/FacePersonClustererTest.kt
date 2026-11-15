@@ -74,6 +74,23 @@ class FacePersonClustererTest {
   }
 
   @Test
+  fun keepsFaceBoundsAndCoverFaceIdentityForPeopleThumbnails() {
+    val rows = listOf(
+      media(id = 11L, timestamp = 1L, embeddings = listOf(vector(0))),
+      media(id = 12L, timestamp = 2L, embeddings = listOf(vector(0))),
+    )
+
+    val group = FacePersonClusterer.cluster(rows, distanceThreshold = 0.24f).single()
+
+    assertEquals(12L, group.coverPhotoId)
+    assertEquals(0, group.coverFaceIndex)
+    assertEquals(
+      FaceCropBounds(0.1f, 0.2f, 0.6f, 0.8f),
+      group.faceBounds[FaceReference(12L, 0)],
+    )
+  }
+
+  @Test
   fun doesNotExposeAClusterFoundInOnlyOnePhoto() {
     val rows = listOf(
       media(id = 1L, timestamp = 1L, embeddings = listOf(vector(0), vector(0))),
@@ -101,7 +118,11 @@ class FacePersonClustererTest {
     embeddings.forEach { vector ->
       val values = JSONArray()
       vector.forEach { values.put(it.toDouble()) }
-      faces.put(JSONObject().put("embedding", values))
+      faces.put(
+        JSONObject()
+          .put("embedding", values)
+          .put("box", JSONArray().put(0.1).put(0.2).put(0.6).put(0.8))
+      )
     }
     return MediaItemEntity(
       id = id,
