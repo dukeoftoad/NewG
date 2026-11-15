@@ -505,9 +505,9 @@ class GalleryViewModel(
             rows = faceBundle.faceRows,
           )
         } else emptyMap()
-        val visibleIds = base.visibleMedia.mapTo(HashSet()) { it.id }
+        val visibleIds = base.visibleMedia.mapTo(mutableSetOf<Long>()) { it.id }
         val validSelection = selection.selectedIds.filter { it in visibleIds }.toSet()
-        val geoIds = base.geoItems.mapTo(HashSet()) { it.id }
+        val geoIds = base.geoItems.mapTo(mutableSetOf<Long>()) { it.id }
         val selectedPinId = modals.selectedPinId?.takeIf { it in geoIds }
           ?: base.geoItems.firstOrNull()?.id
         base.copy(
