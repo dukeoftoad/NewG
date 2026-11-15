@@ -354,13 +354,16 @@ class GalleryViewModel(
         // Ente's suggestion flow first filters by person/cluster mean distance,
         // then ranks candidates by sampled pairwise median distance. Keep this
         // local-only and compute suggestions only for the unassigned review queue.
-        val facePersonSuggestions = withContext(Dispatchers.Default) {
-          FacePersonSuggestionRanker.rankAll(
-            candidates = unassignedFaceGroups,
-            people = peopleGroups,
-            rows = media.faceRows,
-          )
-        }
+        val facePersonSuggestions =
+          if (q == "portraits") {
+            withContext(Dispatchers.Default) {
+              FacePersonSuggestionRanker.rankAll(
+                candidates = unassignedFaceGroups,
+                people = peopleGroups,
+                rows = media.faceRows,
+              )
+            }
+          } else emptyMap()
         val peoplePhotoIds = peopleGroups.flatMap { it.photoIds }.toSet()
         val isPeopleSearch = q == "portraits"
         val selectedPersonGroup = peopleGroups.firstOrNull { q == "person:${it.id}" }
