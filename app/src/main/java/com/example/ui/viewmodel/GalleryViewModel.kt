@@ -11,6 +11,8 @@ import com.example.data.ai.DepthAnythingV2Engine
 import com.example.data.ai.FacePersonClusterer
 import com.example.data.ai.FaceReference
 import com.example.data.ai.FacePersonGroup
+import com.example.data.ai.FacePersonSuggestion
+import com.example.data.ai.FacePersonSuggestionRanker
 import com.example.data.ai.DepthMapResult
 import com.example.data.ai.DepthModelManager
 import com.example.data.ai.DepthModelPackState
@@ -64,6 +66,7 @@ data class GalleryUiState(
   val customAlbums: List<AlbumEntity> = emptyList(),
   val peopleGroups: List<FacePersonGroup> = emptyList(),
   val unassignedFaceGroups: List<FacePersonGroup> = emptyList(),
+  val facePersonSuggestions: Map<String, List<FacePersonSuggestion>> = emptyMap(),
   val ignoredPeopleGroups: List<FacePersonGroup> = emptyList(),
   val faceCorrectionHistory: List<FaceCorrectionHistoryEntity> = emptyList(),
   val faceIndexRevisions: Map<Long, Long> = emptyMap(),
@@ -346,6 +349,16 @@ class GalleryViewModel(
               }
             }
             .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.name ?: it.id })
+        // Ente's suggestion flow first filters by person/cluster mean distance,
+        // then ranks candidates by sampled pairwise median distance. Keep this
+        // local-only and compute suggestions only for the unassigned review queue.
+        val facePersonSuggestions = unassignedFaceGroups.associate { candidate ->
+          candidate.id to FacePersonSuggestionRanker.rank(
+            candidate = candidate,
+            people = peopleGroups,
+            rows = media.faceRows,
+          )
+        }
         val peoplePhotoIds = peopleGroups.flatMap { it.photoIds }.toSet()
         val isPeopleSearch = q == "portraits"
         val selectedPersonGroup = peopleGroups.firstOrNull { q == "person:${it.id}" }
@@ -435,6 +448,7 @@ class GalleryViewModel(
           customAlbums = media.customAlbums,
           peopleGroups = peopleGroups,
           unassignedFaceGroups = unassignedFaceGroups,
+          facePersonSuggestions = facePersonSuggestions,
           ignoredPeopleGroups = ignoredPeopleGroups,
           faceCorrectionHistory = media.faceCorrectionHistory,
           faceIndexRevisions = media.faceRows.associate { it.id to (it.faceIndexedAt ?: 0L) },
