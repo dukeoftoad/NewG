@@ -144,8 +144,15 @@ class MultiSelectBatchRobolectricTest {
 
     // Open Batch Move Destination dialog and create a new album + move
     composeTestRule.onNodeWithTag("batch_move_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("batch_move_dialog").assertIsDisplayed()
+    // The dialog visibility is driven by the ViewModel's combined UI state;
+    // wait for that state to reach Compose instead of assuming idle drains it.
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("batch_move_dialog").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("move_dest_vault").assertIsDisplayed()
     composeTestRule.onNodeWithTag("move_dest_folder_travel").performScrollTo().assertIsDisplayed()
 
