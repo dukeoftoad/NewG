@@ -12,6 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -34,7 +35,7 @@ class FaceFeedbackDaoTest {
   }
 
   @Test
-  fun assignmentUndoRestoresPreviousAssignment() {
+  fun assignmentUndoRestoresPreviousAssignment() = runBlocking {
     dao.assignFaceWithHistory(42L, 1, "person-a", 100L)
     dao.assignFaceWithHistory(42L, 1, "person-b", 200L)
 
@@ -46,7 +47,7 @@ class FaceFeedbackDaoTest {
   }
 
   @Test
-  fun assignmentAfterExclusionClearsExclusionAndUndoRestoresIt() {
+  fun assignmentAfterExclusionClearsExclusionAndUndoRestoresIt() = runBlocking {
     dao.excludeFaceWithHistory(7L, 0, 100L)
     assertTrue(dao.isFaceExcluded(7L, 0))
 
@@ -60,7 +61,7 @@ class FaceFeedbackDaoTest {
   }
 
   @Test
-  fun restoringExcludedFaceCanBeUndone() {
+  fun restoringExcludedFaceCanBeUndone() = runBlocking {
     dao.excludeFaceWithHistory(9L, 2, 100L)
     dao.restoreFaceWithHistory(9L, 2, 200L)
     assertFalse(dao.isFaceExcluded(9L, 2))
@@ -72,7 +73,7 @@ class FaceFeedbackDaoTest {
   }
 
   @Test
-  fun undoReturnsFalseWhenHistoryIsEmptyOrAlreadyUndone() {
+  fun undoReturnsFalseWhenHistoryIsEmptyOrAlreadyUndone() = runBlocking {
     assertFalse(dao.undoLatestFaceCorrection())
     dao.assignFaceWithHistory(1L, 0, "person-a", 100L)
     assertTrue(dao.undoLatestFaceCorrection())
