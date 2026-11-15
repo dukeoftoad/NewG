@@ -54,7 +54,8 @@ object FacePersonClusterer {
         // Ente turns a rejected face into its own cluster instead of deleting it.
         // Keep it visible as an unassigned correction candidate so it can be assigned elsewhere.
         if (reference in excludedFaces) {
-          val rejectedId = "rejected-${row.id}-$index"
+          val rejectedFaceId = faceObject.optString("faceId").takeIf { it.isNotBlank() }
+          val rejectedId = "rejected-${row.id}-${rejectedFaceId ?: index}"
           rejectedFaceGroups += FacePersonGroup(
             id = rejectedId,
             photoIds = listOf(row.id),
