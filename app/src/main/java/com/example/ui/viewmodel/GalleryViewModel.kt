@@ -292,15 +292,22 @@ class GalleryViewModel(
             minimumPhotos = 1,
           ).map { group ->
             val record = personRecords[group.id]
-            val stableCoverIndex = if (record?.coverPhotoId != null && record.coverFaceId != null) {
-              rowsById[record.coverPhotoId]?.let { row ->
-                FacePersonClusterer.faceIndexForId(row, record.coverFaceId)
+            val savedCoverIsInGroup = record?.coverPhotoId?.let { it in group.photoIds } == true
+            val stableCoverIndex = if (savedCoverIsInGroup && record?.coverFaceId != null) {
+              rowsById[record.coverPhotoId!!]?.let { row ->
+                FacePersonClusterer.faceIndexForId(row, record.coverFaceId!!)
               }
             } else null
+            val coverFaceIndex = when {
+              stableCoverIndex != null -> stableCoverIndex
+              record?.coverFaceId == null && savedCoverIsInGroup ->
+                record.coverFaceIndex ?: group.coverFaceIndex
+              else -> group.coverFaceIndex
+            }
             group.copy(
               name = record?.name,
-              coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId,
-              coverFaceIndex = stableCoverIndex ?: record?.coverFaceIndex ?: group.coverFaceIndex,
+              coverPhotoId = if (savedCoverIsInGroup) record!!.coverPhotoId!! else group.coverPhotoId,
+              coverFaceIndex = coverFaceIndex,
             )
           }
         // Ente's People review surface exposes unassigned single-photo face suggestions
