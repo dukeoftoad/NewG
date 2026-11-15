@@ -173,6 +173,14 @@ class FaceIndexManager(
       ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(270f)
       ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
       ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f, -1f)
+      ExifInterface.ORIENTATION_TRANSPOSE -> {
+        matrix.setRotate(90f)
+        matrix.postScale(-1f, 1f)
+      }
+      ExifInterface.ORIENTATION_TRANSVERSE -> {
+        matrix.setRotate(270f)
+        matrix.postScale(-1f, 1f)
+      }
       else -> return@withContext decoded
     }
     val corrected = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
