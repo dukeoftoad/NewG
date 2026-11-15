@@ -97,14 +97,9 @@ interface GalleryDao {
         if (oldClusterId == newClusterId) continue
         val oldPerson = getFacePerson(oldClusterId) ?: continue
         val existingPerson = getFacePerson(newClusterId)
-        val preferred = when {
-          existingPerson == null -> oldPerson.copy(clusterId = newClusterId)
-          oldPerson.updatedAt > existingPerson.updatedAt -> oldPerson.copy(clusterId = newClusterId)
-          else -> existingPerson
-        }
-        val fallback = if (preferred.clusterId == newClusterId && preferred.updatedAt == oldPerson.updatedAt) {
-          existingPerson
-        } else oldPerson
+        val oldRecordIsNewer = existingPerson == null || oldPerson.updatedAt > existingPerson.updatedAt
+        val preferred = if (oldRecordIsNewer) oldPerson.copy(clusterId = newClusterId) else existingPerson!!
+        val fallback = if (oldRecordIsNewer) existingPerson else oldPerson
         val migratedPerson = preferred.copy(
           name = preferred.name ?: fallback?.name,
           coverPhotoId = preferred.coverPhotoId ?: fallback?.coverPhotoId,
@@ -118,8 +113,12 @@ interface GalleryDao {
         getFaceCorrectionHistoryForPersonCluster(oldClusterId).forEach { entry ->
           upsertFaceCorrectionHistory(
             entry.copy(
-              previousPersonClusterId = entry.previousPersonClusterId?.replace(oldClusterId, newClusterId),
-              nextPersonClusterId = entry.nextPersonClusterId?.replace(oldClusterId, newClusterId),
+              previousPersonClusterId = entry.previousPersonClusterId?.let {
+                if (it == oldClusterId) newClusterId else it
+              },
+              nextPersonClusterId = entry.nextPersonClusterId?.let {
+                if (it == oldClusterId) newClusterId else it
+              },
             )
           )
         }
