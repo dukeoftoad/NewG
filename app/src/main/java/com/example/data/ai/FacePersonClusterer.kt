@@ -12,6 +12,7 @@ data class FacePersonGroup(
   val photoIds: List<Long>,
   val faceCount: Int,
   val coverPhotoId: Long,
+  val coverFaceIndex: Int? = null,
   val name: String? = null,
   val clusterIds: List<String> = listOf(id),
   val faces: List<FaceReference> = emptyList(),
@@ -83,6 +84,7 @@ object FacePersonClusterer {
         FacePersonGroup(
           group.id, ids, group.samples.size, ids.first(),
           clusterIds = listOf(group.id),
+          coverFaceIndex = group.samples.firstOrNull { it.photoId == ids.first() }?.faceIndex,
           faces = group.samples.map { FaceReference(it.photoId, it.faceIndex) },
           faceBounds = group.samples.mapNotNull { sample ->
             sample.bounds?.let { FaceReference(sample.photoId, sample.faceIndex) to it }
@@ -105,6 +107,7 @@ object FacePersonClusterer {
           faceCount = references.size,
           coverPhotoId = photoIds.first(),
           clusterIds = listOf(personClusterId),
+          coverFaceIndex = references.firstOrNull { it.photoId == photoIds.first() }?.faceIndex,
           faces = references,
           faceBounds = references.mapNotNull { reference ->
             val row = rows.firstOrNull { it.id == reference.photoId } ?: return@mapNotNull null
@@ -135,6 +138,7 @@ object FacePersonClusterer {
             photoIds = photoIds,
             faceCount = samePerson.sumOf(FacePersonGroup::faceCount),
             coverPhotoId = first.coverPhotoId.takeIf { it in photoIds } ?: photoIds.first(),
+            coverFaceIndex = first.coverFaceIndex,
             clusterIds = samePerson.flatMap(FacePersonGroup::clusterIds).distinct(),
             faces = samePerson.flatMap(FacePersonGroup::faces).distinct(),
             faceBounds = samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
