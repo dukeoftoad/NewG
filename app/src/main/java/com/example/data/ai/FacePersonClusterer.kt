@@ -29,6 +29,7 @@ object FacePersonClusterer {
     distanceThreshold: Float,
     excludedFaces: Set<FaceReference> = emptySet(),
     manualAssignments: Map<FaceReference, String> = emptyMap(),
+    minimumPhotos: Int = MIN_PHOTOS,
   ): List<FacePersonGroup> {
     val clusters = mutableListOf<Cluster>()
     rows.sortedBy { it.timestamp }.forEach { row ->
@@ -78,7 +79,7 @@ object FacePersonClusterer {
       }
     }
     val automaticGroups = clusters
-      .filter { it.samples.map(Sample::photoId).distinct().size >= MIN_PHOTOS }
+      .filter { it.samples.map(Sample::photoId).distinct().size >= minimumPhotos.coerceAtLeast(1) }
       .map { group ->
         val ids = group.samples.map(Sample::photoId).distinct().sortedDescending()
         FacePersonGroup(
