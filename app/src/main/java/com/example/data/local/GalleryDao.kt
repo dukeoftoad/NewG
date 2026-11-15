@@ -60,6 +60,29 @@ interface GalleryDao {
 
   @Transaction
   suspend fun updateFaceIndexAndReconcile(id: Long, faceDataJson: String, indexedAt: Long) {
+    // Backfill legacy index-only feedback against the OLD face payload before replacing it.
+    // The stable ID is derived with the same model/photo/box/embedding signature as the indexer.
+    val previousJson = getMediaById(id)?.faceDataJson
+    val previousRoot = runCatching { previousJson?.let(::JSONObject) }.getOrNull()
+    val previousFaces = previousRoot?.optJSONArray("faces")
+    if (previousFaces != null) {
+      fun legacyId(index: Int): String? = previousFaces.optJSONObject(index)?.let { face ->
+        stableFaceIdFromLegacyPayload(id, previousRoot, face)
+      }
+      getFaceAssignmentsForPhoto(id).filter { it.faceId == null }.forEach { row ->
+        legacyId(row.faceIndex)?.let { upsertFaceAssignment(row.copy(faceId = it)) }
+      }
+      getFaceExclusionsForPhoto(id).filter { it.faceId == null }.forEach { row ->
+        legacyId(row.faceIndex)?.let { upsertFaceExclusion(row.copy(faceId = it)) }
+      }
+      getFaceCorrectionHistoryForPhoto(id).filter { it.faceId == null }.forEach { row ->
+        legacyId(row.faceIndex)?.let { upsertFaceCorrectionHistory(row.copy(faceId = it)) }
+      }
+      getPeopleWithCoverForPhoto(id).filter { it.coverFaceId == null }.forEach { person ->
+        val coverIndex = person.coverFaceIndex ?: return@forEach
+        legacyId(coverIndex)?.let { upsertFacePerson(person.copy(coverFaceId = it)) }
+      }
+    }
     updateFaceIndex(id, faceDataJson, indexedAt)
     val faces = runCatching { JSONObject(faceDataJson).optJSONArray("faces") }.getOrNull()
       ?: return
@@ -374,6 +397,28 @@ interface GalleryDao {
 
   @Query("SELECT * FROM albums ORDER BY createdAt DESC")
   fun observeAlbums(): Flow<List<AlbumEntity>>
+
+  private fun stableFaceIdFromLegacyPayload(
+    photoId: Long,
+    root: JSONObject,
+    face: JSONObject,
+  ): String? {
+    val box = face.optJSONArray("box") ?: return null
+    val embedding = face.optJSONArray("embedding") ?: return null
+    if (box.length() < 4 || embedding.length() != 192) return null
+    val coordinates = (0 until 4).map { box.optDouble(it, Double.NaN).toFloat() }
+    val vector = (0 until embedding.length()).map { embedding.optDouble(it, Double.NaN).toFloat() }
+    if (coordinates.any { !it.isFinite() } || vector.any { !it.isFinite() }) return null
+    val modelId = root.optString("model", "ente-face-recognition").ifBlank { "ente-face-recognition" }
+    val signature = buildString {
+      append(modelId).append('|').append(photoId)
+      coordinates.forEach { append('|').append(kotlin.math.round(it * 100f).toInt()) }
+      vector.forEach { append('|').append(kotlin.math.round(it * 1000f).toInt()) }
+    }
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+      .digest(signature.toByteArray(Charsets.UTF_8))
+    return "face-" + digest.take(16).joinToString("") { "%02x".format(it) }
+  }
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertAlbum(album: AlbumEntity): Long
