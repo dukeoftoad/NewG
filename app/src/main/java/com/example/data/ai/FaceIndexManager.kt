@@ -84,7 +84,7 @@ class FaceIndexManager(
               } finally {
                 bitmap.recycle()
               }
-              dao.updateFaceIndex(photo.id, encodeResult(result), System.currentTimeMillis())
+              dao.updateFaceIndex(photo.id, encodeResult(photo.id, result), System.currentTimeMillis())
               facesFound += result.faces.size
             }
           } catch (cancelled: CancellationException) {
@@ -188,26 +188,43 @@ class FaceIndexManager(
     corrected
   }
 
-  private fun encodeResult(result: FaceAnalysisResult): String {
+  private fun encodeResult(photoId: Long, result: FaceAnalysisResult): String {
     val faces = JSONArray()
     result.faces.forEachIndexed { index, face ->
       val box = JSONArray().put(face.left).put(face.top).put(face.right).put(face.bottom)
       val landmarks = JSONArray()
       face.landmarks.forEach { point -> landmarks.put(JSONArray().put(point.first).put(point.second)) }
       val embedding = JSONArray()
-      result.embeddings[index].forEach { embedding.put(it.toDouble()) }
+      val vector = result.embeddings[index]
+      vector.forEach { embedding.put(it.toDouble()) }
       faces.put(JSONObject()
+        .put("faceId", stableFaceId(photoId, face, vector))
         .put("confidence", face.confidence.toDouble())
         .put("box", box)
         .put("landmarks", landmarks)
         .put("embedding", embedding))
     }
     return JSONObject()
-      .put("version", 1)
+      .put("version", 2)
       .put("model", FaceModelManager.MODEL_ID)
       .put("inferenceMs", result.inferenceTimeMs)
       .put("faces", faces)
       .toString()
+  }
+
+  private fun stableFaceId(photoId: Long, face: FaceBox, embedding: FloatArray): String {
+    // Quantization makes the identifier resilient to insignificant float noise and
+    // detector output ordering while the photo id + box disambiguate repeated faces.
+    val signature = buildString {
+      append(FaceModelManager.MODEL_ID).append('|').append(photoId)
+      listOf(face.left, face.top, face.right, face.bottom).forEach {
+        append('|').append(kotlin.math.round(it * 100f).toInt())
+      }
+      embedding.forEach { append('|').append(kotlin.math.round(it * 1000f).toInt()) }
+    }
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+      .digest(signature.toByteArray(Charsets.UTF_8))
+    return "face-" + digest.take(16).joinToString("") { "%02x".format(it) }
   }
 
   companion object {
