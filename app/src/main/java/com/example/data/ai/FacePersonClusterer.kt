@@ -216,6 +216,9 @@ object FacePersonClusterer {
  * query-to-member distance. The median reduces sensitivity to outlier face crops.
  */
 internal object FaceClusterRanker {
+  fun score(query: FloatArray, centroid: FloatArray, members: List<FloatArray>): Float =
+    score(query, centroid, members.size) { index -> members[index] }
+
   fun score(
     query: FloatArray,
     centroid: FloatArray,
