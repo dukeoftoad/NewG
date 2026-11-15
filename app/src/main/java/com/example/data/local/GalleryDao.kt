@@ -136,26 +136,29 @@ interface GalleryDao {
     if (faces.length() == 0 || (0 until faces.length()).any { index ->
         faces.optJSONObject(index)?.optString("faceId").isNullOrBlank()
       }) return
-    fun resolve(faceId: String?, oldIndex: Int): Int? {
-      if (faceId == null) return oldIndex.takeIf { it in 0 until faces.length() }
+    // A null faceId means the old payload did not contain enough information to
+    // identify this face. Keep that feedback dormant at a negative sentinel index
+    // instead of reusing a detector position that may now belong to somebody else.
+    fun unresolvedIndex(oldIndex: Int): Int = if (oldIndex >= 0) -oldIndex - 1 else oldIndex
+    fun resolve(faceId: String?): Int? {
+      val stableId = faceId?.takeIf { it.isNotBlank() } ?: return null
       return (0 until faces.length()).firstOrNull { index ->
-        faces.optJSONObject(index)?.optString("faceId") == faceId
+        faces.optJSONObject(index)?.optString("faceId") == stableId
       }
     }
     val assignments = getFaceAssignmentsForPhoto(id)
-      .mapNotNull { row -> resolve(row.faceId, row.faceIndex)?.let { row.copy(faceIndex = it) } }
+      .map { row -> row.copy(faceIndex = resolve(row.faceId) ?: unresolvedIndex(row.faceIndex)) }
       .sortedByDescending { it.faceId != null }
       .distinctBy { it.faceIndex }
     val exclusions = getFaceExclusionsForPhoto(id)
-      .mapNotNull { row -> resolve(row.faceId, row.faceIndex)?.let { row.copy(faceIndex = it) } }
+      .map { row -> row.copy(faceIndex = resolve(row.faceId) ?: unresolvedIndex(row.faceIndex)) }
       .sortedByDescending { it.faceId != null }
       .distinctBy { it.faceIndex }
     val corrections = getFaceCorrectionHistoryForPhoto(id)
-      .mapNotNull { row -> resolve(row.faceId, row.faceIndex)?.let { row.copy(faceIndex = it) } }
-    val people = getPeopleWithCoverForPhoto(id).mapNotNull { person ->
-      val oldIndex = person.coverFaceIndex ?: return@mapNotNull null
-      val newIndex = resolve(person.coverFaceId, oldIndex) ?: return@mapNotNull null
-      person.copy(coverFaceIndex = newIndex)
+      .map { row -> row.copy(faceIndex = resolve(row.faceId) ?: unresolvedIndex(row.faceIndex)) }
+    val people = getPeopleWithCoverForPhoto(id).map { person ->
+      val oldIndex = person.coverFaceIndex ?: return@map person
+      person.copy(coverFaceIndex = resolve(person.coverFaceId) ?: unresolvedIndex(oldIndex))
     }
     deleteFaceAssignmentsForPhoto(id)
     deleteFaceExclusionsForPhoto(id)
@@ -416,6 +419,9 @@ interface GalleryDao {
         faces.optJSONObject(index)?.optString("faceId") == entry.faceId
       } ?: return false
     }
+    // Unresolved legacy rows are retained for manual recovery, never replayed
+    // against a potentially unrelated detector index.
+    if (currentFaceIndex < 0) return false
     if (entry.faceId != null) {
       deleteFaceAssignmentByFaceId(entry.photoId, entry.faceId)
       deleteFaceExclusionByFaceId(entry.photoId, entry.faceId)

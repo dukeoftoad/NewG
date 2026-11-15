@@ -1,6 +1,7 @@
 package com.example.data.local
 
 import androidx.room.Room
+import com.example.data.ai.FacePersonFeedbackManager
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -409,6 +410,38 @@ class FaceFeedbackDaoTest {
     }
   }
 
+  private fun mediaItem(id: Long, faceDataJson: String) = MediaItemEntity(
+    id = id,
+    title = "Face feedback fixture",
+    category = "CAMERA",
+    mediaType = "PHOTO",
+    dateLabel = "",
+    weekGroup = "",
+    monthGroup = "",
+    timestamp = id,
+    locationName = "",
+    hasGps = false,
+    mapX = 0f,
+    mapY = 0f,
+    aspectRatio = 1f,
+    tagsCsv = "",
+    ocrText = "",
+    exifSummary = "",
+    faceDataJson = faceDataJson,
+  )
+
+  private fun legacyFaceJsonWithoutEmbeddings(count: Int): String {
+    val faces = JSONArray()
+    repeat(count) {
+      faces.put(JSONObject().put("box", JSONArray().put(0.1).put(0.2).put(0.6).put(0.8)))
+    }
+    return JSONObject()
+      .put("version", 1)
+      .put("model", "ente-face-recognition")
+      .put("faces", faces)
+      .toString()
+  }
+
   private fun legacyFaceJson(vararg axes: Int): String {
     val faces = JSONArray()
     axes.forEach { axis ->
@@ -455,6 +488,67 @@ class FaceFeedbackDaoTest {
     assertTrue(dao.undoLatestFaceCorrection())
     assertFalse(dao.undoLatestFaceCorrection())
   }
+
+  @Test
+  fun manualMembershipRemainsStableWhenPersonNameIsRemoved() = runBlocking {
+    dao.insertSingleMedia(mediaItem(97L, faceJson("face-stable")))
+    dao.upsertFacePerson(
+      FacePersonEntity(
+        clusterId = "person-stable",
+        name = "Alice",
+        coverPhotoId = 97L,
+        coverFaceIndex = 0,
+        coverFaceId = "face-stable",
+        isIgnored = true,
+      )
+    )
+    val feedback = FacePersonFeedbackManager(dao)
+
+    feedback.assignFace(97L, 0, "person-stable")
+    feedback.setPersonName("person-stable", null)
+
+    val assignment = dao.getFaceAssignmentByFaceId(97L, "face-stable")
+    assertEquals("person-stable", assignment?.personClusterId)
+    assertNull(dao.getFacePerson("person-stable")?.name)
+    assertTrue(dao.getFacePerson("person-stable")?.isIgnored == true)
+    assertEquals("face-stable", dao.getFacePerson("person-stable")?.coverFaceId)
+  }
+
+  @Test
+  fun unrecoverableLegacyFeedbackStaysDormantInsteadOfFollowingArrayIndex() = runBlocking {
+    dao.insertSingleMedia(mediaItem(98L, legacyFaceJsonWithoutEmbeddings(2)))
+    dao.assignFaceWithHistory(98L, 0, "person-legacy", 100L)
+    dao.excludeFaceWithHistory(98L, 1, 110L)
+    dao.upsertFacePerson(
+      FacePersonEntity(
+        clusterId = "person-legacy-cover",
+        name = "Legacy cover",
+        coverPhotoId = 98L,
+        coverFaceIndex = 1,
+      )
+    )
+
+    // The old payload has no embedding, so its face identity cannot be backfilled.
+    // The new detector order is intentionally different.
+    dao.updateFaceIndexAndReconcile(98L, faceJson("new-face-b", "new-face-a"), 200L)
+
+    val assignment = dao.getFaceAssignmentsForPhoto(98L).single()
+    val exclusion = dao.getFaceExclusionsForPhoto(98L).single()
+    assertEquals(-1, assignment.faceIndex)
+    assertNull(assignment.faceId)
+    assertEquals("person-legacy", assignment.personClusterId)
+    assertEquals(-2, exclusion.faceIndex)
+    assertFalse(dao.isFaceExcluded(98L, 0))
+    assertFalse(dao.isFaceExcluded(98L, 1))
+    assertNull(dao.getFaceAssignment(98L, 0))
+    assertNull(dao.getFaceAssignment(98L, 1))
+    assertTrue(dao.getFaceCorrectionHistoryForPhoto(98L).all { it.faceIndex < 0 })
+    assertEquals(-2, dao.getFacePerson("person-legacy-cover")?.coverFaceIndex)
+
+    // An unresolved history entry cannot be replayed against a different face.
+    assertFalse(dao.undoLatestFaceCorrection())
+  }
+
   @Test
   fun clearingFaceIndexAlsoClearsAllFaceFeedbackAndPersonMetadata() = runBlocking {
     dao.assignFaceWithHistory(42L, 1, "person-a", 100L)

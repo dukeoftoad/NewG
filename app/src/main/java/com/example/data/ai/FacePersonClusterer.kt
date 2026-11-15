@@ -201,6 +201,22 @@ object FacePersonClusterer {
     }
   }
 
+  /**
+   * Legacy index-only feedback is safe only while the stored payload has no stable IDs.
+   * Once IDs appear, a missing ID is unresolved and must not be attached by array position.
+   */
+  fun faceIndexForLegacyIndex(row: MediaItemEntity, legacyIndex: Int): Int? {
+    if (legacyIndex < 0) return null
+    val faces = runCatching {
+      row.faceDataJson?.let { JSONObject(it).optJSONArray("faces") }
+    }.getOrNull() ?: return null
+    if (legacyIndex !in 0 until faces.length()) return null
+    val hasAnyStableId = (0 until faces.length()).any { index ->
+      !faces.optJSONObject(index)?.optString("faceId").isNullOrBlank()
+    }
+    return legacyIndex.takeUnless { hasAnyStableId }
+  }
+
   private fun cosineDistance(a: FloatArray, b: FloatArray): Float {
     var similarity = 0f
     for (i in a.indices) similarity += a[i] * b[i]

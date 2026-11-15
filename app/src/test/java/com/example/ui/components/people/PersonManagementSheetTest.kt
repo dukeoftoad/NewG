@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performScrollTo
 import com.example.data.ai.FacePersonGroup
 import com.example.data.ai.FaceReference
+import com.example.data.local.FaceCorrectionHistoryEntity
 import com.example.data.model.AppearanceMode
 import com.example.data.model.GalleryMediaItem
 import com.example.data.model.MediaCategory
@@ -186,6 +187,41 @@ class PersonManagementSheetTest {
 
     compose.onNodeWithText("Undo").performClick()
     compose.runOnIdle { assertEquals(1, undoCount) }
+  }
+
+  @Test
+  fun historyShowsPhotoTitleAndFaceInsteadOfLocalRowId() {
+    val history = FaceCorrectionHistoryEntity(
+      photoId = 2L,
+      faceIndex = 0,
+      previousPersonClusterId = "person-old",
+      nextPersonClusterId = "person-new",
+      createdAt = 1_000L,
+    )
+    compose.setContent {
+      ToadGalleryTheme {
+        PersonManagementSheet(
+          group = alice,
+          uiState = GalleryUiState(
+            peopleGroups = listOf(alice, bob),
+            visibleMedia = listOf(media(1L), media(2L), media(3L), media(4L)),
+            faceCorrectionHistory = listOf(history),
+          ),
+          onDismiss = {},
+          onNamePerson = { _, _ -> },
+          onExcludeFace = { _, _ -> },
+          onSetPersonCover = { _, _, _ -> },
+          onSetPersonIgnored = { _, _ -> },
+          onAssignFace = { _, _, _ -> },
+          onUndoFaceCorrection = {},
+        )
+      }
+    }
+
+    compose.onNodeWithText("History (1)").performClick()
+    compose.onNodeWithText("Assigned to another person").assertIsDisplayed()
+    compose.onNodeWithText("Photo 2").assertIsDisplayed()
+    compose.onNodeWithText("Face 1").assertIsDisplayed()
   }
 
   @Test

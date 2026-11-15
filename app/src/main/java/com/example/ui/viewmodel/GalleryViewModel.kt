@@ -236,21 +236,26 @@ class GalleryViewModel(
       withContext(Dispatchers.Default) {
         val personRecords = bundle.facePeople.associateBy { it.clusterId }
         val rowsById = bundle.faceRows.associateBy { it.id }
-        val manuallyAssignedPersonIds = bundle.faceAssignments.map { it.personClusterId }.toSet()
         val excludedFaceReferences = bundle.faceExclusions.mapNotNull { exclusion ->
           val row = rowsById[exclusion.photoId] ?: return@mapNotNull null
           val currentIndex = if (exclusion.faceId != null) {
             FacePersonClusterer.faceIndexForId(row, exclusion.faceId)
-          } else exclusion.faceIndex
+          } else {
+            FacePersonClusterer.faceIndexForLegacyIndex(row, exclusion.faceIndex)
+          }
           currentIndex?.let { FaceReference(exclusion.photoId, it) }
         }.toSet()
         val manualFaceAssignments = bundle.faceAssignments.mapNotNull { assignment ->
           val row = rowsById[assignment.photoId] ?: return@mapNotNull null
           val currentIndex = if (assignment.faceId != null) {
             FacePersonClusterer.faceIndexForId(row, assignment.faceId)
-          } else assignment.faceIndex
+          } else {
+            FacePersonClusterer.faceIndexForLegacyIndex(row, assignment.faceIndex)
+          }
           currentIndex?.let { FaceReference(assignment.photoId, it) to assignment.personClusterId }
         }.toMap()
+        // Only currently resolvable assignments keep a manual person visible.
+        val manuallyAssignedPersonIds = manualFaceAssignments.values.toSet()
         val allDetectedGroups =
           FacePersonClusterer.cluster(
             rows = bundle.faceRows,

@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.ai.FacePersonGroup
+import com.example.data.ai.FaceReference
 import com.example.ui.theme.LocalToadColors
 import com.example.ui.viewmodel.GalleryUiState
 
@@ -197,10 +198,14 @@ fun PersonManagementSheet(
       onDismissRequest = { showHistory = false },
       title = { Text("Face correction history") },
       text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+          modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
           if (uiState.faceCorrectionHistory.isEmpty()) {
             Text("No face corrections yet")
           } else {
+            val availableGroups = uiState.peopleGroups + uiState.unassignedFaceGroups + uiState.ignoredPeopleGroups
             uiState.faceCorrectionHistory.take(20).forEach { entry ->
               val action = when {
                 entry.undoneAt != null -> "Undone"
@@ -208,7 +213,42 @@ fun PersonManagementSheet(
                 entry.nextPersonClusterId != null -> "Assigned to another person"
                 else -> "Restored"
               }
-              Text("$action • ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(entry.createdAt))}")
+              val reference = FaceReference(entry.photoId, entry.faceIndex)
+              val photo = uiState.visibleMedia.firstOrNull { it.id == entry.photoId }
+              val bounds = availableGroups.firstNotNullOfOrNull { it.faceBounds[reference] }
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                if (photo != null) {
+                  FaceThumbnail(
+                    item = photo,
+                    bounds = bounds,
+                    sourceRevision = uiState.faceIndexRevisions[entry.photoId] ?: 0L,
+                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)),
+                  )
+                } else {
+                  Box(
+                    modifier = Modifier.size(52.dp),
+                    contentAlignment = Alignment.Center,
+                  ) { Text("Unavailable", style = MaterialTheme.typography.labelSmall) }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(action, style = MaterialTheme.typography.bodyMedium)
+                  Text(photo?.title ?: "Photo unavailable", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                  Text(
+                    if (entry.faceIndex >= 0) "Face ${entry.faceIndex + 1}" else "Face unavailable — review manually",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = extended.textMuted,
+                  )
+                  Text(
+                    java.text.DateFormat.getDateTimeInstance().format(java.util.Date(entry.createdAt)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = extended.textMuted,
+                  )
+                }
+              }
             }
           }
         }
