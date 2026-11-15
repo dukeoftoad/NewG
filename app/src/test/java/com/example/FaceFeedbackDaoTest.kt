@@ -190,6 +190,81 @@ class FaceFeedbackDaoTest {
     assertEquals("face-a", dao.getFaceAssignment(93L, 1)?.faceId)
   }
 
+  @Test
+  fun correctionHistoryAndCustomCoverFollowStableFaceAfterReindex() = runBlocking {
+    dao.insertSingleMedia(
+      MediaItemEntity(
+        id = 94L,
+        title = "Cover identity fixture",
+        category = "CAMERA",
+        mediaType = "PHOTO",
+        dateLabel = "",
+        weekGroup = "",
+        monthGroup = "",
+        timestamp = 1L,
+        locationName = "",
+        hasGps = false,
+        mapX = 0f,
+        mapY = 0f,
+        aspectRatio = 1f,
+        tagsCsv = "",
+        ocrText = "",
+        exifSummary = "",
+        faceDataJson = faceJson("face-a", "face-b"),
+      )
+    )
+    dao.insertFaceCorrectionHistory(
+      FaceCorrectionHistoryEntity(
+        photoId = 94L,
+        faceIndex = 0,
+        faceId = "face-a",
+        previousPersonClusterId = "person-old",
+        nextPersonClusterId = "person-new",
+        createdAt = 100L,
+      )
+    )
+    dao.upsertFacePerson(
+      FacePersonEntity(
+        clusterId = "person-new",
+        name = "Alice",
+        coverPhotoId = 94L,
+        coverFaceIndex = 0,
+        coverFaceId = "face-a",
+      )
+    )
+
+    dao.updateFaceIndexAndReconcile(94L, faceJson("face-b", "face-a"), 200L)
+
+    assertEquals(1, dao.getFaceCorrectionHistoryForPhoto(94L).single().faceIndex)
+    val person = dao.getFacePerson("person-new")
+    assertEquals(1, person?.coverFaceIndex)
+    assertEquals("face-a", person?.coverFaceId)
+  }
+
+  @Test
+  fun ignoreAndUnignorePersonMetadataPersistsWithoutLosingNameOrCover() = runBlocking {
+    dao.upsertFacePerson(
+      FacePersonEntity(
+        clusterId = "person-ignore",
+        name = "Bob",
+        coverPhotoId = 12L,
+        coverFaceIndex = 2,
+        coverFaceId = "face-bob",
+        isIgnored = true,
+      )
+    )
+
+    val ignored = dao.getFacePerson("person-ignore")
+    assertTrue(ignored?.isIgnored == true)
+    dao.upsertFacePerson(ignored!!.copy(isIgnored = false, updatedAt = 200L))
+
+    val restored = dao.getFacePerson("person-ignore")
+    assertFalse(restored?.isIgnored == true)
+    assertEquals("Bob", restored?.name)
+    assertEquals(12L, restored?.coverPhotoId)
+    assertEquals("face-bob", restored?.coverFaceId)
+  }
+
   private fun faceJson(vararg ids: String): String {
     val faces = JSONArray()
     ids.forEach { id -> faces.put(JSONObject().put("faceId", id)) }
