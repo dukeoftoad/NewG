@@ -43,7 +43,8 @@ Statuses: **Partial** = relevant foundations exist but complete workflow or test
 - EXIF-aware LRU/disk face crop cache: `FaceCropper.kt` + `FaceThumbnail.kt`.
 - Storage operations: `GalleryRepository.kt`.
 - State and action orchestration: `GalleryViewModel.kt`.
-- Current People/correction UI: `SearchScreen.kt`.
+- People list and unassigned/rejected face review: `SearchScreen.kt`.
+- Person editor, cover selection, correction and history: `ui/components/people/PersonManagementSheet.kt`.
 - Existing test: `app/src/test/java/com/example/FacePersonClustererTest.kt`.
 
 These are the files to compare first. The destination files listed as “planned” are intended refactoring targets, not files confirmed to exist on this branch.
@@ -76,7 +77,7 @@ Ente models stable person identity, assigned clusters and face membership, rejec
 
 ### 2. PersonService and ClusterFeedbackService
 
-Ente distinguishes removing a face from a person, removing it from a cluster, adding it to a cluster, and removing selected files from a cluster. Removing a face from a person records rejection feedback so it is not suggested back. Membership changes invalidate cached cover-face selections and notify dependent screens. NewG has Room assignment/exclusion/history methods, a clusterer overlay and ViewModel flows, but no consolidated feedback manager; repeated assignment, restore, merge and detach semantics need transaction-level tests. **Finding: Partial parity.** Consolidate operations in `FacePersonFeedbackManager` and make membership/exclusion/history updates transactional.
+Ente distinguishes removing a face from a person, removing it from a cluster, adding it to a cluster, and removing selected files from a cluster. Removing a face from a person records rejection feedback so it is not suggested back. Membership changes invalidate cached cover-face selections and notify dependent screens. NewG has Room assignment/exclusion/history methods, rejected faces are surfaced as singleton unassigned candidates, and ViewModel flows connect these to the UI. DAO writes/undo are transactional. Merge/detach still uses name assignment rather than a separate person membership entity; repeated correction and re-index semantics need tests. **Finding: Partial parity.** Consolidate operations in `FacePersonFeedbackManager` and make membership/exclusion/history updates transactional.
 
 ### 3. Clustering and suggestions (`dart_cluster_averages.dart`, `dart_face_distances.dart`)
 
@@ -88,7 +89,7 @@ Ente `face_thumbnail_cache.dart` uses bounded in-memory LRU caches for full crop
 
 ### 5. People screens and cover selection
 
-Ente has separate People, cluster and person-cluster screens; its avatar picker presents eligible files containing the person's faces, limits selection to one, and saves the selected face identity. NewG `SearchScreen.kt` now exposes recurring People, ignored people, singleton unassigned/rejected faces, name/merge-by-name, face assignment/removal, face-based cover selection, split-by-clearing-label and undo/history. These remain integrated into one screen/dialog rather than Ente's separate People, cluster and person-cluster routes. Cover selection shows up to 16 face candidates, not a dedicated eligible-photo picker. Ente's `people_page.dart` also contains memory-lane integration, which is outside this port. **Finding: Partial parity.** Extract dedicated Compose People, person detail, cover picker and correction surfaces; omit memory-lane dependencies.
+Ente has separate People, cluster and person-cluster screens; its avatar picker presents eligible files containing the person's faces, limits selection to one, and saves the selected face identity. NewG `SearchScreen.kt` now exposes recurring People, ignored people, singleton unassigned/rejected faces, name/merge-by-name, face assignment/removal, face-based cover selection, split-by-clearing-label and undo/history. The person editor/correction/history surface has now been extracted to `ui/components/people/PersonManagementSheet.kt`; People list and unassigned-face review remain in `SearchScreen.kt`, unlike Ente's separate People, cluster and person-cluster routes. Cover selection shows up to 16 face candidates, not a dedicated eligible-photo picker. Ente's `people_page.dart` also contains memory-lane integration, which is outside this port. **Finding: Partial parity.** Extract dedicated Compose People, person detail, cover picker and correction surfaces; omit memory-lane dependencies.
 
 ### 6. Implementation order
 
@@ -101,7 +102,7 @@ Ente has separate People, cluster and person-cluster screens; its avatar picker 
 
 ### Verification limits
 
-This is a source/code inspection comparison only. It does not establish successful Android compilation, device behavior, persistence restart tests or visual parity. The latest observed CI run for the current head is pending; cancelled runs are not passes.
+This is a source/code inspection comparison only. It does not establish successful Android compilation, device behavior, persistence restart tests or visual parity. The latest observed CI run for the current head is in progress; cancelled runs are not passes.
 
 
 ### Follow-up implementation — local crop cache
