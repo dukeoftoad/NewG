@@ -220,7 +220,7 @@ class PersonManagementSheetTest {
 
     compose.onNodeWithText("History (1)").performClick()
     compose.onNodeWithText("Assigned to another person").assertIsDisplayed()
-    compose.onNodeWithText("Photo 2").assertIsDisplayed()
+    compose.onNodeWithText("Photo: Photo 2").assertIsDisplayed()
     compose.onNodeWithText("Face 1").assertIsDisplayed()
   }
 

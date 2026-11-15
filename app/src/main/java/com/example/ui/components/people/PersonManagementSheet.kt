@@ -236,7 +236,7 @@ fun PersonManagementSheet(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                   Text(action, style = MaterialTheme.typography.bodyMedium)
-                  Text(photo?.title ?: "Photo unavailable", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                  Text("Photo: ${photo?.title ?: "Photo unavailable"}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                   Text(
                     if (entry.faceIndex >= 0) "Face ${entry.faceIndex + 1}" else "Face unavailable — review manually",
                     style = MaterialTheme.typography.labelSmall,

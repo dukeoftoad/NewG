@@ -289,7 +289,7 @@ interface GalleryDao {
   @Query("SELECT * FROM face_correction_history ORDER BY createdAt DESC LIMIT :limit")
   fun observeFaceCorrectionHistory(limit: Int = 50): Flow<List<FaceCorrectionHistoryEntity>>
 
-  @Query("SELECT * FROM face_correction_history WHERE undoneAt IS NULL ORDER BY id DESC LIMIT 1")
+  @Query("SELECT * FROM face_correction_history WHERE undoneAt IS NULL AND faceIndex >= 0 ORDER BY id DESC LIMIT 1")
   suspend fun getLatestUndoableFaceCorrection(): FaceCorrectionHistoryEntity?
 
   @Query("UPDATE face_correction_history SET undoneAt = :undoneAt WHERE id = :id")
