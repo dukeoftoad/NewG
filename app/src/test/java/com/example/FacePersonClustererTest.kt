@@ -216,6 +216,11 @@ class FacePersonClustererTest {
     val candidateRow = media(30L, 3L, listOf(vector(0)))
     val matchingRow = media(31L, 1L, listOf(vector(0)))
     val unrelatedRow = media(32L, 2L, listOf(vector(1)))
+    val nearVector = FloatArray(192).also {
+      it[0] = 0.9f
+      it[1] = 0.4358899f
+    }
+    val nearRow = media(33L, 2L, listOf(nearVector))
     val candidate = FacePersonGroup(
       id = "candidate",
       photoIds = listOf(30L),
@@ -237,16 +242,24 @@ class FacePersonClustererTest {
       coverPhotoId = 32L,
       faces = listOf(FaceReference(32L, 0)),
     )
+    val nearPerson = FacePersonGroup(
+      id = "near-person",
+      photoIds = listOf(33L),
+      faceCount = 1,
+      coverPhotoId = 33L,
+      faces = listOf(FaceReference(33L, 0)),
+    )
 
     val suggestions = FacePersonSuggestionRanker.rank(
       candidate,
-      listOf(unrelatedPerson, matchingPerson),
-      listOf(candidateRow, matchingRow, unrelatedRow),
+      listOf(unrelatedPerson, nearPerson, matchingPerson),
+      listOf(candidateRow, matchingRow, unrelatedRow, nearRow),
     )
 
-    assertEquals(listOf("matching-person"), suggestions.map { it.personId })
-    assertEquals(0f, suggestions.single().meanDistance, 0.0001f)
-    assertEquals(0f, suggestions.single().medianDistance, 0.0001f)
+    assertEquals(listOf("matching-person", "near-person"), suggestions.map { it.personId })
+    assertEquals(0f, suggestions.first().meanDistance, 0.0001f)
+    assertEquals(0f, suggestions.first().medianDistance, 0.0001f)
+    assertTrue(suggestions[1].medianDistance > suggestions[0].medianDistance)
   }
 
   @Test
