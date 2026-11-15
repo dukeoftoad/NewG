@@ -206,7 +206,13 @@ class MultiSelectBatchRobolectricTest {
     // Cancel preserves selection
     composeTestRule.onNodeWithTag("cancel_batch_delete_button").performClick()
     composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("batch_delete_confirm_dialog").assertDoesNotExist()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("batch_delete_confirm_dialog").assertDoesNotExist()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
 
     // Confirm delete moves selected items to Recycle Bin

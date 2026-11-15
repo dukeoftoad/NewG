@@ -550,6 +550,20 @@ class FaceFeedbackDaoTest {
   }
 
   @Test
+  fun unresolvedLegacyHistoryDoesNotBlockUndoOfEarlierResolvableCorrection() = runBlocking {
+    dao.insertSingleMedia(mediaItem(96L, faceJson("face-valid")))
+    dao.assignFaceWithHistory(96L, 0, "person-valid", 100L, "face-valid")
+    dao.insertSingleMedia(mediaItem(98L, legacyFaceJsonWithoutEmbeddings(1)))
+    dao.excludeFaceWithHistory(98L, 0, 110L)
+    dao.updateFaceIndexAndReconcile(98L, faceJson("face-new"), 200L)
+
+    assertTrue(dao.getFaceExclusionsForPhoto(98L).single().faceIndex < 0)
+    assertTrue(dao.undoLatestFaceCorrection())
+    assertNull(dao.getFaceAssignmentByFaceId(96L, "face-valid"))
+    assertTrue(dao.getFaceCorrectionHistoryForPhoto(96L).single().undoneAt != null)
+  }
+
+  @Test
   fun clearingFaceIndexAlsoClearsAllFaceFeedbackAndPersonMetadata() = runBlocking {
     dao.assignFaceWithHistory(42L, 1, "person-a", 100L)
     dao.excludeFaceWithHistory(43L, 0, 110L)
