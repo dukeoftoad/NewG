@@ -211,6 +211,69 @@ class FacePersonClustererTest {
     assertTrue(consistentGroup < centroidOnlyWinner)
   }
 
+  @Test
+  fun personSuggestionsUseMeanFilteringAndMedianPairwiseRanking() {
+    val candidateRow = media(30L, 3L, listOf(vector(0)))
+    val matchingRow = media(31L, 1L, listOf(vector(0)))
+    val unrelatedRow = media(32L, 2L, listOf(vector(1)))
+    val candidate = FacePersonGroup(
+      id = "candidate",
+      photoIds = listOf(30L),
+      faceCount = 1,
+      coverPhotoId = 30L,
+      faces = listOf(FaceReference(30L, 0)),
+    )
+    val matchingPerson = FacePersonGroup(
+      id = "matching-person",
+      photoIds = listOf(31L),
+      faceCount = 1,
+      coverPhotoId = 31L,
+      faces = listOf(FaceReference(31L, 0)),
+    )
+    val unrelatedPerson = FacePersonGroup(
+      id = "unrelated-person",
+      photoIds = listOf(32L),
+      faceCount = 1,
+      coverPhotoId = 32L,
+      faces = listOf(FaceReference(32L, 0)),
+    )
+
+    val suggestions = FacePersonSuggestionRanker.rank(
+      candidate,
+      listOf(unrelatedPerson, matchingPerson),
+      listOf(candidateRow, matchingRow, unrelatedRow),
+    )
+
+    assertEquals(listOf("matching-person"), suggestions.map { it.personId })
+    assertEquals(0f, suggestions.single().meanDistance, 0.0001f)
+    assertEquals(0f, suggestions.single().medianDistance, 0.0001f)
+  }
+
+  @Test
+  fun medianSuggestionStageRejectsAClusterWithInconsistentFaceEmbeddings() {
+    val candidateRow = media(40L, 3L, listOf(vector(0), vector(1)))
+    val personRow = media(41L, 1L, listOf(vector(0), vector(1)))
+    val candidate = FacePersonGroup(
+      id = "candidate",
+      photoIds = listOf(40L),
+      faceCount = 2,
+      coverPhotoId = 40L,
+      faces = listOf(FaceReference(40L, 0), FaceReference(40L, 1)),
+    )
+    val person = FacePersonGroup(
+      id = "person",
+      photoIds = listOf(41L),
+      faceCount = 2,
+      coverPhotoId = 41L,
+      faces = listOf(FaceReference(41L, 0), FaceReference(41L, 1)),
+    )
+
+    val suggestions = FacePersonSuggestionRanker.rank(candidate, listOf(person), listOf(candidateRow, personRow))
+
+    // The centroids match, but cross-face distances have a high median.
+    assertTrue(suggestions.isEmpty())
+  }
+
   private fun media(
     id: Long,
     timestamp: Long,
