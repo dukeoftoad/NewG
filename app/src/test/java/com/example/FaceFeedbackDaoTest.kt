@@ -265,6 +265,36 @@ class FaceFeedbackDaoTest {
     assertEquals("face-bob", restored?.coverFaceId)
   }
 
+  @Test
+  fun emptyReindexResultDoesNotEraseSavedFaceFeedback() = runBlocking {
+    dao.insertSingleMedia(
+      MediaItemEntity(
+        id = 94L,
+        title = "Unreadable photo fallback",
+        category = "CAMERA",
+        mediaType = "PHOTO",
+        dateLabel = "",
+        weekGroup = "",
+        monthGroup = "",
+        timestamp = 1L,
+        locationName = "",
+        hasGps = false,
+        mapX = 0f,
+        mapY = 0f,
+        aspectRatio = 1f,
+        tagsCsv = "",
+        ocrText = "",
+        exifSummary = "",
+        faceDataJson = faceJson("face-a"),
+      )
+    )
+    dao.assignFaceWithHistory(94L, 0, "person-a", 100L, "face-a")
+
+    dao.updateFaceIndexAndReconcile(94L, """{"version":1,"faces":[]}""", 200L)
+
+    assertEquals("person-a", dao.getFaceAssignmentByFaceId(94L, "face-a")?.personClusterId)
+  }
+
   private fun faceJson(vararg ids: String): String {
     val faces = JSONArray()
     ids.forEach { id -> faces.put(JSONObject().put("faceId", id)) }
