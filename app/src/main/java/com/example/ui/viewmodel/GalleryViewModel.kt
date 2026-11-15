@@ -63,6 +63,7 @@ data class GalleryUiState(
   val filteredTimelineMedia: List<GalleryMediaItem> = emptyList(),
   val customAlbums: List<AlbumEntity> = emptyList(),
   val peopleGroups: List<FacePersonGroup> = emptyList(),
+  val unassignedFaceGroups: List<FacePersonGroup> = emptyList(),
   val ignoredPeopleGroups: List<FacePersonGroup> = emptyList(),
   val faceCorrectionHistory: List<FaceCorrectionHistoryEntity> = emptyList(),
   val folderDestinations: List<String> = listOf("Camera", "Travel", "Screenshots", "Downloads"),
@@ -265,15 +266,36 @@ class GalleryViewModel(
 
         val q = searchCtrl.query.trim().lowercase()
         val personRecords = media.facePeople.associateBy { it.clusterId }
-        val detectedGroups =
+        val manuallyAssignedPersonIds = media.faceAssignments.map { it.personClusterId }.toSet()
+        val allDetectedGroups =
           FacePersonClusterer.cluster(
-            media.faceRows, prefs.clusteringThreshold,
-            media.faceExclusions.map { FaceReference(it.photoId, it.faceIndex) }.toSet(),
-            media.faceAssignments.associate { FaceReference(it.photoId, it.faceIndex) to it.personClusterId },
+            rows = media.faceRows,
+            distanceThreshold = prefs.clusteringThreshold,
+            excludedFaces = media.faceExclusions.map { FaceReference(it.photoId, it.faceIndex) }.toSet(),
+            manualAssignments = media.faceAssignments.associate {
+              FaceReference(it.photoId, it.faceIndex) to it.personClusterId
+            },
+            minimumPhotos = 1,
           ).map { group ->
             val record = personRecords[group.id]
-            group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId, coverFaceIndex = record?.coverFaceIndex ?: group.coverFaceIndex)
+            group.copy(
+              name = record?.name,
+              coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId,
+              coverFaceIndex = record?.coverFaceIndex ?: group.coverFaceIndex,
+            )
           }
+        // Ente's People review surface exposes unassigned single-photo face suggestions
+        // separately from recurring person groups. Keep user-curated singleton people visible.
+        val detectedGroups = allDetectedGroups.filter { group ->
+          group.photoIds.size >= 2 ||
+            group.id in manuallyAssignedPersonIds ||
+            personRecords.containsKey(group.id)
+        }
+        val unassignedFaceGroups = allDetectedGroups.filter { group ->
+          group.photoIds.size == 1 &&
+            group.id !in manuallyAssignedPersonIds &&
+            personRecords[group.id] == null
+        }
         // Assigning the same name to multiple clusters merges them in the People list.
         val ignoredPeopleGroups = detectedGroups.filter { personRecords[it.id]?.isIgnored == true }
         val peopleGroups =
@@ -386,6 +408,7 @@ class GalleryViewModel(
           filteredTimelineMedia = filteredTimeline,
           customAlbums = media.customAlbums,
           peopleGroups = peopleGroups,
+          unassignedFaceGroups = unassignedFaceGroups,
           ignoredPeopleGroups = ignoredPeopleGroups,
           faceCorrectionHistory = media.faceCorrectionHistory,
           folderDestinations = folderDestSet.toList(),
