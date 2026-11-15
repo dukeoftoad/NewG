@@ -63,6 +63,10 @@ interface GalleryDao {
     updateFaceIndex(id, faceDataJson, indexedAt)
     val faces = runCatching { JSONObject(faceDataJson).optJSONArray("faces") }.getOrNull()
       ?: return
+    // An empty or legacy face payload cannot safely reconcile stable identities.
+    if (faces.length() == 0 || (0 until faces.length()).any { index ->
+        faces.optJSONObject(index)?.optString("faceId").isNullOrBlank()
+      }) return
     fun resolve(faceId: String?, oldIndex: Int): Int? {
       if (faceId == null) return oldIndex.takeIf { it in 0 until faces.length() }
       return (0 until faces.length()).firstOrNull { index ->
@@ -281,10 +285,11 @@ interface GalleryDao {
   /** Atomically reject a face from a person without deleting the source photo. */
   @Transaction
   suspend fun excludeFaceWithHistory(photoId: Long, faceIndex: Int, changedAt: Long, faceId: String? = null) {
-    val previous = faceId?.let { getFaceAssignmentByFaceId(photoId, it) }
-      ?: getFaceAssignment(photoId, faceIndex)
+    val previous = if (faceId != null) {
+      getFaceAssignmentByFaceId(photoId, faceId) ?: getLegacyFaceAssignment(photoId, faceIndex)
+    } else getFaceAssignment(photoId, faceIndex)
     val wasExcluded = if (faceId != null) {
-      isFaceExcludedByFaceId(photoId, faceId) || isFaceExcluded(photoId, faceIndex)
+      isFaceExcludedByFaceId(photoId, faceId) || isLegacyFaceExcluded(photoId, faceIndex)
     } else isFaceExcluded(photoId, faceIndex)
     insertFaceCorrectionHistory(
       FaceCorrectionHistoryEntity(
