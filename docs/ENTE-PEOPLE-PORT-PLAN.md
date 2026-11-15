@@ -68,7 +68,7 @@ Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHisto
 4. Select a custom cover from eligible photos containing a face belonging to that person; resolve and render the selected face crop, with safe fallback when the crop cannot be produced.
 5. Show actual face crops in correction/review UI, never database row IDs as the primary user-facing identifier.
 6. Support person merge and cluster split/detach using stable local IDs.
-7. Record each local correction in Room and provide undo/history. **This is a NewG extension:** the inspected Ente files provide correction operations but not a durable undo/history ledger.
+7. Record each local correction in Room and provide undo/history. **This is a NewG extension:** the inspected Ente files provide correction operations but not a durable undo/history ledger. Corrections and undo are now atomic Room transactions, with DAO persistence tests.
 8. Keep all face metadata, assignments, exclusions, covers and correction history local to the device. Do not import Ente's remote entity sync or contact integrations.
 
 ## Implementation sequence
