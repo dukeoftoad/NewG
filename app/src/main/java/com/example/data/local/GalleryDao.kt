@@ -218,13 +218,17 @@ interface GalleryDao {
 
   /** Atomically reject a face from a person without deleting the source photo. */
   @Transaction
-  suspend fun excludeFaceWithHistory(photoId: Long, faceIndex: Int, changedAt: Long) {
-    val previous = getFaceAssignment(photoId, faceIndex)
-    val wasExcluded = isFaceExcluded(photoId, faceIndex)
+  suspend fun excludeFaceWithHistory(photoId: Long, faceIndex: Int, faceId: String?, changedAt: Long) {
+    val previous = faceId?.let { getFaceAssignmentByFaceId(photoId, it) }
+      ?: getFaceAssignment(photoId, faceIndex)
+    val wasExcluded = if (faceId != null) {
+      isFaceExcludedByFaceId(photoId, faceId) || isFaceExcluded(photoId, faceIndex)
+    } else isFaceExcluded(photoId, faceIndex)
     insertFaceCorrectionHistory(
       FaceCorrectionHistoryEntity(
         photoId = photoId,
         faceIndex = faceIndex,
+        faceId = faceId,
         previousPersonClusterId = previous?.personClusterId,
         nextPersonClusterId = null,
         wasExcluded = wasExcluded,
@@ -232,8 +236,12 @@ interface GalleryDao {
         createdAt = changedAt,
       )
     )
+    if (faceId != null) {
+      deleteFaceAssignmentByFaceId(photoId, faceId)
+      deleteFaceExclusionByFaceId(photoId, faceId)
+    }
     deleteFaceAssignment(photoId, faceIndex)
-    upsertFaceExclusion(FaceExclusionEntity(photoId, faceIndex, changedAt))
+    upsertFaceExclusion(FaceExclusionEntity(photoId, faceIndex, faceId, changedAt))
   }
 
   /** Restore an excluded face to automatic clustering and keep the action undoable. */
