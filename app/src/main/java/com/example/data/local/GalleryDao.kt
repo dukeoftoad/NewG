@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -136,6 +137,97 @@ interface GalleryDao {
 
   @Query("DELETE FROM face_people WHERE clusterId = :clusterId")
   suspend fun deleteFacePerson(clusterId: String)
+
+
+  @Query("SELECT EXISTS(SELECT 1 FROM face_exclusions WHERE photoId = :photoId AND faceIndex = :faceIndex)")
+  suspend fun isFaceExcluded(photoId: Long, faceIndex: Int): Boolean
+
+  /** Atomically persist Ente-style face assignment feedback and its undo record. */
+  @Transaction
+  suspend fun assignFaceWithHistory(
+    photoId: Long,
+    faceIndex: Int,
+    personClusterId: String,
+    changedAt: Long,
+  ) {
+    val previous = getFaceAssignment(photoId, faceIndex)
+    val wasExcluded = isFaceExcluded(photoId, faceIndex)
+    insertFaceCorrectionHistory(
+      FaceCorrectionHistoryEntity(
+        photoId = photoId,
+        faceIndex = faceIndex,
+        previousPersonClusterId = previous?.personClusterId,
+        nextPersonClusterId = personClusterId,
+        wasExcluded = wasExcluded,
+        isExcluded = false,
+        createdAt = changedAt,
+      )
+    )
+    deleteFaceExclusion(photoId, faceIndex)
+    upsertFaceAssignment(FaceAssignmentEntity(photoId, faceIndex, personClusterId, changedAt))
+  }
+
+  /** Atomically reject a face from a person without deleting the source photo. */
+  @Transaction
+  suspend fun excludeFaceWithHistory(photoId: Long, faceIndex: Int, changedAt: Long) {
+    val previous = getFaceAssignment(photoId, faceIndex)
+    val wasExcluded = isFaceExcluded(photoId, faceIndex)
+    insertFaceCorrectionHistory(
+      FaceCorrectionHistoryEntity(
+        photoId = photoId,
+        faceIndex = faceIndex,
+        previousPersonClusterId = previous?.personClusterId,
+        nextPersonClusterId = null,
+        wasExcluded = wasExcluded,
+        isExcluded = true,
+        createdAt = changedAt,
+      )
+    )
+    deleteFaceAssignment(photoId, faceIndex)
+    upsertFaceExclusion(FaceExclusionEntity(photoId, faceIndex, changedAt))
+  }
+
+  /** Restore an excluded face to automatic clustering and keep the action undoable. */
+  @Transaction
+  suspend fun restoreFaceWithHistory(photoId: Long, faceIndex: Int, changedAt: Long) {
+    val previous = getFaceAssignment(photoId, faceIndex)
+    insertFaceCorrectionHistory(
+      FaceCorrectionHistoryEntity(
+        photoId = photoId,
+        faceIndex = faceIndex,
+        previousPersonClusterId = previous?.personClusterId,
+        nextPersonClusterId = previous?.personClusterId,
+        wasExcluded = isFaceExcluded(photoId, faceIndex),
+        isExcluded = false,
+        createdAt = changedAt,
+      )
+    )
+    deleteFaceExclusion(photoId, faceIndex)
+  }
+
+  /** Undo the latest correction as one database transaction. */
+  @Transaction
+  suspend fun undoLatestFaceCorrection(): Boolean {
+    val entry = getLatestUndoableFaceCorrection() ?: return false
+    if (entry.previousPersonClusterId == null) {
+      deleteFaceAssignment(entry.photoId, entry.faceIndex)
+    } else {
+      upsertFaceAssignment(
+        FaceAssignmentEntity(
+          entry.photoId,
+          entry.faceIndex,
+          entry.previousPersonClusterId,
+        )
+      )
+    }
+    if (entry.wasExcluded) {
+      upsertFaceExclusion(FaceExclusionEntity(entry.photoId, entry.faceIndex))
+    } else {
+      deleteFaceExclusion(entry.photoId, entry.faceIndex)
+    }
+    markFaceCorrectionUndone(entry.id, System.currentTimeMillis())
+    return true
+  }
 
   @Query("SELECT * FROM albums ORDER BY createdAt DESC")
   fun observeAlbums(): Flow<List<AlbumEntity>>
