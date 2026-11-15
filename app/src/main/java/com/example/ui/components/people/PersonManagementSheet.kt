@@ -91,6 +91,7 @@ fun PersonManagementSheet(
                 FaceThumbnail(
                   item = photo,
                   bounds = group.faceBounds[face],
+                  sourceRevision = uiState.faceIndexRevisions[face.photoId] ?: 0L,
                   modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
                 )
                 Column(modifier = Modifier.weight(1f)) {
@@ -118,6 +119,7 @@ fun PersonManagementSheet(
                 FaceThumbnail(
                   item = photo,
                   bounds = group.faceBounds[face],
+                  sourceRevision = uiState.faceIndexRevisions[face.photoId] ?: 0L,
                   modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
                 )
               }
