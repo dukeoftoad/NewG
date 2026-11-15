@@ -1,0 +1,108 @@
+package com.example.data.ai
+
+import com.example.data.local.MediaItemEntity
+import org.json.JSONObject
+import kotlin.math.sqrt
+
+data class FacePersonSuggestion(
+  val personId: String,
+  val meanDistance: Float,
+  val medianDistance: Float,
+)
+
+/**
+ * Local-only adaptation of Ente's two-stage person suggestion flow:
+ * centroid/mean-distance filtering followed by sampled pairwise median distance.
+ *
+ * Ente samples randomly from persisted cluster embeddings. NewG samples deterministically
+ * and evenly across each local face list so suggestions remain reproducible on-device.
+ */
+object FacePersonSuggestionRanker {
+  fun rank(
+    candidate: FacePersonGroup,
+    people: List<FacePersonGroup>,
+    rows: List<MediaItemEntity>,
+    sampleSize: Int = 20,
+    maxMeanDistance: Float = 0.55f,
+    maxMedianDistance: Float = 0.55f,
+  ): List<FacePersonSuggestion> {
+    if (sampleSize <= 0) return emptyList()
+    val rowsById = rows.associateBy { it.id }
+    val candidateVectors = vectorsFor(candidate, rowsById)
+    if (candidateVectors.isEmpty()) return emptyList()
+    val candidateMean = normalizedMean(candidateVectors) ?: return emptyList()
+    val candidateSample = evenlySample(candidateVectors, sampleSize)
+
+    return people.asSequence()
+      .filter { person -> person.id != candidate.id }
+      .mapNotNull { person ->
+        val personVectors = vectorsFor(person, rowsById)
+        if (personVectors.isEmpty()) return@mapNotNull null
+        val personMean = normalizedMean(personVectors) ?: return@mapNotNull null
+        val meanDistance = cosineDistance(candidateMean, personMean)
+        if (meanDistance >= maxMeanDistance) return@mapNotNull null
+
+        val personSample = evenlySample(personVectors, sampleSize)
+        val distances = buildList(candidateSample.size * personSample.size) {
+          candidateSample.forEach { candidateVector ->
+            personSample.forEach { personVector ->
+              add(cosineDistance(candidateVector, personVector))
+            }
+          }
+        }.sorted()
+        if (distances.isEmpty()) return@mapNotNull null
+        // Match Ente's upper-middle median (sorted[length ~/ 2]).
+        val medianDistance = distances[distances.size / 2]
+        if (medianDistance >= maxMedianDistance) return@mapNotNull null
+        FacePersonSuggestion(person.id, meanDistance, medianDistance)
+      }
+      .sortedWith(compareBy<FacePersonSuggestion> { it.medianDistance }.thenBy { it.meanDistance })
+      .toList()
+  }
+
+  private fun vectorsFor(
+    group: FacePersonGroup,
+    rowsById: Map<Long, MediaItemEntity>,
+  ): List<FloatArray> = group.faces.distinct().mapNotNull { reference ->
+    val json = rowsById[reference.photoId]?.faceDataJson ?: return@mapNotNull null
+    runCatching {
+      val face = JSONObject(json).optJSONArray("faces")?.optJSONObject(reference.faceIndex)
+        ?: return@runCatching null
+      val values = face.optJSONArray("embedding") ?: return@runCatching null
+      if (values.length() != EMBEDDING_SIZE) return@runCatching null
+      val vector = FloatArray(EMBEDDING_SIZE) { index ->
+        values.optDouble(index, Double.NaN).toFloat()
+      }
+      if (vector.any { !it.isFinite() }) return@runCatching null
+      val norm = sqrt(vector.sumOf { (it * it).toDouble() }).toFloat()
+      if (!norm.isFinite() || norm <= 1e-8f) return@runCatching null
+      for (index in vector.indices) vector[index] /= norm
+      vector
+    }.getOrNull()
+  }
+
+  private fun normalizedMean(vectors: List<FloatArray>): FloatArray? {
+    if (vectors.isEmpty()) return null
+    val mean = FloatArray(EMBEDDING_SIZE)
+    vectors.forEach { vector ->
+      for (index in mean.indices) mean[index] += vector[index] / vectors.size
+    }
+    val norm = sqrt(mean.sumOf { (it * it).toDouble() }).toFloat()
+    if (!norm.isFinite() || norm <= 1e-8f) return null
+    for (index in mean.indices) mean[index] /= norm
+    return mean
+  }
+
+  private fun evenlySample(vectors: List<FloatArray>, limit: Int): List<FloatArray> {
+    if (vectors.size <= limit) return vectors
+    return List(limit) { index -> vectors[(index * vectors.size) / limit] }
+  }
+
+  private fun cosineDistance(a: FloatArray, b: FloatArray): Float {
+    var similarity = 0f
+    for (index in a.indices) similarity += a[index] * b[index]
+    return (1f - similarity).coerceIn(0f, 2f)
+  }
+
+  private const val EMBEDDING_SIZE = 192
+}
