@@ -79,4 +79,26 @@ class FaceFeedbackDaoTest {
     assertTrue(dao.undoLatestFaceCorrection())
     assertFalse(dao.undoLatestFaceCorrection())
   }
+  @Test
+  fun clearingFaceIndexAlsoClearsAllFaceFeedbackAndPersonMetadata() = runBlocking {
+    dao.assignFaceWithHistory(42L, 1, "person-a", 100L)
+    dao.excludeFaceWithHistory(43L, 0, 110L)
+    dao.upsertFacePerson(
+      FacePersonEntity(
+        clusterId = "person-a",
+        name = "Alice",
+        coverPhotoId = 42L,
+        coverFaceIndex = 1,
+        isIgnored = true,
+      )
+    )
+
+    dao.clearFaceIndexAndFeedback()
+
+    assertNull(dao.getFaceAssignment(42L, 1))
+    assertFalse(dao.isFaceExcluded(43L, 0))
+    assertNull(dao.getFacePerson("person-a"))
+    assertNull(dao.getLatestUndoableFaceCorrection())
+  }
+
 }
