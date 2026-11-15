@@ -108,7 +108,10 @@ object FacePersonClusterer {
           faces = references,
           faceBounds = references.mapNotNull { reference ->
             val row = rows.firstOrNull { it.id == reference.photoId } ?: return@mapNotNull null
-            val face = runCatching { JSONObject(row.faceDataJson ?: return@runCatching null).optJSONArray("faces")?.optJSONObject(reference.faceIndex) }.getOrNull()
+            val faceJson = row.faceDataJson ?: return@mapNotNull null
+            val face = runCatching {
+              JSONObject(faceJson).optJSONArray("faces")?.optJSONObject(reference.faceIndex)
+            }.getOrNull()
             val box = face?.optJSONArray("box") ?: return@mapNotNull null
             if (box.length() < 4) return@mapNotNull null
             val bounds = FaceCropBounds(
