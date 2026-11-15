@@ -318,13 +318,8 @@ class GalleryViewModel(
       galleryRepo.vaultMedia,
       galleryRepo.trashedMedia,
       galleryRepo.customAlbums,
-      facePeopleBundleFlow,
-    ) { visible, vault, trashed, albums, faceBundle ->
-      MediaBundle(
-        visible, vault, trashed, albums,
-        faceBundle.faceRows, faceBundle.facePeople, faceBundle.faceExclusions,
-        faceBundle.faceAssignments, faceBundle.faceCorrectionHistory,
-      )
+    ) { visible, vault, trashed, albums ->
+      MediaBundle(visible, vault, trashed, albums)
     }
 
   private val uiControlsBundleFlow =
@@ -336,8 +331,8 @@ class GalleryViewModel(
       UiControlsBundle(syncCtrl, selCtrl, searchCtrl, modals)
     }
 
-  val uiState: StateFlow<GalleryUiState> =
-    combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow, facePeopleGroupsFlow) { prefs, media, ctrls, faceGroups ->
+  private val baseUiState: StateFlow<GalleryUiState> =
+    combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow) { prefs, media, ctrls ->
       // Building the gallery state includes whole-library filtering and face clustering.
       // Keep that CPU work off Android's main thread so scrolling and input stay responsive.
       withContext(Dispatchers.Default) {
@@ -367,42 +362,17 @@ class GalleryViewModel(
           }
 
         val q = searchCtrl.query.trim().lowercase()
-        val peopleGroups = faceGroups.peopleGroups
-        val unassignedFaceGroups = faceGroups.unassignedFaceGroups
-        val ignoredPeopleGroups = faceGroups.ignoredPeopleGroups
-        // Ente's suggestion flow first filters by person/cluster mean distance,
-        // then ranks candidates by sampled pairwise median distance. Keep this
-        // local-only and compute suggestions only for the unassigned review queue.
-        val facePersonSuggestions =
-          if (q == "portraits") {
-            withContext(Dispatchers.Default) {
-              FacePersonSuggestionRanker.rankAll(
-                candidates = unassignedFaceGroups,
-                people = peopleGroups,
-                rows = media.faceRows,
-              )
-            }
-          } else emptyMap()
-        val peoplePhotoIds = peopleGroups.flatMap { it.photoIds }.toSet()
-        val isPeopleSearch = q == "portraits"
-        val selectedPersonGroup = peopleGroups.firstOrNull { q == "person:${it.id}" }
-        val namedPersonSearch = peopleGroups.firstOrNull { it.name?.equals(q, ignoreCase = true) == true }
         val searchMatches =
           media.visible.filter { item ->
             val locOk = !searchCtrl.onlyLoc || item.hasGps
             val typeOk = searchCtrl.typeFilter == null || item.mediaType == searchCtrl.typeFilter
             val queryOk =
-              when {
-                isPeopleSearch -> item.id in peoplePhotoIds
-                selectedPersonGroup != null -> item.id in selectedPersonGroup.photoIds
-                namedPersonSearch != null -> item.id in namedPersonSearch.photoIds
-                else -> q.isEmpty() ||
+              q.isEmpty() ||
                 item.title.lowercase().contains(q) ||
                 item.locationName.lowercase().contains(q) ||
                 item.bucketName.lowercase().contains(q) ||
                 item.ocrText.lowercase().contains(q) ||
                 item.tags.any { it.lowercase().contains(q) }
-              }
             locOk && typeOk && queryOk
           }
 
@@ -470,12 +440,12 @@ class GalleryViewModel(
           visibleMedia = media.visible,
           filteredTimelineMedia = filteredTimeline,
           customAlbums = media.customAlbums,
-          peopleGroups = peopleGroups,
-          unassignedFaceGroups = unassignedFaceGroups,
-          facePersonSuggestions = facePersonSuggestions,
-          ignoredPeopleGroups = ignoredPeopleGroups,
-          faceCorrectionHistory = media.faceCorrectionHistory,
-          faceIndexRevisions = media.faceRows.associate { it.id to (it.faceIndexedAt ?: 0L) },
+          peopleGroups = emptyList(),
+          unassignedFaceGroups = emptyList(),
+          facePersonSuggestions = emptyMap(),
+          ignoredPeopleGroups = emptyList(),
+          faceCorrectionHistory = emptyList(),
+          faceIndexRevisions = emptyMap(),
           folderDestinations = folderDestSet.toList(),
           folderAlbums = listOf(favoritesFolder) + deviceBucketFolders + userFolders,
           vaultMedia = media.vault,
@@ -510,6 +480,56 @@ class GalleryViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = GalleryUiState(mediaAccessLevel = MediaPermissionHelper.checkAccessLevel(appContext)),
       )
+
+  // Face-index updates refresh only the People overlay. They no longer rebuild
+  // gallery folders, filters, search text matches, selection, map and modal state.
+  val uiState: StateFlow<GalleryUiState> =
+    combine(baseUiState, facePeopleGroupsFlow, facePeopleBundleFlow) { base, groups, faceBundle ->
+      withContext(Dispatchers.Default) {
+        val q = base.searchQuery.trim().lowercase()
+        val peoplePhotoIds = groups.peopleGroups.flatMap { it.photoIds }.toSet()
+        val selectedPersonGroup = groups.peopleGroups.firstOrNull { q == "person:${it.id}" }
+        val namedPersonGroup = groups.peopleGroups.firstOrNull {
+          it.name?.equals(q, ignoreCase = true) == true
+        }
+        val isPeopleSearch = q == "portraits"
+        val peopleSearchActive = isPeopleSearch || selectedPersonGroup != null || namedPersonGroup != null
+        val searchResults = if (!peopleSearchActive) {
+          base.searchResults
+        } else {
+          base.visibleMedia.filter { item ->
+            val locOk = !base.searchOnlyLocation || item.hasGps
+            val typeOk = base.searchTypeFilter == null || item.mediaType == base.searchTypeFilter
+            val queryOk = when {
+              isPeopleSearch -> item.id in peoplePhotoIds
+              selectedPersonGroup != null -> item.id in selectedPersonGroup.photoIds
+              else -> item.id in namedPersonGroup!!.photoIds
+            }
+            locOk && typeOk && queryOk
+          }
+        }
+        val suggestions = if (isPeopleSearch) {
+          FacePersonSuggestionRanker.rankAll(
+            candidates = groups.unassignedFaceGroups,
+            people = groups.peopleGroups,
+            rows = faceBundle.faceRows,
+          )
+        } else emptyMap()
+        base.copy(
+          peopleGroups = groups.peopleGroups,
+          unassignedFaceGroups = groups.unassignedFaceGroups,
+          facePersonSuggestions = suggestions,
+          ignoredPeopleGroups = groups.ignoredPeopleGroups,
+          faceCorrectionHistory = faceBundle.faceCorrectionHistory,
+          faceIndexRevisions = faceBundle.faceRows.associate { it.id to (it.faceIndexedAt ?: 0L) },
+          searchResults = searchResults,
+        )
+      }
+    }.stateIn(
+      scope = viewModelScope,
+      started = SharingStarted.WhileSubscribed(5_000),
+      initialValue = GalleryUiState(mediaAccessLevel = MediaPermissionHelper.checkAccessLevel(appContext)),
+    )
 
   init {
     viewModelScope.launch {
@@ -1249,11 +1269,6 @@ class GalleryViewModel(
     val vault: List<GalleryMediaItem>,
     val trashed: List<GalleryMediaItem>,
     val customAlbums: List<AlbumEntity>,
-    val faceRows: List<com.example.data.local.MediaItemEntity>,
-    val facePeople: List<FacePersonEntity>,
-    val faceExclusions: List<com.example.data.local.FaceExclusionEntity>,
-    val faceAssignments: List<FaceAssignmentEntity>,
-    val faceCorrectionHistory: List<FaceCorrectionHistoryEntity>,
   )
 
   private data class UiControlsBundle(
