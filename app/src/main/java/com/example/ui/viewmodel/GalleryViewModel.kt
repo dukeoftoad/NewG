@@ -272,7 +272,7 @@ class GalleryViewModel(
             media.faceAssignments.associate { FaceReference(it.photoId, it.faceIndex) to it.personClusterId },
           ).map { group ->
             val record = personRecords[group.id]
-            group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId)
+            group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId, coverFaceIndex = record?.coverFaceIndex ?: group.coverFaceIndex)
           }
         // Assigning the same name to multiple clusters merges them in the People list.
         val ignoredPeopleGroups = detectedGroups.filter { personRecords[it.id]?.isIgnored == true }
@@ -694,11 +694,11 @@ class GalleryViewModel(
     }
   }
 
-  fun setFacePersonCover(group: FacePersonGroup, photoId: Long) {
-    if (photoId !in group.photoIds) return
+  fun setFacePersonCover(group: FacePersonGroup, photoId: Long, faceIndex: Int) {
+    if (group.faces.none { it.photoId == photoId && it.faceIndex == faceIndex }) return
     viewModelScope.launch {
       group.clusterIds.distinct().forEach { clusterId ->
-        galleryRepo.setFacePersonCover(clusterId, photoId)
+        galleryRepo.setFacePersonCover(clusterId, photoId, faceIndex)
       }
       emitMessage("Person cover updated")
     }
