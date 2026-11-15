@@ -39,7 +39,7 @@ interface GalleryDao {
   @Query("SELECT * FROM media_items WHERE isHidden = 0 AND isTrashed = 0 AND faceDataJson IS NOT NULL ORDER BY timestamp ASC")
   fun observeFaceIndexedMedia(): Flow<List<MediaItemEntity>>
 
-  @Query("UPDATE media_items SET faceDataJson = NULL, faceIndexedAt = NULL WHERE isHidden = 0 AND isTrashed = 0")
+  @Query("UPDATE media_items SET faceDataJson = NULL, faceIndexedAt = NULL")
   suspend fun clearFaceIndex()
 
   @Query("SELECT COUNT(*) FROM media_items")
