@@ -213,16 +213,18 @@ class FaceFeedbackDaoTest {
         faceDataJson = legacyFaceJson(0, 1),
       )
     )
-    dao.assignFaceWithHistory(95L, 0, "person-legacy", 100L)
+    val legacyClusterId = "person-95-0"
+    dao.assignFaceWithHistory(95L, 0, legacyClusterId, 100L)
     dao.upsertFacePerson(
       FacePersonEntity(
-        clusterId = "person-legacy",
+        clusterId = legacyClusterId,
         name = "Legacy",
         coverPhotoId = 95L,
         coverFaceIndex = 0,
       )
     )
     val expectedFaceId = stableFaceIdForFixture(95L, 0)
+    val stableClusterId = "person-95-$expectedFaceId"
 
     dao.updateFaceIndexAndReconcile(
       95L,
@@ -231,12 +233,15 @@ class FaceFeedbackDaoTest {
     )
 
     val assignment = dao.getFaceAssignment(95L, 1)
-    assertEquals("person-legacy", assignment?.personClusterId)
+    assertEquals(stableClusterId, assignment?.personClusterId)
     assertEquals(expectedFaceId, assignment?.faceId)
     val history = dao.getFaceCorrectionHistoryForPhoto(95L).single()
     assertEquals(1, history.faceIndex)
     assertEquals(expectedFaceId, history.faceId)
-    val cover = dao.getFacePerson("person-legacy")
+    assertEquals(stableClusterId, history.nextPersonClusterId)
+    assertNull(dao.getFacePerson(legacyClusterId))
+    val cover = dao.getFacePerson(stableClusterId)
+    assertEquals("Legacy", cover?.name)
     assertEquals(1, cover?.coverFaceIndex)
     assertEquals(expectedFaceId, cover?.coverFaceId)
   }
