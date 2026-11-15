@@ -81,7 +81,9 @@ class FaceRecognitionEngine {
     current?.close()
     val options = OrtSession.SessionOptions().apply {
       setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-      setIntraOpNumThreads(max(1, Runtime.getRuntime().availableProcessors() / 2))
+      // Face indexing is a background feature; one ONNX worker avoids
+      // saturating smaller phones while the gallery remains interactive.
+      setIntraOpNumThreads(1)
     }
     val created = environment.createSession(file.absolutePath, options)
     if (isDetector) {
