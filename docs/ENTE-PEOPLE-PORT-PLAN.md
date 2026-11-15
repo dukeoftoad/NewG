@@ -52,7 +52,7 @@ Do not vendor unrelated memory-lane screens, contact-linking workflows, server/A
 | PersonService + relevant ClusterFeedbackService behavior | `GalleryRepository.kt` with atomic `@Transaction` operations in `GalleryDao.kt`; grouping in `FacePersonClusterer.kt` |
 | Stable assignment/exclusion effects on automatic grouping | `app/src/main/java/com/example/data/ai/FacePersonClusterer.kt` |
 | Cover face selection and cover-face resolution | `FacePersonEntity.coverPhotoId/coverFaceIndex`, `GalleryRepository.setFacePersonCover`, and the face picker in `SearchScreen.kt` |
-| Face crop generation, EXIF orientation, and fallback | `app/src/main/java/com/example/ui/components/people/FaceThumbnail.kt` (shared local crop pipeline) |
+| Face crop generation, caching, EXIF orientation, and fallback | `app/src/main/java/com/example/data/ai/FaceCropper.kt` + `app/src/main/java/com/example/ui/components/people/FaceThumbnail.kt` |
 | Person list, person details, merge/split and ignore/unignore actions | New Compose components under `app/src/main/java/com/example/ui/components/people/`; route/integration in `app/src/main/java/com/example/ui/screens/SearchScreen.kt` |
 | Correction review and unassigned face assignment | `SearchScreen.kt` backed by `GalleryViewModel.kt`; reusable thumbnails in `ui/components/people/FaceThumbnail.kt` |
 | App-level callback wiring | `app/src/main/java/com/example/ui/ToadGalleryApp.kt` |
@@ -62,11 +62,11 @@ Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHisto
 
 ## Required behavioral parity
 
-1. Assign an individual detected face to a selected person; assignment remains stable across automatic reclustering.
+1. Expose unassigned single-photo face candidates; allow naming, ignoring, or assigning an individual detected face to a selected person. Assignment remains stable across automatic reclustering.
 2. Remove a wrongly assigned face from a person without deleting the source photo; persist the rejection/exclusion so it is not immediately reintroduced.
 3. Ignore a person or unassigned cluster, and provide a visible ignored-people area with an explicit unignore/restore action.
 4. Select a custom cover from eligible photos containing a face belonging to that person; resolve and render the selected face crop, with safe fallback when the crop cannot be produced.
-5. Show actual face crops in correction/review UI, never database row IDs as the primary user-facing identifier.
+5. Show actual face crops in People cards and correction/review UI, never database row IDs as the primary user-facing identifier. Rejected faces return to the unassigned review surface rather than disappearing.
 6. Support person merge and cluster split/detach using stable local IDs.
 7. Record each local correction in Room and provide undo/history. **This is a NewG extension:** the inspected Ente files provide correction operations but not a durable undo/history ledger. Corrections and undo are now atomic Room transactions, with DAO persistence tests.
 8. Keep all face metadata, assignments, exclusions, covers and correction history local to the device. Do not import Ente's remote entity sync or contact integrations.
@@ -76,7 +76,7 @@ Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHisto
 1. Vendor the selected upstream snapshots under `third_party/ente/`, add the pinned revision and upstream license attribution, and correct `NOTICE-ENTE.md`.
 2. Compare each existing NewG implementation with its Ente counterpart; document parity gaps before changing behavior.
 3. Keep person/cluster feedback operations in `GalleryRepository.kt` and atomic DAO transactions. Keep model download and ONNX inference isolated from person-management logic.
-4. Port Ente's face crop selection/cache/fallback pipeline to Android bitmaps and local media URIs; shared EXIF-aware cropping is now in `FaceThumbnail.kt`.
+4. Port Ente's face crop selection/cache/fallback pipeline to Android bitmaps and local media URIs; the shared EXIF-aware memory/disk cache now lives in `FaceCropper.kt` and is rendered by `FaceThumbnail.kt`.
 5. Continue separating the People/review UX into dedicated Compose components; current SearchScreen now includes unassigned face review, assignment, face-based cover selection, and correction history.
 6. Add Room migration/persistence tests, cluster behavior tests, and Compose UI tests for assignment, exclusion, ignore/unignore, cover changes, merge/split and undo.
 7. Update PR description and provenance. Run the Android CI workflow on the exact final PR head and report its actual result.
