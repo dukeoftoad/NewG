@@ -416,7 +416,21 @@ fun SearchScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                       ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        val coverFace = group.faces.firstOrNull {
+                          it.photoId == group.coverPhotoId && it.faceIndex == group.coverFaceIndex
+                        } ?: group.faces.firstOrNull()
+                        val coverItem = coverFace?.let { face -> uiState.visibleMedia.firstOrNull { it.id == face.photoId } }
+                        if (coverFace != null && coverItem != null) {
+                          FaceThumbnail(
+                            item = coverItem,
+                            bounds = group.faceBounds[coverFace],
+                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)),
+                          )
+                        } else {
+                          val cover = uiState.visibleMedia.firstOrNull { it.id == group.coverPhotoId }
+                          if (cover != null) GalleryMediaImage(item = cover, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)))
+                        }
+                        Column(modifier = Modifier.weight(1f).padding(start = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                           Text(
                             text = group.name?.takeIf { it.isNotBlank() } ?: "Person ${index + 1}",
                             style = MaterialTheme.typography.titleSmall,
@@ -455,9 +469,13 @@ fun SearchScreen(
                       horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        val cover = uiState.visibleMedia.firstOrNull { it.id == group.coverPhotoId }
-                          ?: uiState.visibleMedia.firstOrNull { it.id in group.photoIds }
-                        if (cover != null) GalleryMediaImage(item = cover, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)))
+                        val coverFace = group.faces.firstOrNull {
+                          it.photoId == group.coverPhotoId && it.faceIndex == group.coverFaceIndex
+                        } ?: group.faces.firstOrNull()
+                        val cover = coverFace?.let { face -> uiState.visibleMedia.firstOrNull { it.id == face.photoId } }
+                        if (coverFace != null && cover != null) {
+                          FaceThumbnail(item = cover, bounds = group.faceBounds[coverFace], modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)))
+                        }
                         Column {
                           Text(group.name?.takeIf { it.isNotBlank() } ?: "Ignored person ${index + 1}", style = MaterialTheme.typography.bodyMedium)
                           Text("${group.photoIds.size} photos", style = MaterialTheme.typography.bodySmall, color = extended.textMuted)
