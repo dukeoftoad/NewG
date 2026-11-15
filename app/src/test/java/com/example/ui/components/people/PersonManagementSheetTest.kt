@@ -212,7 +212,7 @@ class PersonManagementSheetTest {
       }
     }
 
-    compose.onNodeWithText("Unignore").assertExists().performClick()
+    compose.onNodeWithText("Unignore").performScrollTo().assertIsDisplayed().performClick()
     compose.runOnIdle { assertEquals("alice" to false, restored) }
   }
 }
