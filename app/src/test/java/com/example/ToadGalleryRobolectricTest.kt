@@ -51,8 +51,17 @@ class ToadGalleryRobolectricTest {
         .getOrDefault(false)
     }
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
+    // Selection is emitted by the ViewModel independently of Compose's frame
+    // clock. Wait for the resulting action bar to finish entering before
+    // asserting it is visible.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule.onNodeWithText("9 selected").assertIsDisplayed()
+          composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("selection_clear_button").performClick()
     composeTestRule.waitUntil(timeoutMillis = 10_000) {
       runCatching {
