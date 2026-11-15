@@ -93,6 +93,25 @@ interface GalleryDao {
   @Query("DELETE FROM face_exclusions")
   suspend fun clearFaceExclusions()
 
+  @Query("DELETE FROM face_assignments")
+  suspend fun clearFaceAssignments()
+
+  @Query("DELETE FROM face_correction_history")
+  suspend fun clearFaceCorrectionHistory()
+
+  @Query("DELETE FROM face_people")
+  suspend fun clearFacePeople()
+
+  /** Clear all face-derived data and user corrections atomically with the index reset. */
+  @Transaction
+  suspend fun clearFaceIndexAndFeedback() {
+    clearFaceIndex()
+    clearFaceExclusions()
+    clearFaceAssignments()
+    clearFaceCorrectionHistory()
+    clearFacePeople()
+  }
+
   @Query("SELECT * FROM face_exclusions")
   fun observeFaceExclusions(): Flow<List<FaceExclusionEntity>>
 
