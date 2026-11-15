@@ -158,7 +158,7 @@ class PersonManagementSheetTest {
     // Each detected face exposes its own assignment entry point. The
     // deterministic suggestion ordering is covered by FacePersonClustererTest;
     // Robolectric does not reliably expose Compose DropdownMenu popup semantics.
-    compose.onAllNodesWithText("Assign").onFirst().performScrollTo().assertIsDisplayed()
+    compose.onAllNodesWithText("Assign")[0].performScrollTo().assertIsDisplayed()
   }
 
   @Test
