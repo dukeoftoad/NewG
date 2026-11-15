@@ -215,6 +215,8 @@ class FaceFeedbackDaoTest {
     )
     val legacyClusterId = "person-95-0"
     dao.assignFaceWithHistory(95L, 0, legacyClusterId, 100L)
+    // This unnamed cluster has an assignment but no face_people row.
+    dao.assignFaceWithHistory(95L, 1, "person-95-1", 101L)
     dao.upsertFacePerson(
       FacePersonEntity(
         clusterId = legacyClusterId,
@@ -224,21 +226,28 @@ class FaceFeedbackDaoTest {
       )
     )
     val expectedFaceId = stableFaceIdForFixture(95L, 0)
+    val secondFaceId = stableFaceIdForFixture(95L, 1)
     val stableClusterId = "person-95-$expectedFaceId"
+    val secondStableClusterId = "person-95-$secondFaceId"
 
     dao.updateFaceIndexAndReconcile(
       95L,
-      faceJson("face-other", expectedFaceId),
+      faceJson(secondFaceId, expectedFaceId),
       200L,
     )
 
     val assignment = dao.getFaceAssignment(95L, 1)
     assertEquals(stableClusterId, assignment?.personClusterId)
     assertEquals(expectedFaceId, assignment?.faceId)
-    val history = dao.getFaceCorrectionHistoryForPhoto(95L).single()
+    val unnamedAssignment = dao.getFaceAssignment(95L, 0)
+    assertEquals(secondStableClusterId, unnamedAssignment?.personClusterId)
+    assertEquals(secondFaceId, unnamedAssignment?.faceId)
+    val histories = dao.getFaceCorrectionHistoryForPhoto(95L)
+    val history = histories.single { it.nextPersonClusterId == stableClusterId }
     assertEquals(1, history.faceIndex)
     assertEquals(expectedFaceId, history.faceId)
     assertEquals(stableClusterId, history.nextPersonClusterId)
+    assertEquals(secondStableClusterId, histories.single { it.nextPersonClusterId == secondStableClusterId }.nextPersonClusterId)
     assertNull(dao.getFacePerson(legacyClusterId))
     val cover = dao.getFacePerson(stableClusterId)
     assertEquals("Legacy", cover?.name)
