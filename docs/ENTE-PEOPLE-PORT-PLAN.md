@@ -38,7 +38,7 @@ Copy these files byte-for-byte from the pinned revision, preserving their origin
 - `utils/face/face_thumbnail_cache.dart` — cached face crop selection, generation and fallback.
 - `services/machine_learning/face_thumbnail_generator.dart` — crop generation worker interface.
 
-Optional, only if NewG adds Ente-style manual whole-photo assignment in addition to per-face assignment:
+Also vendored for reference, but not required for the initial local-only port:
 - `ui/viewer/people/add_files_to_person_page.dart`
 
 Do not vendor unrelated memory-lane screens, contact-linking workflows, server/API clients, upload/sync code, or account-specific "this is me" flows.
@@ -49,16 +49,16 @@ Do not vendor unrelated memory-lane screens, contact-linking workflows, server/A
 |---|---|
 | `PersonData`, cluster membership, rejected faces, avatar and ignore flags | `app/src/main/java/com/example/data/local/FacePersonEntity.kt`, `FaceAssignmentEntity.kt`, `FaceExclusionEntity.kt` |
 | Person/cluster/face persistence and reconciliation | `app/src/main/java/com/example/data/local/GalleryDao.kt`, `ToadGalleryDatabase.kt`, `app/src/main/java/com/example/data/repository/GalleryRepository.kt` |
-| PersonService + relevant ClusterFeedbackService behavior | New `app/src/main/java/com/example/data/ai/FacePersonFeedbackManager.kt`; keep persistence in `GalleryRepository.kt` |
+| PersonService + relevant ClusterFeedbackService behavior | `GalleryRepository.kt` with atomic `@Transaction` operations in `GalleryDao.kt`; grouping in `FacePersonClusterer.kt` |
 | Stable assignment/exclusion effects on automatic grouping | `app/src/main/java/com/example/data/ai/FacePersonClusterer.kt` |
-| Cover photo selection and cover-face resolution | New `app/src/main/java/com/example/ui/components/people/PersonCoverPicker.kt`; state/actions in `GalleryViewModel.kt` |
-| Face crop generation, caching, and fallback | New `app/src/main/java/com/example/data/ai/FaceCropper.kt` and `app/src/main/java/com/example/ui/components/people/FaceThumbnail.kt` |
+| Cover face selection and cover-face resolution | `FacePersonEntity.coverPhotoId/coverFaceIndex`, `GalleryRepository.setFacePersonCover`, and the face picker in `SearchScreen.kt` |
+| Face crop generation, EXIF orientation, and fallback | `app/src/main/java/com/example/ui/components/people/FaceThumbnail.kt` (shared local crop pipeline) |
 | Person list, person details, merge/split and ignore/unignore actions | New Compose components under `app/src/main/java/com/example/ui/components/people/`; route/integration in `app/src/main/java/com/example/ui/screens/SearchScreen.kt` |
-| Correction review with face crops and assignment actions | New `app/src/main/java/com/example/ui/components/people/FaceCorrectionSheet.kt`; state/actions in `GalleryViewModel.kt` |
+| Correction review and unassigned face assignment | `SearchScreen.kt` backed by `GalleryViewModel.kt`; reusable thumbnails in `ui/components/people/FaceThumbnail.kt` |
 | App-level callback wiring | `app/src/main/java/com/example/ui/ToadGalleryApp.kt` |
 | Behavior and persistence tests | `app/src/test/java/com/example/` plus Room instrumentation tests under `app/src/androidTest/java/com/example/` |
 
-Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHistoryEntity` are retained and strengthened rather than replaced. Room migration changes must remain additive and migration-tested.
+Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHistoryEntity` are retained. Correction writes and undo now run in DAO-level Room transactions. Room v8 adds nullable `coverFaceIndex` to preserve the exact selected avatar face; migration 7→8 is additive.
 
 ## Required behavioral parity
 
@@ -75,9 +75,9 @@ Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHisto
 
 1. Vendor the selected upstream snapshots under `third_party/ente/`, add the pinned revision and upstream license attribution, and correct `NOTICE-ENTE.md`.
 2. Compare each existing NewG implementation with its Ente counterpart; document parity gaps before changing behavior.
-3. Consolidate feature operations in `FacePersonFeedbackManager.kt`, backed by repository/DAO transactions. Keep model download and ONNX inference isolated from person-management logic.
-4. Port Ente's face crop selection/cache/fallback pipeline to Android bitmaps and local media URIs; replace the current ad-hoc crop path with this shared component.
-5. Replace the current correction dialog with dedicated Compose People, person-detail, cover-picker and correction-sheet components based on the selected Ente flows.
+3. Keep person/cluster feedback operations in `GalleryRepository.kt` and atomic DAO transactions. Keep model download and ONNX inference isolated from person-management logic.
+4. Port Ente's face crop selection/cache/fallback pipeline to Android bitmaps and local media URIs; shared EXIF-aware cropping is now in `FaceThumbnail.kt`.
+5. Continue separating the People/review UX into dedicated Compose components; current SearchScreen now includes unassigned face review, assignment, face-based cover selection, and correction history.
 6. Add Room migration/persistence tests, cluster behavior tests, and Compose UI tests for assignment, exclusion, ignore/unignore, cover changes, merge/split and undo.
 7. Update PR description and provenance. Run the Android CI workflow on the exact final PR head and report its actual result.
 
