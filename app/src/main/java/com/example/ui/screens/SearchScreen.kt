@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.SearchOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -40,7 +39,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -65,10 +63,10 @@ import com.example.data.model.MediaType
 import com.example.data.model.SearchTabMode
 import com.example.ui.components.GalleryMediaImage
 import com.example.ui.components.people.FaceThumbnail
+import com.example.ui.components.people.PersonManagementSheet
 import com.example.ui.components.pinchToZoomGridColumns
 import com.example.ui.theme.LocalToadColors
 import com.example.data.ai.FacePersonGroup
-import com.example.data.ai.FaceCropBounds
 import com.example.ui.viewmodel.GalleryUiState
 import com.example.ui.viewmodel.MapDisplayMode
 
@@ -98,8 +96,6 @@ fun SearchScreen(
   val suggestions = remember { listOf("sunset", "receipt", "5,000", "dogs", "nature", "notice", "coffee") }
   var typeMenuExpanded by remember { mutableStateOf(false) }
   var personBeingNamed by remember { mutableStateOf<FacePersonGroup?>(null) }
-  var personNameInput by remember { mutableStateOf("") }
-  var showFaceHistory by remember { mutableStateOf(false) }
   val prefsCols = uiState.preferences.columns.coerceIn(2, 10)
   val resultColumns = if (isWideLayout) (prefsCols + 1).coerceIn(2, 10) else prefsCols
   val compactResults = resultColumns >= 6
@@ -445,7 +441,6 @@ fun SearchScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                           TextButton(onClick = {
                             personBeingNamed = group
-                            personNameInput = group.name.orEmpty()
                           }) {
                             Text(if (group.name.isNullOrBlank()) "Name" else "Edit")
                           }
@@ -482,7 +477,6 @@ fun SearchScreen(
                         }
                         TextButton(onClick = {
                           personBeingNamed = candidate
-                          personNameInput = ""
                         }) { Text("Name") }
                         var assignMenuExpanded by remember(face.photoId, face.faceIndex) { mutableStateOf(false) }
                         Box {
@@ -689,171 +683,15 @@ fun SearchScreen(
     }
   }
 
-  personBeingNamed?.let { group ->
-    val existingNames = uiState.peopleGroups.mapNotNull { it.name?.trim()?.takeIf(String::isNotEmpty) }.distinct().sorted()
-    AlertDialog(
-      onDismissRequest = { personBeingNamed = null },
-      title = { Text(if (group.name.isNullOrBlank()) "Name this person" else "Rename person") },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          OutlinedTextField(
-            value = personNameInput,
-            onValueChange = { personNameInput = it },
-            label = { Text("Person name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag("person_name_input"),
-          )
-          if (existingNames.isNotEmpty()) {
-            Text("Or merge with an existing person", style = MaterialTheme.typography.labelMedium)
-            existingNames.filterNot { it.equals(group.name, ignoreCase = true) }.forEach { existing ->
-              TextButton(onClick = {
-                onNamePerson(group, existing)
-                personBeingNamed = null
-              }) { Text(existing) }
-            }
-          }
-          Text("Choose a face as cover", style = MaterialTheme.typography.labelMedium)
-          group.faces
-            .sortedByDescending { it.photoId == group.coverPhotoId && it.faceIndex == group.coverFaceIndex }
-            .take(16)
-            .forEach { face ->
-              val photo = uiState.visibleMedia.firstOrNull { it.id == face.photoId }
-              if (photo != null) {
-                val selected = face.photoId == group.coverPhotoId && face.faceIndex == group.coverFaceIndex
-                Row(
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                  FaceThumbnail(
-                    item = photo,
-                    bounds = group.faceBounds[face],
-                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
-                  )
-                  Column(modifier = Modifier.weight(1f)) {
-                    Text(photo.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Face ${face.faceIndex + 1}", style = MaterialTheme.typography.labelSmall, color = extended.textMuted)
-                  }
-                  TextButton(onClick = {
-                    onSetPersonCover(group, face.photoId, face.faceIndex)
-                    personBeingNamed = null
-                  }) { Text(if (selected) "Current cover" else "Use as cover") }
-                }
-              }
-            }
-          if (group.faces.isNotEmpty()) {
-            Text("Remove an incorrectly grouped face", style = MaterialTheme.typography.labelMedium)
-            group.faces.take(10).forEach { face ->
-              val photo = uiState.visibleMedia.firstOrNull { it.id == face.photoId }
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-              ) {
-                if (photo != null) {
-                  FaceThumbnail(
-                    item = photo,
-                    bounds = group.faceBounds[face],
-                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
-                  )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                  Text(
-                    photo?.title ?: "Photo unavailable",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                  )
-                  Text(
-                    "Detected face ${face.faceIndex + 1}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = extended.textMuted,
-                  )
-                }
-                TextButton(onClick = {
-                  onExcludeFace(face.photoId, face.faceIndex)
-                  personBeingNamed = null
-                }) { Text("Remove") }
-                var assignMenuExpanded by remember(face.photoId, face.faceIndex) { mutableStateOf(false) }
-                Box {
-                  TextButton(onClick = { assignMenuExpanded = true }) { Text("Assign") }
-                  DropdownMenu(
-                    expanded = assignMenuExpanded,
-                    onDismissRequest = { assignMenuExpanded = false },
-                  ) {
-                    uiState.peopleGroups.filter { target ->
-                      target.clusterIds.none { it in group.clusterIds }
-                    }.forEach { target ->
-                      DropdownMenuItem(
-                        text = { Text(target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") },
-                        onClick = {
-                          onAssignFace(face.photoId, face.faceIndex, target)
-                          assignMenuExpanded = false
-                          personBeingNamed = null
-                        },
-                      )
-                    }
-                  }
-                }
-              }
-            }
-          }
-          if (group.clusterIds.size > 1) {
-            Text("Separate a merged cluster", style = MaterialTheme.typography.labelMedium)
-            group.clusterIds.forEachIndexed { index, clusterId ->
-              TextButton(onClick = {
-                onNamePerson(group.copy(clusterIds = listOf(clusterId)), null)
-                personBeingNamed = null
-              }) { Text("Separate cluster ${index + 1}") }
-            }
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = {
-          onNamePerson(group, personNameInput)
-          personBeingNamed = null
-        }, enabled = personNameInput.isNotBlank()) { Text("Save") }
-      },
-      dismissButton = {
-        Row {
-          if (!group.name.isNullOrBlank()) {
-            TextButton(onClick = {
-              onNamePerson(group, null)
-              personBeingNamed = null
-            }) { Text("Remove name") }
-          }
-          TextButton(onClick = { onSetPersonIgnored(group, true); personBeingNamed = null }) { Text("Ignore person") }
-          TextButton(onClick = { onUndoFaceCorrection() }) { Text("Undo correction") }
-          TextButton(onClick = { showFaceHistory = true }) { Text("History (${uiState.faceCorrectionHistory.size})") }
-          TextButton(onClick = { personBeingNamed = null }) { Text("Cancel") }
-        }
-      },
-    )
-  }
-  if (showFaceHistory) {
-    AlertDialog(
-      onDismissRequest = { showFaceHistory = false },
-      title = { Text("Face correction history") },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          if (uiState.faceCorrectionHistory.isEmpty()) {
-            Text("No face corrections yet")
-          } else {
-            uiState.faceCorrectionHistory.take(20).forEach { entry ->
-              val action = when {
-                entry.undoneAt != null -> "Undone"
-                entry.isExcluded -> "Removed from person"
-                entry.nextPersonClusterId != null -> "Assigned to another person"
-                else -> "Restored"
-              }
-              Text("$action • ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(entry.createdAt))}")
-            }
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = { showFaceHistory = false }) { Text("Close") }
-      },
-    )
-  }
+  PersonManagementSheet(
+    group = personBeingNamed,
+    uiState = uiState,
+    onDismiss = { personBeingNamed = null },
+    onNamePerson = onNamePerson,
+    onExcludeFace = onExcludeFace,
+    onSetPersonCover = onSetPersonCover,
+    onSetPersonIgnored = onSetPersonIgnored,
+    onAssignFace = onAssignFace,
+    onUndoFaceCorrection = onUndoFaceCorrection,
+  )
 }
