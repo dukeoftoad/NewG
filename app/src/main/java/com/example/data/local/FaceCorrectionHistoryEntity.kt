@@ -9,6 +9,8 @@ data class FaceCorrectionHistoryEntity(
   @PrimaryKey(autoGenerate = true) val id: Long = 0,
   val photoId: Long,
   val faceIndex: Int,
+  /** Stable detector-independent identity used to resolve history after re-indexing. */
+  val faceId: String? = null,
   val previousPersonClusterId: String? = null,
   val nextPersonClusterId: String? = null,
   val wasExcluded: Boolean = false,
