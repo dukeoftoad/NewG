@@ -346,6 +346,53 @@ class FaceFeedbackDaoTest {
     assertEquals("person-a", dao.getFaceAssignmentByFaceId(94L, "face-a")?.personClusterId)
   }
 
+  @Test
+  fun stableFaceFeedbackSurvivesRoomDatabaseRestart() = runBlocking {
+    val context = RuntimeEnvironment.getApplication()
+    val databaseName = "face-feedback-restart-test.db"
+    context.deleteDatabase(databaseName)
+    val first = Room.databaseBuilder(context, ToadGalleryDatabase::class.java, databaseName).build()
+    try {
+      val firstDao = first.galleryDao()
+      firstDao.upsertFacePerson(
+        FacePersonEntity(
+          clusterId = "person-persisted",
+          name = "Persisted person",
+          coverPhotoId = 96L,
+          coverFaceIndex = 1,
+          coverFaceId = "face-persisted",
+          isIgnored = true,
+        )
+      )
+      firstDao.insertFaceCorrectionHistory(
+        FaceCorrectionHistoryEntity(
+          photoId = 96L,
+          faceIndex = 1,
+          faceId = "face-persisted",
+          previousPersonClusterId = null,
+          nextPersonClusterId = "person-persisted",
+          createdAt = 100L,
+        )
+      )
+    } finally {
+      first.close()
+    }
+
+    val reopened = Room.databaseBuilder(context, ToadGalleryDatabase::class.java, databaseName).build()
+    try {
+      val person = reopened.galleryDao().getFacePerson("person-persisted")
+      assertEquals("Persisted person", person?.name)
+      assertTrue(person?.isIgnored == true)
+      assertEquals("face-persisted", person?.coverFaceId)
+      val history = reopened.galleryDao().getFaceCorrectionHistoryForPhoto(96L).single()
+      assertEquals("face-persisted", history.faceId)
+      assertEquals("person-persisted", history.nextPersonClusterId)
+    } finally {
+      reopened.close()
+      context.deleteDatabase(databaseName)
+    }
+  }
+
   private fun legacyFaceJson(vararg axes: Int): String {
     val faces = JSONArray()
     axes.forEach { axis ->
