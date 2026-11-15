@@ -314,8 +314,9 @@ interface GalleryDao {
   /** Restore an excluded face to automatic clustering and keep the action undoable. */
   @Transaction
   suspend fun restoreFaceWithHistory(photoId: Long, faceIndex: Int, changedAt: Long, faceId: String? = null) {
-    val previous = faceId?.let { getFaceAssignmentByFaceId(photoId, it) }
-      ?: getFaceAssignment(photoId, faceIndex)
+    val previous = if (faceId != null) {
+      getFaceAssignmentByFaceId(photoId, faceId) ?: getLegacyFaceAssignment(photoId, faceIndex)
+    } else getFaceAssignment(photoId, faceIndex)
     insertFaceCorrectionHistory(
       FaceCorrectionHistoryEntity(
         photoId = photoId,
@@ -323,7 +324,7 @@ interface GalleryDao {
         faceId = faceId,
         previousPersonClusterId = previous?.personClusterId,
         nextPersonClusterId = previous?.personClusterId,
-        wasExcluded = if (faceId != null) isFaceExcludedByFaceId(photoId, faceId) || isFaceExcluded(photoId, faceIndex) else isFaceExcluded(photoId, faceIndex),
+        wasExcluded = if (faceId != null) isFaceExcludedByFaceId(photoId, faceId) || isLegacyFaceExcluded(photoId, faceIndex) else isFaceExcluded(photoId, faceIndex),
         isExcluded = false,
         createdAt = changedAt,
       )
