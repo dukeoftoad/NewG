@@ -17,6 +17,8 @@ import com.example.data.ai.DepthModelPackState
 import com.example.data.editor.PhotoEditorRenderer
 import com.example.data.local.AlbumEntity
 import com.example.data.local.FacePersonEntity
+import com.example.data.local.FaceAssignmentEntity
+import com.example.data.local.FaceCorrectionHistoryEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaAccessLevel
 import com.example.data.media.MediaPermissionHelper
@@ -62,6 +64,7 @@ data class GalleryUiState(
   val customAlbums: List<AlbumEntity> = emptyList(),
   val peopleGroups: List<FacePersonGroup> = emptyList(),
   val ignoredPeopleGroups: List<FacePersonGroup> = emptyList(),
+  val faceCorrectionHistory: List<FaceCorrectionHistoryEntity> = emptyList(),
   val folderDestinations: List<String> = listOf("Camera", "Travel", "Screenshots", "Downloads"),
   val stories: List<StorySlide> = SampleMediaCatalog.stories,
   val folderAlbums: List<AlbumFolder> = emptyList(),
@@ -199,8 +202,14 @@ class GalleryViewModel(
     }
 
   private val facePeopleBundleFlow =
-    combine(galleryRepo.faceIndexedMedia, galleryRepo.facePeople, galleryRepo.faceExclusions) { faceRows, facePeople, exclusions ->
-      Triple(faceRows, facePeople, exclusions)
+    combine(
+      galleryRepo.faceIndexedMedia,
+      galleryRepo.facePeople,
+      galleryRepo.faceExclusions,
+      galleryRepo.faceAssignments,
+      galleryRepo.faceCorrectionHistory,
+    ) { faceRows, facePeople, exclusions, assignments, history ->
+      FacePeopleBundle(faceRows, facePeople, exclusions, assignments, history)
     }
 
   private val mediaBundleFlow =
@@ -211,7 +220,11 @@ class GalleryViewModel(
       galleryRepo.customAlbums,
       facePeopleBundleFlow,
     ) { visible, vault, trashed, albums, faceBundle ->
-      MediaBundle(visible, vault, trashed, albums, faceBundle.first, faceBundle.second, faceBundle.third)
+      MediaBundle(
+        visible, vault, trashed, albums,
+        faceBundle.faceRows, faceBundle.facePeople, faceBundle.faceExclusions,
+        faceBundle.faceAssignments, faceBundle.faceCorrectionHistory,
+      )
     }
 
   private val uiControlsBundleFlow =
@@ -256,6 +269,7 @@ class GalleryViewModel(
           FacePersonClusterer.cluster(
             media.faceRows, prefs.clusteringThreshold,
             media.faceExclusions.map { FaceReference(it.photoId, it.faceIndex) }.toSet(),
+            media.faceAssignments.associate { FaceReference(it.photoId, it.faceIndex) to it.personClusterId },
           ).map { group ->
             val record = personRecords[group.id]
             group.copy(name = record?.name, coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId)
@@ -372,6 +386,7 @@ class GalleryViewModel(
           customAlbums = media.customAlbums,
           peopleGroups = peopleGroups,
           ignoredPeopleGroups = ignoredPeopleGroups,
+          faceCorrectionHistory = media.faceCorrectionHistory,
           folderDestinations = folderDestSet.toList(),
           folderAlbums = listOf(favoritesFolder) + deviceBucketFolders + userFolders,
           vaultMedia = media.vault,
@@ -688,11 +703,27 @@ class GalleryViewModel(
     }
   }
 
-  /** Remove only one detected face from the current person; other matches remain assigned. */
+  /** Explicitly assign a detected face to a stable person, as Ente does for cluster membership. */
+  fun assignFaceToPerson(photoId: Long, faceIndex: Int, target: FacePersonGroup) {
+    val targetClusterId = target.clusterIds.firstOrNull() ?: return
+    viewModelScope.launch {
+      galleryRepo.assignFaceToPerson(photoId, faceIndex, targetClusterId)
+      emitMessage("Face assigned to ${target.name?.takeIf { it.isNotBlank() } ?: "person"}")
+    }
+  }
+
+  /** Remove one incorrectly grouped face and persist the rejection locally. */
   fun excludeFaceFromPerson(photoId: Long, faceIndex: Int) {
     viewModelScope.launch {
       galleryRepo.excludeFace(photoId, faceIndex)
       emitMessage("Face removed from person")
+    }
+  }
+
+  fun undoLastFaceCorrection() {
+    viewModelScope.launch {
+      val undone = galleryRepo.undoLastFaceCorrection()
+      emitMessage(if (undone) "Last face correction undone" else "No face correction to undo")
     }
   }
 
@@ -1109,6 +1140,14 @@ class GalleryViewModel(
     val savingEdit: Boolean,
   )
 
+  private data class FacePeopleBundle(
+    val faceRows: List<com.example.data.local.MediaItemEntity>,
+    val facePeople: List<FacePersonEntity>,
+    val faceExclusions: List<com.example.data.local.FaceExclusionEntity>,
+    val faceAssignments: List<FaceAssignmentEntity>,
+    val faceCorrectionHistory: List<FaceCorrectionHistoryEntity>,
+  )
+
   private data class MediaBundle(
     val visible: List<GalleryMediaItem>,
     val vault: List<GalleryMediaItem>,
@@ -1117,6 +1156,8 @@ class GalleryViewModel(
     val faceRows: List<com.example.data.local.MediaItemEntity>,
     val facePeople: List<FacePersonEntity>,
     val faceExclusions: List<com.example.data.local.FaceExclusionEntity>,
+    val faceAssignments: List<FaceAssignmentEntity>,
+    val faceCorrectionHistory: List<FaceCorrectionHistoryEntity>,
   )
 
   private data class UiControlsBundle(
