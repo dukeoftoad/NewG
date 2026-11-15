@@ -100,6 +100,21 @@ class FacePersonClustererTest {
   }
 
   @Test
+  fun canReturnSinglePhotoFaceCandidatesForPeopleReview() {
+    val rows = listOf(media(id = 5L, timestamp = 5L, embeddings = listOf(vector(0))))
+
+    assertTrue(FacePersonClusterer.cluster(rows, distanceThreshold = 0.24f).isEmpty())
+    val candidates = FacePersonClusterer.cluster(
+      rows,
+      distanceThreshold = 0.24f,
+      minimumPhotos = 1,
+    )
+    assertEquals(1, candidates.size)
+    assertEquals(listOf(5L), candidates.single().photoIds)
+    assertEquals(FaceReference(5L, 0), candidates.single().faces.single())
+  }
+
+  @Test
   fun keepsClearlyDifferentPeopleInSeparateGroups() {
     val rows = listOf(
       media(id = 1L, timestamp = 1L, embeddings = listOf(vector(0), vector(1))),
