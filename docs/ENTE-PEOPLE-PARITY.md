@@ -65,3 +65,39 @@ The feature is not considered ported until:
 - **Verified parity** — behavior is covered by tests and matches the selected Ente behavior.
 - **Intentional deviation** — documented local design difference.
 - **NewG extension** — feature not supplied by Ente, e.g. durable local undo/history.
+
+
+## Detailed comparison findings — 2026-11-15
+
+### 1. Person model (`person.dart`)
+
+Ente models stable person identity, assigned clusters and face membership, rejected face IDs, avatar face identity, and ignore state (including legacy sentinel names). It also carries pinning, memory visibility, birth date and contact-link fields. NewG splits the local core across `FacePersonEntity`, `FaceAssignmentEntity` and `FaceExclusionEntity`; remote/contact/memory fields are intentionally excluded. **Finding: Partial parity.** NewG cover identity is `(photoId, faceIndex)` whereas Ente uses a face ID. Detector array ordering must be validated across re-indexing; assignments, exclusions and covers need an explicit invalidation/migration policy when detections change.
+
+### 2. PersonService and ClusterFeedbackService
+
+Ente distinguishes removing a face from a person, removing it from a cluster, adding it to a cluster, and removing selected files from a cluster. Removing a face from a person records rejection feedback so it is not suggested back. Membership changes invalidate cached cover-face selections and notify dependent screens. NewG has Room assignment/exclusion/history methods, a clusterer overlay and ViewModel flows, but no consolidated feedback manager; repeated assignment, restore, merge and detach semantics need transaction-level tests. **Finding: Partial parity.** Consolidate operations in `FacePersonFeedbackManager` and make membership/exclusion/history updates transactional.
+
+### 3. Clustering and suggestions (`dart_cluster_averages.dart`, `dart_face_distances.dart`)
+
+Ente maintains normalized cluster-centroid summaries and supports nearest-centroid search, mean-distance suggestions, and median pairwise face-distance suggestions using sampled embeddings. Suggestions exclude ignored and rejected clusters. NewG `FacePersonClusterer` instead performs chronological greedy single-pass assignment to online centroids with a per-photo uniqueness constraint. It has no persisted centroid summaries, nearest-cluster search, median-distance ranking or rejected-suggestion map. **Finding: Not parity.** Initial face grouping and Ente-style candidate-person suggestions are distinct behaviors; do not claim the current greedy clusterer ports Ente's suggestion algorithms. Decide whether candidate suggestions belong in this release and port separately if required.
+
+### 4. Face thumbnail pipeline
+
+Ente `face_thumbnail_cache.dart` uses bounded in-memory LRU caches for full crops and thumbnails, a person/cluster-to-cover-face cache, optional disk-persisted crops, bounded generation queues, retry/backoff, and source-file fallback. `face_thumbnail_generator.dart` delegates crop generation to a worker isolate and distinguishes unsupported formats. NewG `FaceThumbnail.kt` decodes the source URI and crops during Compose state production, applies EXIF orientation, and falls back to `GalleryMediaImage`, but has no LRU/disk cache, bounded generation queue, retry policy or separate thumbnail/full-crop variants. **Finding: Partial parity with a performance gap.** Replace repeated composable decoding with a reusable local `FaceCropper` using bounded memory/disk caching, background work, cancellation and invalidation keyed by photo + face identity + bounds/version.
+
+### 5. People screens and cover selection
+
+Ente has separate People, cluster and person-cluster screens; its avatar picker presents eligible files containing the person's faces, limits selection to one, and saves the selected face identity. NewG `SearchScreen.kt` currently puts People, ignored people, naming, cover selection, face removal/reassignment, split and history into one dialog/screen. Cover selection is a list of up to 16 face candidates, not a dedicated eligible-photo picker; there is no dedicated cluster detail route. Ente's `people_page.dart` also contains memory-lane integration, which is outside this port. **Finding: Partial parity.** Extract dedicated Compose People, person detail, cover picker and correction surfaces; omit memory-lane dependencies.
+
+### 6. Implementation order
+
+1. Stabilize face identity across re-indexing and define assignment/exclusion/cover invalidation when detector results change.
+2. Add `FacePersonFeedbackManager` and transactional operations for assign, reject, restore, merge, detach and cover updates.
+3. Replace per-composition crop decoding with a bounded LRU + disk-backed `FaceCropper` modeled on Ente's cache/generator.
+4. Build dedicated Compose People/detail/cover-picker/correction surfaces using vendored widgets as interaction references.
+5. Decide whether candidate-cluster suggestions are in scope; if yes, port mean/median suggestions separately from initial clustering.
+6. Add Room restart/migration and Compose interaction tests before marking any row Verified parity.
+
+### Verification limits
+
+This is a source/code inspection comparison only. It does not establish successful Android compilation, device behavior, persistence restart tests or visual parity. The latest observed CI run was still in progress; cancelled runs are not passes.
