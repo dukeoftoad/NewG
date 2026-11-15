@@ -37,6 +37,43 @@ interface GalleryDao {
   @Query("UPDATE media_items SET faceDataJson = :faceDataJson, faceIndexedAt = :indexedAt WHERE id = :id")
   suspend fun updateFaceIndex(id: Long, faceDataJson: String, indexedAt: Long)
 
+  @Query("SELECT * FROM face_assignments WHERE photoId = :photoId")
+  suspend fun getFaceAssignmentsForPhoto(photoId: Long): List<FaceAssignmentEntity>
+
+  @Query("DELETE FROM face_assignments WHERE photoId = :photoId")
+  suspend fun deleteFaceAssignmentsForPhoto(photoId: Long)
+
+  @Query("SELECT * FROM face_exclusions WHERE photoId = :photoId")
+  suspend fun getFaceExclusionsForPhoto(photoId: Long): List<FaceExclusionEntity>
+
+  @Query("DELETE FROM face_exclusions WHERE photoId = :photoId")
+  suspend fun deleteFaceExclusionsForPhoto(photoId: Long)
+
+  @Transaction
+  suspend fun updateFaceIndexAndReconcile(id: Long, faceDataJson: String, indexedAt: Long) {
+    updateFaceIndex(id, faceDataJson, indexedAt)
+    val faces = runCatching { JSONObject(faceDataJson).optJSONArray("faces") }.getOrNull()
+      ?: return
+    fun resolve(faceId: String?, oldIndex: Int): Int? {
+      if (faceId == null) return oldIndex.takeIf { it in 0 until faces.length() }
+      return (0 until faces.length()).firstOrNull { index ->
+        faces.optJSONObject(index)?.optString("faceId") == faceId
+      }
+    }
+    val assignments = getFaceAssignmentsForPhoto(id)
+      .mapNotNull { row -> resolve(row.faceId, row.faceIndex)?.let { row.copy(faceIndex = it) } }
+      .sortedByDescending { it.faceId != null }
+      .distinctBy { it.faceIndex }
+    val exclusions = getFaceExclusionsForPhoto(id)
+      .mapNotNull { row -> resolve(row.faceId, row.faceIndex)?.let { row.copy(faceIndex = it) } }
+      .sortedByDescending { it.faceId != null }
+      .distinctBy { it.faceIndex }
+    deleteFaceAssignmentsForPhoto(id)
+    deleteFaceExclusionsForPhoto(id)
+    assignments.forEach { upsertFaceAssignment(it) }
+    exclusions.forEach { upsertFaceExclusion(it) }
+  }
+
   @Query("SELECT * FROM media_items WHERE isHidden = 0 AND isTrashed = 0 AND faceDataJson IS NOT NULL ORDER BY timestamp ASC")
   fun observeFaceIndexedMedia(): Flow<List<MediaItemEntity>>
 
@@ -125,6 +162,9 @@ interface GalleryDao {
   @Query("SELECT EXISTS(SELECT 1 FROM face_exclusions WHERE photoId = :photoId AND faceId = :faceId)")
   suspend fun isFaceExcludedByFaceId(photoId: Long, faceId: String): Boolean
 
+  @Query("SELECT EXISTS(SELECT 1 FROM face_exclusions WHERE photoId = :photoId AND faceIndex = :faceIndex AND faceId IS NULL)")
+  suspend fun isLegacyFaceExcluded(photoId: Long, faceIndex: Int): Boolean
+
   @Query("DELETE FROM face_exclusions WHERE photoId = :photoId AND faceId = :faceId")
   suspend fun deleteFaceExclusionByFaceId(photoId: Long, faceId: String)
 
@@ -136,6 +176,9 @@ interface GalleryDao {
 
   @Query("SELECT * FROM face_assignments WHERE photoId = :photoId AND faceId = :faceId LIMIT 1")
   suspend fun getFaceAssignmentByFaceId(photoId: Long, faceId: String): FaceAssignmentEntity?
+
+  @Query("SELECT * FROM face_assignments WHERE photoId = :photoId AND faceIndex = :faceIndex AND faceId IS NULL LIMIT 1")
+  suspend fun getLegacyFaceAssignment(photoId: Long, faceIndex: Int): FaceAssignmentEntity?
 
   @Query("DELETE FROM face_assignments WHERE photoId = :photoId AND faceId = :faceId")
   suspend fun deleteFaceAssignmentByFaceId(photoId: Long, faceId: String)
@@ -183,10 +226,11 @@ interface GalleryDao {
     changedAt: Long,
     faceId: String? = null,
   ) {
-    val previous = faceId?.let { getFaceAssignmentByFaceId(photoId, it) }
-      ?: getFaceAssignment(photoId, faceIndex)
+    val previous = if (faceId != null) {
+      getFaceAssignmentByFaceId(photoId, faceId) ?: getLegacyFaceAssignment(photoId, faceIndex)
+    } else getFaceAssignment(photoId, faceIndex)
     val wasExcluded = if (faceId != null) {
-      isFaceExcludedByFaceId(photoId, faceId) || isFaceExcluded(photoId, faceIndex)
+      isFaceExcludedByFaceId(photoId, faceId) || isLegacyFaceExcluded(photoId, faceIndex)
     } else isFaceExcluded(photoId, faceIndex)
     insertFaceCorrectionHistory(
       FaceCorrectionHistoryEntity(
