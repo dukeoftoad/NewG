@@ -81,7 +81,7 @@ Ente distinguishes removing a face from a person, removing it from a cluster, ad
 
 ### 3. Clustering and suggestions (`dart_cluster_averages.dart`, `dart_face_distances.dart`)
 
-Ente maintains normalized cluster-centroid summaries and supports nearest-centroid search, mean-distance suggestions, and median pairwise face-distance suggestions using sampled embeddings. Suggestions exclude ignored and rejected clusters. NewG `FacePersonClusterer` still performs chronological greedy single-pass assignment to online centroids with a per-photo uniqueness constraint. It now exposes singleton unassigned/rejected faces, but has no persisted centroid summaries, nearest-cluster search, median-distance ranking or per-person rejected-suggestion ranking. **Finding: Not parity.** Initial face grouping and Ente-style candidate-person suggestions are distinct behaviors; do not claim the current greedy clusterer ports Ente's suggestion algorithms.
+Ente maintains normalized cluster-centroid summaries and supports nearest-centroid search, mean-distance suggestions, and median pairwise face-distance suggestions using sampled embeddings. Suggestions exclude ignored and rejected clusters. NewG `FacePersonClusterer` still builds groups chronologically and enforces one face per photo, but candidate matching now ranks each eligible group with a weighted combination of centroid distance (30%) and median query-to-member distance (70%). This reduces sensitivity to outlier detections and is covered by a deterministic ranking test. It is an Ente-inspired adaptation, not a line-for-line port of Ente's persisted centroid summaries, nearest-cluster search, mean-distance suggestions or sampled median pairwise suggestion pipeline. **Finding: Improved partial parity, not full parity.** Initial face grouping and user-facing candidate-person suggestions remain distinct behaviors.
 
 ### 4. Face thumbnail pipeline
 
@@ -124,3 +124,12 @@ A Robolectric clusterer test covers identity resolution and stable group IDs aft
 Re-index writes now run through a Room transaction that remaps assignment and exclusion rows to the current detector indices using their stable face IDs. It also updates correction-history indices and custom-cover indices, while preserving stable IDs as the source of truth. Stable-ID records take precedence if a legacy index-only row collides. Empty or legacy face payloads deliberately skip reconciliation so a failed decode or older payload cannot erase feedback. Rejected-face review group IDs now include the stable face ID rather than only the detector index.
 
 New tests cover both assigned faces swapping detector positions without overwriting one another, undo after re-index, stable rejected-candidate identity, and retaining assignments when re-index returns an empty face list. These are committed tests; they have not yet been executed in this environment.
+
+### Follow-up implementation — identity reconciliation, ranking and regression coverage
+
+- Re-indexing now backfills legacy index-only assignment, exclusion, correction-history and custom-cover records from the *previous* face payload when its stored box and 192-value embedding are available. The generated identity uses the same model ID, photo ID, quantized box and quantized embedding signature as the indexer.
+- The replacement index is then used to resolve those stable IDs to current detector indices. Assignment/exclusion rows, correction-history rows and custom-cover face indices are updated in the same Room transaction. Empty or incomplete face payloads deliberately skip reconciliation rather than guessing at identity.
+- Automatic candidate matching now uses a weighted centroid/median-member distance score. This is a robust Ente-inspired ranking improvement, not full parity with Ente's separate nearest-cluster and mean/median suggestion workflows.
+- Added Robolectric coverage for legacy feedback backfill across detector reordering, correction-history and cover remapping, ignore/unignore metadata retention, database close/reopen persistence, and outlier-resistant candidate ranking.
+- These tests are committed but are not considered verified until CI completes successfully for the exact PR head. Device-level Compose interaction and model-inference checks remain outstanding.
+
