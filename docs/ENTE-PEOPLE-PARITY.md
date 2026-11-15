@@ -117,3 +117,10 @@ The face index JSON now writes a deterministic per-photo faceId derived from the
 Room v9 adds nullable faceId columns to face assignments, exclusions and correction history, plus coverFaceId to person records. New feedback operations capture the face ID at the time of the action; the ViewModel remaps assignments/exclusions before clustering, custom covers resolve their current face index, and undo locates the face by ID before restoring state. The crop cache is now keyed by the face-index timestamp, so re-indexing invalidates stale crops.
 
 A Robolectric clusterer test covers identity resolution and stable group IDs after face-array reordering. Not yet verified: legacy v8 correction rows have null faceId and therefore still use their saved index; Room migration/restart tests and the current PR-head CI run are outstanding. This implementation is a compatibility layer, not yet proof of end-to-end stability on device.
+
+
+### Feedback reconciliation hardening
+
+Re-index writes now run through a Room transaction that remaps assignment and exclusion rows to the current detector indices using their stable face IDs. It also updates correction-history indices and custom-cover indices, while preserving stable IDs as the source of truth. Stable-ID records take precedence if a legacy index-only row collides. Empty or legacy face payloads deliberately skip reconciliation so a failed decode or older payload cannot erase feedback. Rejected-face review group IDs now include the stable face ID rather than only the detector index.
+
+New tests cover both assigned faces swapping detector positions without overwriting one another, undo after re-index, stable rejected-candidate identity, and retaining assignments when re-index returns an empty face list. These are committed tests; they have not yet been executed in this environment.
