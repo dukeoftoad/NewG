@@ -92,7 +92,8 @@ object FacePersonClusterer {
             group to FaceClusterRanker.score(
               query = vector,
               centroid = group.centroid,
-              members = group.samples.map(Sample::vector),
+              memberCount = group.samples.size,
+              memberAt = { memberIndex -> group.samples[memberIndex].vector },
             )
           }
           .filter { it.second <= matchThreshold }
@@ -215,21 +216,28 @@ object FacePersonClusterer {
  * query-to-member distance. The median reduces sensitivity to outlier face crops.
  */
 internal object FaceClusterRanker {
-  fun score(query: FloatArray, centroid: FloatArray, members: List<FloatArray>): Float {
-    require(query.size == centroid.size && members.all { it.size == query.size })
+  fun score(
+    query: FloatArray,
+    centroid: FloatArray,
+    memberCount: Int,
+    memberAt: (Int) -> FloatArray,
+  ): Float {
+    require(query.size == centroid.size && memberCount >= 0)
     val centroidDistance = cosineDistance(query, centroid)
-    if (members.isEmpty()) return centroidDistance
+    if (memberCount == 0) return centroidDistance
     // Bound the per-candidate work for large people groups. Uniform deterministic
     // sampling preserves a robust median signal without scanning every stored face
     // embedding each time a new face is indexed.
-    val sampleCount = minOf(members.size, MAX_MEDIAN_SAMPLES)
+    val sampleCount = minOf(memberCount, MAX_MEDIAN_SAMPLES)
     val distances = FloatArray(sampleCount) { sampleIndex ->
-      val memberIndex = if (members.size <= MAX_MEDIAN_SAMPLES) {
+      val memberIndex = if (memberCount <= MAX_MEDIAN_SAMPLES) {
         sampleIndex
       } else {
-        sampleIndex * (members.size - 1) / (sampleCount - 1)
+        sampleIndex * (memberCount - 1) / (sampleCount - 1)
       }
-      cosineDistance(query, members[memberIndex])
+      val member = memberAt(memberIndex)
+      require(member.size == query.size)
+      cosineDistance(query, member)
     }
     distances.sort()
     val middle = distances.size / 2
