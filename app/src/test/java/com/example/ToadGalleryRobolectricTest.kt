@@ -70,7 +70,15 @@ class ToadGalleryRobolectricTest {
       .onNodeWithTag("albums_list")
       .performScrollToNode(hasTestTag("albums_hidden_vault_button"))
     composeTestRule.onNodeWithTag("albums_hidden_vault_button").performClick()
-    composeTestRule.waitForIdle()
+    // The vault visibility is delivered through the combined ViewModel state flow;
+    // wait for the overlay itself instead of assuming waitForIdle drains background work.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("hidden_vault_screen").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
 
     composeTestRule.onNodeWithTag("vault_key_1").performClick()
     composeTestRule.onNodeWithTag("vault_key_2").performClick()
