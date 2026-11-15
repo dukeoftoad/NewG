@@ -897,7 +897,10 @@ fun PhotosScreen(
         }
 
         // Transient Pinch-to-Zoom Column Density Pill
-        AnimatedVisibility(
+        // Fully qualified: the outer Column's ColumnScope.AnimatedVisibility
+        // member would shadow the top-level import, but K2 rejects it here
+        // because this call sits inside PullToRefreshBox's BoxScope.
+        androidx.compose.animation.AnimatedVisibility(
           visible = showDensityPill,
           enter = fadeIn(),
           exit = fadeOut(),
