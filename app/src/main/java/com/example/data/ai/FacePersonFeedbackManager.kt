@@ -29,12 +29,22 @@ class FacePersonFeedbackManager(
 
   suspend fun rejectFace(photoId: Long, faceIndex: Int) {
     require(photoId > 0L && faceIndex >= 0)
-    dao.excludeFaceWithHistory(photoId, faceIndex, faceId(photoId, faceIndex), System.currentTimeMillis())
+    dao.excludeFaceWithHistory(
+      photoId = photoId,
+      faceIndex = faceIndex,
+      changedAt = System.currentTimeMillis(),
+      faceId = faceId(photoId, faceIndex),
+    )
   }
 
   suspend fun restoreFace(photoId: Long, faceIndex: Int) {
     require(photoId > 0L && faceIndex >= 0)
-    dao.restoreFaceWithHistory(photoId, faceIndex, faceId(photoId, faceIndex), System.currentTimeMillis())
+    dao.restoreFaceWithHistory(
+      photoId = photoId,
+      faceIndex = faceIndex,
+      changedAt = System.currentTimeMillis(),
+      faceId = faceId(photoId, faceIndex),
+    )
   }
 
   suspend fun undoLastCorrection(): Boolean = dao.undoLatestFaceCorrection()
