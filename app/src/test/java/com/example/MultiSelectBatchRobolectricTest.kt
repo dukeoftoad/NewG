@@ -176,8 +176,13 @@ class MultiSelectBatchRobolectricTest {
 
     // Tap Delete -> opens confirmation dialog
     composeTestRule.onNodeWithTag("batch_delete_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("batch_delete_confirm_dialog").assertIsDisplayed()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("batch_delete_confirm_dialog").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
 
     // Cancel preserves selection
     composeTestRule.onNodeWithTag("cancel_batch_delete_button").performClick()
