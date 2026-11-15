@@ -1,0 +1,6 @@
+{
+  "name": "toadGALLERY",
+  "description": "Local-first Material 3 Expressive Android photo gallery with on-device smart collections, Magic Search, Places Map, Hidden Vault, and Unified Settings Hub.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
