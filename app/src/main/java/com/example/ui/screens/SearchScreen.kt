@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -845,6 +846,9 @@ private fun FaceCropPreview(
         if (it !== oriented) oriented.recycle()
       }
     }
+  }
+  DisposableEffect(bitmap) {
+    onDispose { bitmap?.recycle() }
   }
   if (bitmap != null) {
     Image(
