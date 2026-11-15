@@ -246,19 +246,22 @@ interface GalleryDao {
 
   /** Restore an excluded face to automatic clustering and keep the action undoable. */
   @Transaction
-  suspend fun restoreFaceWithHistory(photoId: Long, faceIndex: Int, changedAt: Long) {
-    val previous = getFaceAssignment(photoId, faceIndex)
+  suspend fun restoreFaceWithHistory(photoId: Long, faceIndex: Int, faceId: String?, changedAt: Long) {
+    val previous = faceId?.let { getFaceAssignmentByFaceId(photoId, it) }
+      ?: getFaceAssignment(photoId, faceIndex)
     insertFaceCorrectionHistory(
       FaceCorrectionHistoryEntity(
         photoId = photoId,
         faceIndex = faceIndex,
+        faceId = faceId,
         previousPersonClusterId = previous?.personClusterId,
         nextPersonClusterId = previous?.personClusterId,
-        wasExcluded = isFaceExcluded(photoId, faceIndex),
+        wasExcluded = if (faceId != null) isFaceExcludedByFaceId(photoId, faceId) || isFaceExcluded(photoId, faceIndex) else isFaceExcluded(photoId, faceIndex),
         isExcluded = false,
         createdAt = changedAt,
       )
     )
+    if (faceId != null) deleteFaceExclusionByFaceId(photoId, faceId)
     deleteFaceExclusion(photoId, faceIndex)
   }
 
@@ -266,21 +269,36 @@ interface GalleryDao {
   @Transaction
   suspend fun undoLatestFaceCorrection(): Boolean {
     val entry = getLatestUndoableFaceCorrection() ?: return false
+    val currentFaceIndex = if (entry.faceId == null) {
+      entry.faceIndex
+    } else {
+      val json = getMediaById(entry.photoId)?.faceDataJson
+      val faces = runCatching { json?.let { JSONObject(it).optJSONArray("faces") } }.getOrNull()
+        ?: return false
+      (0 until faces.length()).firstOrNull { index ->
+        faces.optJSONObject(index)?.optString("faceId") == entry.faceId
+      } ?: return false
+    }
+    if (entry.faceId != null) {
+      deleteFaceAssignmentByFaceId(entry.photoId, entry.faceId)
+      deleteFaceExclusionByFaceId(entry.photoId, entry.faceId)
+    }
     if (entry.previousPersonClusterId == null) {
-      deleteFaceAssignment(entry.photoId, entry.faceIndex)
+      deleteFaceAssignment(entry.photoId, currentFaceIndex)
     } else {
       upsertFaceAssignment(
         FaceAssignmentEntity(
-          entry.photoId,
-          entry.faceIndex,
-          entry.previousPersonClusterId,
+          photoId = entry.photoId,
+          faceIndex = currentFaceIndex,
+          personClusterId = entry.previousPersonClusterId,
+          faceId = entry.faceId,
         )
       )
     }
     if (entry.wasExcluded) {
-      upsertFaceExclusion(FaceExclusionEntity(entry.photoId, entry.faceIndex))
+      upsertFaceExclusion(FaceExclusionEntity(entry.photoId, currentFaceIndex, entry.faceId))
     } else {
-      deleteFaceExclusion(entry.photoId, entry.faceIndex)
+      deleteFaceExclusion(entry.photoId, currentFaceIndex)
     }
     markFaceCorrectionUndone(entry.id, System.currentTimeMillis())
     return true
