@@ -141,3 +141,14 @@ object FacePersonSuggestionRanker {
 
   private const val EMBEDDING_SIZE = 192
 }
+
+/** Put ranked matches first while retaining every remaining person as a fallback. */
+fun orderFaceAssignmentTargets(
+  people: List<FacePersonGroup>,
+  suggestions: List<FacePersonSuggestion>,
+): List<FacePersonGroup> {
+  val peopleById = people.associateBy { it.id }
+  val suggested = suggestions.mapNotNull { peopleById[it.personId] }.distinctBy { it.id }
+  val suggestedIds = suggested.mapTo(mutableSetOf()) { it.id }
+  return suggested + people.filterNot { it.id in suggestedIds }
+}
