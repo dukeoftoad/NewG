@@ -462,6 +462,10 @@ fun SearchScreen(
                     val face = candidate.faces.firstOrNull()
                     val photo = face?.let { ref -> uiState.visibleMedia.firstOrNull { it.id == ref.photoId } }
                     if (face != null && photo != null) {
+                      val rankedTargets = uiState.facePersonSuggestions[candidate.id].orEmpty()
+                        .mapNotNull { suggestion -> uiState.peopleGroups.firstOrNull { it.id == suggestion.personId } }
+                      val suggestedTargetIds = rankedTargets.map { it.id }.toSet()
+                      val orderedTargets = rankedTargets + uiState.peopleGroups.filterNot { it.id in suggestedTargetIds }
                       Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -487,9 +491,21 @@ fun SearchScreen(
                             expanded = assignMenuExpanded,
                             onDismissRequest = { assignMenuExpanded = false },
                           ) {
-                            uiState.peopleGroups.forEach { target ->
+                            if (rankedTargets.isNotEmpty()) {
                               DropdownMenuItem(
-                                text = { Text(target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") },
+                                text = { Text("SUGGESTED MATCHES") },
+                                enabled = false,
+                                onClick = {},
+                              )
+                            }
+                            orderedTargets.forEach { target ->
+                              DropdownMenuItem(
+                                text = {
+                                  Text(
+                                    (target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") +
+                                      if (target.id in suggestedTargetIds) " · Suggested" else ""
+                                  )
+                                },
                                 onClick = {
                                   onAssignFace(face.photoId, face.faceIndex, target)
                                   assignMenuExpanded = false
