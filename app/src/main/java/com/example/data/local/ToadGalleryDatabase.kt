@@ -10,7 +10,7 @@ import java.lang.ref.WeakReference
 
 @Database(
   entities = [MediaItemEntity::class, AlbumEntity::class, FacePersonEntity::class, FaceExclusionEntity::class, FaceAssignmentEntity::class, FaceCorrectionHistoryEntity::class],
-  version = 7,
+  version = 8,
   exportSchema = false,
 )
 abstract class ToadGalleryDatabase : RoomDatabase() {
@@ -66,6 +66,13 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
         }
       }
 
+    private val MIGRATION_7_8 =
+      object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+          db.execSQL("ALTER TABLE face_people ADD COLUMN coverFaceIndex INTEGER")
+        }
+      }
+
     fun getInstance(context: Context): ToadGalleryDatabase {
       val appContext = context.applicationContext
       val current = instance
@@ -83,7 +90,7 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
               ToadGalleryDatabase::class.java,
               "toad_gallery_db",
             )
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
             .also {
