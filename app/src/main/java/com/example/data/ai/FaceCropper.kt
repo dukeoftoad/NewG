@@ -6,7 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
 import android.util.LruCache
-import androidx.exifinterface.media.ExifInterface
+import android.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
