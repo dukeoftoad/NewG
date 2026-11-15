@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import java.lang.ref.WeakReference
 
 @Database(
-  entities = [MediaItemEntity::class, AlbumEntity::class, FacePersonEntity::class, FaceExclusionEntity::class],
-  version = 6,
+  entities = [MediaItemEntity::class, AlbumEntity::class, FacePersonEntity::class, FaceExclusionEntity::class, FaceAssignmentEntity::class, FaceCorrectionHistoryEntity::class],
+  version = 7,
   exportSchema = false,
 )
 abstract class ToadGalleryDatabase : RoomDatabase() {
@@ -54,6 +54,18 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
         }
       }
 
+    private val MIGRATION_6_7 =
+      object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+          db.execSQL(
+            "CREATE TABLE IF NOT EXISTS face_assignments (photoId INTEGER NOT NULL, faceIndex INTEGER NOT NULL, personClusterId TEXT NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(photoId, faceIndex))"
+          )
+          db.execSQL(
+            "CREATE TABLE IF NOT EXISTS face_correction_history (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, photoId INTEGER NOT NULL, faceIndex INTEGER NOT NULL, previousPersonClusterId TEXT, nextPersonClusterId TEXT, wasExcluded INTEGER NOT NULL, isExcluded INTEGER NOT NULL, createdAt INTEGER NOT NULL, undoneAt INTEGER)"
+          )
+        }
+      }
+
     fun getInstance(context: Context): ToadGalleryDatabase {
       val appContext = context.applicationContext
       val current = instance
@@ -71,7 +83,7 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
               ToadGalleryDatabase::class.java,
               "toad_gallery_db",
             )
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
             .also {
