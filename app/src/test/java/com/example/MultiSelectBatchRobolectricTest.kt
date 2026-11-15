@@ -177,10 +177,24 @@ class MultiSelectBatchRobolectricTest {
     composeTestRule.onNodeWithTag("menu_multi_select").performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
-    composeTestRule.waitForIdle()
+    // The action bar is animated and its child actions expose merged
+    // semantics only after the entrance transition has completed. Wait for
+    // the actual Delete control in the unmerged tree before interacting.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule
+            .onNodeWithTag("batch_delete_button", useUnmergedTree = true)
+            .assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
 
-    // Tap Delete -> opens confirmation dialog
-    composeTestRule.onNodeWithTag("batch_delete_button").performClick()
+    // Tap Delete -> opens confirmation dialog. The action item is nested in
+    // a clickable Surface, so target its own semantics node explicitly.
+    composeTestRule
+      .onNodeWithTag("batch_delete_button", useUnmergedTree = true)
+      .performClick()
     composeTestRule.waitUntil(timeoutMillis = 5_000) {
       runCatching {
           composeTestRule.onNodeWithTag("batch_delete_confirm_dialog").assertIsDisplayed()
