@@ -72,6 +72,7 @@ object FacePersonClusterer {
         if (values.length() != EMBEDDING_SIZE) continue
         val vector = FloatArray(EMBEDDING_SIZE) { i -> values.optDouble(i, Double.NaN).toFloat() }
         if (vector.any { !it.isFinite() }) continue
+        val stableFaceId = faceObject.optString("faceId").takeIf { it.isNotBlank() }
         val norm = sqrt(vector.sumOf { (it * it).toDouble() }).toFloat()
         if (norm <= 1e-8f || !norm.isFinite()) continue
         for (i in vector.indices) vector[i] /= norm
@@ -82,7 +83,7 @@ object FacePersonClusterer {
           .minByOrNull { it.second }
         val sample = Sample(row.id, index, vector, bounds)
         if (match == null) {
-          clusters += Cluster("person-${row.id}-$index", mutableListOf(sample), vector.copyOf())
+          clusters += Cluster("person-${row.id}-${stableFaceId ?: index}", mutableListOf(sample), vector.copyOf())
         } else {
           val group = match.first
           group.samples += sample
