@@ -42,12 +42,16 @@ class FacePersonClustererTest {
       excludedFaces = setOf(FaceReference(photoId = 2L, faceIndex = 0)),
     )
 
-    assertEquals(1, groups.size)
-    assertEquals(listOf(3L, 1L), groups.single().photoIds)
+    val remainingPerson = groups.single { it.id != "rejected-2-0" }
+    val rejectedCandidate = groups.single { it.id == "rejected-2-0" }
+    assertEquals(2, groups.size)
+    assertEquals(listOf(3L, 1L), remainingPerson.photoIds)
     assertEquals(
       setOf(FaceReference(1L, 0), FaceReference(3L, 0)),
-      groups.single().faces.toSet(),
+      remainingPerson.faces.toSet(),
     )
+    assertEquals(listOf(2L), rejectedCandidate.photoIds)
+    assertEquals(FaceReference(2L, 0), rejectedCandidate.faces.single())
   }
 
 
