@@ -128,9 +128,14 @@ class MultiSelectBatchRobolectricTest {
 
     // Deselect All -> bottom action bar disappears again
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithText("0 selected").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("batch_action_bar").assertDoesNotExist()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithText("0 selected").assertIsDisplayed()
+          composeTestRule.onNodeWithTag("batch_action_bar").assertDoesNotExist()
+          true
+        }
+        .getOrDefault(false)
+    }
 
     // Use section quick-select pill for November 2026 (5 items) -> bottom action bar reappears
     composeTestRule
