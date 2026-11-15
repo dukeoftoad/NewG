@@ -5,6 +5,7 @@ import org.json.JSONObject
 import kotlin.math.sqrt
 
 data class FaceReference(val photoId: Long, val faceIndex: Int)
+data class FaceCropBounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
 data class FacePersonGroup(
   val id: String,
@@ -14,10 +15,11 @@ data class FacePersonGroup(
   val name: String? = null,
   val clusterIds: List<String> = listOf(id),
   val faces: List<FaceReference> = emptyList(),
+  val faceBounds: Map<FaceReference, FaceCropBounds> = emptyMap(),
 )
 
 object FacePersonClusterer {
-  private data class Sample(val photoId: Long, val faceIndex: Int, val vector: FloatArray)
+  private data class Sample(val photoId: Long, val faceIndex: Int, val vector: FloatArray, val bounds: FaceCropBounds?)
   private data class Cluster(val id: String, val samples: MutableList<Sample>, var centroid: FloatArray)
 
   /** Chronological cosine-distance clustering. A photo contributes at most one face per group. */
@@ -35,8 +37,19 @@ object FacePersonClusterer {
       for (index in 0 until faces.length()) {
         val reference = FaceReference(row.id, index)
         if (reference in excludedFaces || reference in manualAssignments) continue
-        val values = faces.optJSONObject(index)?.optJSONArray("embedding") ?: continue
+        val faceObject = faces.optJSONObject(index) ?: continue
+        val values = faceObject.optJSONArray("embedding") ?: continue
         if (values.length() != EMBEDDING_SIZE) continue
+        val box = faceObject.optJSONArray("box")
+        val bounds = if (box != null && box.length() >= 4) {
+          val left = box.optDouble(0, Double.NaN).toFloat()
+          val top = box.optDouble(1, Double.NaN).toFloat()
+          val right = box.optDouble(2, Double.NaN).toFloat()
+          val bottom = box.optDouble(3, Double.NaN).toFloat()
+          if (listOf(left, top, right, bottom).all { it.isFinite() } && right > left && bottom > top) {
+            FaceCropBounds(left.coerceIn(0f, 1f), top.coerceIn(0f, 1f), right.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
+          } else null
+        } else null
         val vector = FloatArray(EMBEDDING_SIZE) { i -> values.optDouble(i, Double.NaN).toFloat() }
         if (vector.any { !it.isFinite() }) continue
         val norm = sqrt(vector.sumOf { (it * it).toDouble() }).toFloat()
@@ -47,7 +60,7 @@ object FacePersonClusterer {
           .map { group -> group to cosineDistance(vector, group.centroid) }
           .filter { it.second <= distanceThreshold.coerceIn(0.05f, 0.8f) }
           .minByOrNull { it.second }
-        val sample = Sample(row.id, index, vector)
+        val sample = Sample(row.id, index, vector, bounds)
         if (match == null) {
           clusters += Cluster("person-${row.id}-$index", mutableListOf(sample), vector.copyOf())
         } else {
@@ -71,6 +84,9 @@ object FacePersonClusterer {
           group.id, ids, group.samples.size, ids.first(),
           clusterIds = listOf(group.id),
           faces = group.samples.map { FaceReference(it.photoId, it.faceIndex) },
+          faceBounds = group.samples.mapNotNull { sample ->
+            sample.bounds?.let { FaceReference(sample.photoId, sample.faceIndex) to it }
+          }.toMap(),
         )
       }
 
@@ -90,6 +106,17 @@ object FacePersonClusterer {
           coverPhotoId = photoIds.first(),
           clusterIds = listOf(personClusterId),
           faces = references,
+          faceBounds = references.mapNotNull { reference ->
+            val row = rows.firstOrNull { it.id == reference.photoId } ?: return@mapNotNull null
+            val face = runCatching { JSONObject(row.faceDataJson ?: return@runCatching null).optJSONArray("faces")?.optJSONObject(reference.faceIndex) }.getOrNull()
+            val box = face?.optJSONArray("box") ?: return@mapNotNull null
+            if (box.length() < 4) return@mapNotNull null
+            val bounds = FaceCropBounds(
+              box.optDouble(0, 0.0).toFloat(), box.optDouble(1, 0.0).toFloat(),
+              box.optDouble(2, 1.0).toFloat(), box.optDouble(3, 1.0).toFloat(),
+            )
+            reference to bounds
+          }.toMap(),
         )
       }
 
@@ -107,6 +134,7 @@ object FacePersonClusterer {
             coverPhotoId = first.coverPhotoId.takeIf { it in photoIds } ?: photoIds.first(),
             clusterIds = samePerson.flatMap(FacePersonGroup::clusterIds).distinct(),
             faces = samePerson.flatMap(FacePersonGroup::faces).distinct(),
+            faceBounds = samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
           )
         }
       }
