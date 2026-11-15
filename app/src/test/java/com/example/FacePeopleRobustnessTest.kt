@@ -82,7 +82,9 @@ class FacePeopleRobustnessTest {
     assertTrue(FacePersonClusterer.cluster(listOf(row), 0.2f, minimumPhotos = 1).isEmpty())
   }
   @Test fun clustererSkipsNonFiniteEmbeddingValues() {
-    val values = JSONArray().apply { repeat(192) { put(if (it == 0) Double.NaN else 0.0) } }
+    // org.json rejects non-finite numeric values at construction time. A string
+    // value exercises the clusterer's optDouble conversion and finite-value guard.
+    val values = JSONArray().apply { repeat(192) { put(if (it == 0) "NaN" else 0.0) } }
     val json = JSONObject().put("faces", JSONArray().put(JSONObject().put("embedding", values))).toString()
     assertTrue(FacePersonClusterer.cluster(listOf(media(1, 1, json)), 0.2f, minimumPhotos = 1).isEmpty())
   }
@@ -169,11 +171,11 @@ class FacePeopleRobustnessTest {
   }
   @Test fun thresholdBelowMinimumDoesNotJoinOrthogonalFaces() {
     val rows = listOf(media(1, 1, faceJson(listOf(axis(0)))), media(2, 2, faceJson(listOf(axis(1)))))
-    assertEquals(2, FacePersonClusterer.cluster(rows, -1f).size)
+    assertEquals(2, FacePersonClusterer.cluster(rows, -1f, minimumPhotos = 1).size)
   }
   @Test fun thresholdAboveMaximumDoesNotJoinOrthogonalFaces() {
     val rows = listOf(media(1, 1, faceJson(listOf(axis(0)))), media(2, 2, faceJson(listOf(axis(1)))))
-    assertEquals(2, FacePersonClusterer.cluster(rows, 4f).size)
+    assertEquals(2, FacePersonClusterer.cluster(rows, 4f, minimumPhotos = 1).size)
   }
 
   private fun group(id: String) = FacePersonGroup(id, listOf(1L), 1, 1L)
