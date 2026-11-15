@@ -462,10 +462,9 @@ fun SearchScreen(
                     val face = candidate.faces.firstOrNull()
                     val photo = face?.let { ref -> uiState.visibleMedia.firstOrNull { it.id == ref.photoId } }
                     if (face != null && photo != null) {
-                      val rankedTargets = uiState.facePersonSuggestions[candidate.id].orEmpty()
-                        .mapNotNull { suggestion -> uiState.peopleGroups.firstOrNull { it.id == suggestion.personId } }
-                      val suggestedTargetIds = rankedTargets.map { it.id }.toSet()
-                      val orderedTargets = rankedTargets + uiState.peopleGroups.filterNot { it.id in suggestedTargetIds }
+                      val suggestionsForFace = uiState.facePersonSuggestions[candidate.id].orEmpty()
+                      val rankedTargets = suggestionsForFace.map { it.personId }.toSet()
+                      val orderedTargets = orderFaceAssignmentTargets(uiState.peopleGroups, suggestionsForFace)
                       Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -503,7 +502,7 @@ fun SearchScreen(
                                 text = {
                                   Text(
                                     (target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") +
-                                      if (target.id in suggestedTargetIds) " · Suggested" else ""
+                                      if (target.id in rankedTargets) " · Suggested" else ""
                                   )
                                 },
                                 onClick = {
