@@ -267,22 +267,40 @@ class GalleryViewModel(
 
         val q = searchCtrl.query.trim().lowercase()
         val personRecords = media.facePeople.associateBy { it.clusterId }
+        val rowsById = media.faceRows.associateBy { it.id }
         val manuallyAssignedPersonIds = media.faceAssignments.map { it.personClusterId }.toSet()
+        val excludedFaceReferences = media.faceExclusions.mapNotNull { exclusion ->
+          val row = rowsById[exclusion.photoId] ?: return@mapNotNull null
+          val currentIndex = if (exclusion.faceId != null) {
+            FacePersonClusterer.faceIndexForId(row, exclusion.faceId)
+          } else exclusion.faceIndex
+          currentIndex?.let { FaceReference(exclusion.photoId, it) }
+        }.toSet()
+        val manualFaceAssignments = media.faceAssignments.mapNotNull { assignment ->
+          val row = rowsById[assignment.photoId] ?: return@mapNotNull null
+          val currentIndex = if (assignment.faceId != null) {
+            FacePersonClusterer.faceIndexForId(row, assignment.faceId)
+          } else assignment.faceIndex
+          currentIndex?.let { FaceReference(assignment.photoId, it) to assignment.personClusterId }
+        }.toMap()
         val allDetectedGroups =
           FacePersonClusterer.cluster(
             rows = media.faceRows,
             distanceThreshold = prefs.clusteringThreshold,
-            excludedFaces = media.faceExclusions.map { FaceReference(it.photoId, it.faceIndex) }.toSet(),
-            manualAssignments = media.faceAssignments.associate {
-              FaceReference(it.photoId, it.faceIndex) to it.personClusterId
-            },
+            excludedFaces = excludedFaceReferences,
+            manualAssignments = manualFaceAssignments,
             minimumPhotos = 1,
           ).map { group ->
             val record = personRecords[group.id]
+            val stableCoverIndex = if (record?.coverPhotoId != null && record.coverFaceId != null) {
+              rowsById[record.coverPhotoId]?.let { row ->
+                FacePersonClusterer.faceIndexForId(row, record.coverFaceId)
+              }
+            } else null
             group.copy(
               name = record?.name,
               coverPhotoId = record?.coverPhotoId ?: group.coverPhotoId,
-              coverFaceIndex = record?.coverFaceIndex ?: group.coverFaceIndex,
+              coverFaceIndex = stableCoverIndex ?: record?.coverFaceIndex ?: group.coverFaceIndex,
             )
           }
         // Ente's People review surface exposes unassigned single-photo face suggestions
