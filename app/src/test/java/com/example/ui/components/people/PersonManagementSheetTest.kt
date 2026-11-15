@@ -2,7 +2,6 @@ package com.example.ui.components.people
 
 import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -132,7 +131,7 @@ class PersonManagementSheetTest {
     // Each detected face exposes its own assignment entry point. The
     // deterministic suggestion ordering is covered by FacePersonClustererTest;
     // Robolectric does not reliably expose Compose DropdownMenu popup semantics.
-    compose.onAllNodesWithText("Assign").assertExists()
+    compose.onNodeWithText("Assign").assertExists()
   }
 
   @Test
