@@ -30,6 +30,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -57,12 +58,76 @@ class GalleryRepository(
 
   val faceExclusions: Flow<List<FaceExclusionEntity>> = dao.observeFaceExclusions()
 
+  val faceAssignments: Flow<List<FaceAssignmentEntity>> = dao.observeFaceAssignments()
+
+  val faceCorrectionHistory: Flow<List<FaceCorrectionHistoryEntity>> =
+    dao.observeFaceCorrectionHistory()
+
+  suspend fun assignFaceToPerson(photoId: Long, faceIndex: Int, personClusterId: String) {
+    val current = dao.getFaceAssignment(photoId, faceIndex)
+    val wasExcluded = dao.observeFaceExclusions().first().any { it.photoId == photoId && it.faceIndex == faceIndex }
+    dao.insertFaceCorrectionHistory(
+      FaceCorrectionHistoryEntity(
+        photoId = photoId,
+        faceIndex = faceIndex,
+        previousPersonClusterId = current?.personClusterId,
+        nextPersonClusterId = personClusterId,
+        wasExcluded = wasExcluded,
+        isExcluded = false,
+      )
+    )
+    dao.deleteFaceExclusion(photoId, faceIndex)
+    dao.upsertFaceAssignment(FaceAssignmentEntity(photoId, faceIndex, personClusterId))
+  }
+
   suspend fun excludeFace(photoId: Long, faceIndex: Int) {
+    val current = dao.getFaceAssignment(photoId, faceIndex)
+    val wasExcluded = dao.observeFaceExclusions().first().any { it.photoId == photoId && it.faceIndex == faceIndex }
+    dao.insertFaceCorrectionHistory(
+      FaceCorrectionHistoryEntity(
+        photoId = photoId,
+        faceIndex = faceIndex,
+        previousPersonClusterId = current?.personClusterId,
+        nextPersonClusterId = null,
+        wasExcluded = wasExcluded,
+        isExcluded = true,
+      )
+    )
+    dao.deleteFaceAssignment(photoId, faceIndex)
     dao.upsertFaceExclusion(FaceExclusionEntity(photoId, faceIndex))
   }
 
   suspend fun restoreFace(photoId: Long, faceIndex: Int) {
+    val current = dao.getFaceAssignment(photoId, faceIndex)
+    dao.insertFaceCorrectionHistory(
+      FaceCorrectionHistoryEntity(
+        photoId = photoId,
+        faceIndex = faceIndex,
+        previousPersonClusterId = current?.personClusterId,
+        nextPersonClusterId = current?.personClusterId,
+        wasExcluded = true,
+        isExcluded = false,
+      )
+    )
     dao.deleteFaceExclusion(photoId, faceIndex)
+  }
+
+  suspend fun undoLastFaceCorrection(): Boolean {
+    val entry = dao.getLatestUndoableFaceCorrection() ?: return false
+    if (entry.previousPersonClusterId == null) {
+      dao.deleteFaceAssignment(entry.photoId, entry.faceIndex)
+    } else {
+      dao.upsertFaceAssignment(
+        FaceAssignmentEntity(entry.photoId, entry.faceIndex, entry.previousPersonClusterId)
+      )
+    }
+    if (entry.wasExcluded) {
+      dao.upsertFaceExclusion(FaceExclusionEntity(entry.photoId, entry.faceIndex))
+    } else {
+      dao.deleteFaceExclusion(entry.photoId, entry.faceIndex)
+    }
+    dao.markFaceCorrectionUndone(entry.id, System.currentTimeMillis())
+    return true
   }
 
   suspend fun saveFacePerson(person: FacePersonEntity) {
