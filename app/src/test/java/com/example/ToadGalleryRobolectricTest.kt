@@ -98,8 +98,15 @@ class ToadGalleryRobolectricTest {
 
     // Navigate to Search tab and switch between Magic Search and Places Map
     composeTestRule.onNodeWithTag("nav_tab_search").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("magic_search_input").assertIsDisplayed()
+    // The vault overlay and NavHost destination are both state-driven. Wait
+    // for the Search content to become visible after the overlay is dismissed.
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("magic_search_input").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("search_mode_map").performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("map_mode_pins").assertIsDisplayed()
