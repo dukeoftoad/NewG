@@ -10,6 +10,7 @@ data class FacePersonEntity(
   @PrimaryKey val clusterId: String,
   val name: String? = null,
   val coverPhotoId: Long? = null,
+  val coverFaceIndex: Int? = null,
   @ColumnInfo(defaultValue = "0") val isIgnored: Boolean = false,
   val updatedAt: Long = System.currentTimeMillis(),
 )
