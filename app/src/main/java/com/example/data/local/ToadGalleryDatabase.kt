@@ -73,7 +73,7 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
         }
       }
 
-    private val MIGRATION_8_9 =
+    internal val MIGRATION_8_9 =
       object : Migration(8, 9) {
         override fun migrate(db: SupportSQLiteDatabase) {
           db.execSQL("ALTER TABLE face_assignments ADD COLUMN faceId TEXT")
