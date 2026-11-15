@@ -245,6 +245,9 @@ class GalleryViewModel(
 
   val uiState: StateFlow<GalleryUiState> =
     combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow) { prefs, media, ctrls ->
+      // Building the gallery state includes whole-library filtering and face clustering.
+      // Keep that CPU work off Android's main thread so scrolling and input stay responsive.
+      withContext(Dispatchers.Default) {
         val syncCtrl = ctrls.sync
         val selCtrl = ctrls.selection
         val searchCtrl = ctrls.search
@@ -484,6 +487,7 @@ class GalleryViewModel(
           depthModelState = modals.depthState,
           isSavingEdit = modals.savingEdit,
         )
+      }
       }
       .stateIn(
         scope = viewModelScope,
