@@ -1,6 +1,7 @@
 NewG includes and adapts face-management workflows from Ente Photos.
 
 Upstream project: https://github.com/ente/ente
+Reference revision inspected: `94a348f686e3ac98977cd7704d14bd5877832eee` (2026-11-14)
 Upstream source paths used as design and implementation references:
 - mobile/apps/photos/lib/services/machine_learning/face_ml/person/person_service.dart
 - mobile/apps/photos/lib/services/machine_learning/face_ml/feedback/cluster_feedback.dart
@@ -16,6 +17,8 @@ Upstream source paths used as design and implementation references:
 - mobile/apps/photos/lib/ui/viewer/people/file_face_widget.dart
 - mobile/apps/photos/lib/ui/viewer/people/face_thumbnail_squircle.dart
 - mobile/apps/photos/lib/ui/viewer/people/save_or_edit_person.dart
+
+All source references above are pinned to the revision listed above; do not treat the moving `main` branch as the source version.
 
 Ente is licensed under GNU Affero General Public License version 3.0 (AGPL-3.0).
 The applicable license text is provided in LICENSE.
