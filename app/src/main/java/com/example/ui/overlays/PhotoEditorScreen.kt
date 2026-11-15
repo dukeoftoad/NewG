@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Compare
 import androidx.compose.material.icons.filled.Crop
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
@@ -82,7 +81,9 @@ import com.example.data.model.MarkupTextItem
 import com.example.data.model.MarkupToolType
 import com.example.data.model.PhotoEditRecipe
 import com.example.ui.theme.LocalToadColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun PhotoEditorScreen(
@@ -100,7 +101,8 @@ fun PhotoEditorScreen(
 ) {
   val context = LocalContext.current
   val extended = LocalToadColors.current
-  val initialRecipe = remember(item.id, item.editRecipeJson) { PhotoEditRecipe.fromJson(item.editRecipeJson) }
+  val initialRecipe =
+    remember(item.id, item.editRecipeJson) { PhotoEditRecipe.fromJson(item.editRecipeJson) }
 
   var sourceBitmap by remember(item.id) { mutableStateOf<Bitmap?>(null) }
   var croppedSourceBitmap by remember(item.id) { mutableStateOf<Bitmap?>(null) }
@@ -169,13 +171,30 @@ fun PhotoEditorScreen(
     sourceBitmap = PhotoEditorRenderer.loadSourceBitmap(context, item, maxDimension = 1024)
   }
 
-  // Recompute geometry-applied base for Crop + Depth alignment whenever crop geometry changes
-  LaunchedEffect(sourceBitmap, recipe.crop, activeTab) {
+  // When on CROP tab, only orientation/straighten changes require rebuilding the uncropped base;
+  // dragging crop box edges stays 120fps instant without reallocating bitmaps or wiping depthMap.
+  val cropGeometryKey =
+    if (activeTab == EditorToolTab.CROP) {
+      Triple(
+        recipe.crop.rotationQuarterTurns,
+        recipe.crop.flipHorizontal to recipe.crop.flipVertical,
+        recipe.crop.straightenDegrees,
+      )
+    } else {
+      recipe.crop
+    }
+
+  LaunchedEffect(sourceBitmap, cropGeometryKey, activeTab) {
     val src = sourceBitmap ?: return@LaunchedEffect
-    croppedSourceBitmap =
-      if (activeTab == EditorToolTab.CROP) PhotoEditorRenderer.applyTransformOnly(src, recipe.crop)
-      else PhotoEditorRenderer.applyGeometryOnly(src, recipe.crop)
-    depthMap = null
+    val nextCropped =
+      withContext(Dispatchers.Default) {
+        if (activeTab == EditorToolTab.CROP) PhotoEditorRenderer.applyTransformOnly(src, recipe.crop)
+        else PhotoEditorRenderer.applyGeometryOnly(src, recipe.crop)
+      }
+    croppedSourceBitmap = nextCropped
+    if (activeTab != EditorToolTab.CROP) {
+      depthMap = null
+    }
   }
 
   // Run ONNX Depth Anything V2 automatically when Bokeh tab opens & pack is installed
@@ -200,8 +219,15 @@ fun PhotoEditorScreen(
     }
   }
 
-  // Debounced live render pass
-  LaunchedEffect(sourceBitmap, recipe, depthMap, activeTab) {
+  // Debounced live render pass (ignores crop rectangle edge drags while inside CROP tab)
+  val renderTriggerKey =
+    if (activeTab == EditorToolTab.CROP) {
+      recipe.copy(crop = recipe.crop.copy(left = 0f, top = 0f, right = 1f, bottom = 1f))
+    } else {
+      recipe
+    }
+
+  LaunchedEffect(sourceBitmap, renderTriggerKey, depthMap, activeTab) {
     val src = sourceBitmap ?: return@LaunchedEffect
     delay(24)
     val includeCrop = activeTab != EditorToolTab.CROP
@@ -241,10 +267,17 @@ fun PhotoEditorScreen(
             },
             modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_close_button"),
           ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close editor", tint = Color.White)
+            Icon(
+              Icons.AutoMirrored.Filled.ArrowBack,
+              contentDescription = "Close editor",
+              tint = Color.White,
+            )
           }
 
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+          ) {
             IconButton(
               onClick = ::performUndo,
               enabled = undoStack.isNotEmpty(),
@@ -282,7 +315,9 @@ fun PhotoEditorScreen(
             // Hold-to-Compare
             Surface(
               shape = CircleShape,
-              color = if (isComparingOriginal) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.1f),
+              color =
+                if (isComparingOriginal) MaterialTheme.colorScheme.primary
+                else Color.White.copy(alpha = 0.1f),
               modifier =
                 Modifier.testTag("editor_compare_button")
                   .clip(CircleShape)
@@ -299,14 +334,16 @@ fun PhotoEditorScreen(
               Icon(
                 imageVector = Icons.Filled.Visibility,
                 contentDescription = "Hold to compare original",
-                tint = if (isComparingOriginal) MaterialTheme.colorScheme.onPrimary else Color.White,
+                tint =
+                  if (isComparingOriginal) MaterialTheme.colorScheme.onPrimary else Color.White,
                 modifier = Modifier.padding(8.dp).size(18.dp),
               )
             }
 
             IconButton(
               onClick = { isSplitCompare = !isSplitCompare },
-              modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_split_toggle_button"),
+              modifier =
+                Modifier.minimumInteractiveComponentSize().testTag("editor_split_toggle_button"),
             ) {
               Icon(
                 imageVector = Icons.Filled.Compare,
@@ -327,11 +364,18 @@ fun PhotoEditorScreen(
               ),
           ) {
             if (isSaving) {
-              CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+              CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onPrimary,
+              )
             } else {
               Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
               Spacer(Modifier.width(6.dp))
-              Text("Save", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+              Text(
+                "Save",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+              )
             }
           }
         }
@@ -359,11 +403,14 @@ fun PhotoEditorScreen(
               val d = depthMap?.sampleAt(nx, ny) ?: recipe.bokeh.focusDepth
               commitChange(
                 recipe.copy(
-                  bokeh = recipe.bokeh.copy(enabled = true, focusX = nx, focusY = ny, focusDepth = d)
+                  bokeh =
+                    recipe.bokeh.copy(enabled = true, focusX = nx, focusY = ny, focusDepth = d)
                 )
               )
             },
-            onAddMarkupStroke = { stroke -> commitChange(recipe.copy(strokes = recipe.strokes + stroke)) },
+            onAddMarkupStroke = { stroke ->
+              commitChange(recipe.copy(strokes = recipe.strokes + stroke))
+            },
             modifier = Modifier.weight(1f).fillMaxHeight(),
           )
 
@@ -385,18 +432,26 @@ fun PhotoEditorScreen(
                 selectedMarkupColorHex = selectedMarkupColorHex,
                 strokeWidthNorm = strokeWidthNorm,
                 sourceAspect =
-                  ((croppedSourceBitmap ?: sourceBitmap)?.let { it.width.toFloat() / it.height.coerceAtLeast(1) })
-                    ?: item.aspectRatio,
+                  ((croppedSourceBitmap ?: sourceBitmap)?.let {
+                    it.width.toFloat() / it.height.coerceAtLeast(1)
+                  }) ?: item.aspectRatio,
                 depthState = depthModelState,
                 depthInferenceMs = depthMap?.inferenceTimeMs,
                 onSelectAdjustParam = { selectedAdjustParam = it },
-                onAdjustChange = { p, v -> recipe = recipe.copy(adjust = recipe.adjust.withParam(p, v)) },
+                onAdjustChange = { p, v ->
+                  recipe = recipe.copy(adjust = recipe.adjust.withParam(p, v))
+                },
                 onCommit = { commitChange(recipe) },
                 onSelectFilter = { look -> commitChange(recipe.copy(filterLook = look)) },
                 onFilterIntensityChange = { recipe = recipe.copy(filterIntensity = it) },
                 onFilmGrainChange = { recipe = recipe.copy(filmGrain = it) },
-                onUpdateCrop = { c, commit -> if (commit) commitChange(recipe.copy(crop = c)) else recipe = recipe.copy(crop = c) },
-                onUpdateBokeh = { b, commit -> if (commit) commitChange(recipe.copy(bokeh = b)) else recipe = recipe.copy(bokeh = b) },
+                onUpdateCrop = { c, commit ->
+                  if (commit) commitChange(recipe.copy(crop = c)) else recipe = recipe.copy(crop = c)
+                },
+                onUpdateBokeh = { b, commit ->
+                  if (commit) commitChange(recipe.copy(bokeh = b))
+                  else recipe = recipe.copy(bokeh = b)
+                },
                 onStartDepthDownload = onStartDepthDownload,
                 onCancelDepthDownload = onCancelDepthDownload,
                 onDeleteDepthModel = onDeleteDepthModel,
@@ -404,7 +459,9 @@ fun PhotoEditorScreen(
                 onSelectMarkupColor = { selectedMarkupColorHex = it },
                 onStrokeWidthChange = { strokeWidthNorm = it },
                 onOpenAddText = { showAddTextDialog = true },
-                onClearMarkup = { commitChange(recipe.copy(strokes = emptyList(), textItems = emptyList())) },
+                onClearMarkup = {
+                  commitChange(recipe.copy(strokes = emptyList(), textItems = emptyList()))
+                },
               )
               EditorToolTabRow(activeTab = activeTab, onSelectTab = { activeTab = it })
             }
@@ -432,7 +489,9 @@ fun PhotoEditorScreen(
               )
             )
           },
-          onAddMarkupStroke = { stroke -> commitChange(recipe.copy(strokes = recipe.strokes + stroke)) },
+          onAddMarkupStroke = { stroke ->
+            commitChange(recipe.copy(strokes = recipe.strokes + stroke))
+          },
           modifier = Modifier.weight(1f).fillMaxWidth(),
         )
 
@@ -451,18 +510,26 @@ fun PhotoEditorScreen(
               selectedMarkupColorHex = selectedMarkupColorHex,
               strokeWidthNorm = strokeWidthNorm,
               sourceAspect =
-                ((croppedSourceBitmap ?: sourceBitmap)?.let { it.width.toFloat() / it.height.coerceAtLeast(1) })
-                  ?: item.aspectRatio,
+                ((croppedSourceBitmap ?: sourceBitmap)?.let {
+                  it.width.toFloat() / it.height.coerceAtLeast(1)
+                }) ?: item.aspectRatio,
               depthState = depthModelState,
               depthInferenceMs = depthMap?.inferenceTimeMs,
               onSelectAdjustParam = { selectedAdjustParam = it },
-              onAdjustChange = { p, v -> recipe = recipe.copy(adjust = recipe.adjust.withParam(p, v)) },
+              onAdjustChange = { p, v ->
+                recipe = recipe.copy(adjust = recipe.adjust.withParam(p, v))
+              },
               onCommit = { commitChange(recipe) },
               onSelectFilter = { look -> commitChange(recipe.copy(filterLook = look)) },
               onFilterIntensityChange = { recipe = recipe.copy(filterIntensity = it) },
               onFilmGrainChange = { recipe = recipe.copy(filmGrain = it) },
-              onUpdateCrop = { c, commit -> if (commit) commitChange(recipe.copy(crop = c)) else recipe = recipe.copy(crop = c) },
-              onUpdateBokeh = { b, commit -> if (commit) commitChange(recipe.copy(bokeh = b)) else recipe = recipe.copy(bokeh = b) },
+              onUpdateCrop = { c, commit ->
+                if (commit) commitChange(recipe.copy(crop = c)) else recipe = recipe.copy(crop = c)
+              },
+              onUpdateBokeh = { b, commit ->
+                if (commit) commitChange(recipe.copy(bokeh = b))
+                else recipe = recipe.copy(bokeh = b)
+              },
               onStartDepthDownload = onStartDepthDownload,
               onCancelDepthDownload = onCancelDepthDownload,
               onDeleteDepthModel = onDeleteDepthModel,
@@ -470,7 +537,9 @@ fun PhotoEditorScreen(
               onSelectMarkupColor = { selectedMarkupColorHex = it },
               onStrokeWidthChange = { strokeWidthNorm = it },
               onOpenAddText = { showAddTextDialog = true },
-              onClearMarkup = { commitChange(recipe.copy(strokes = emptyList(), textItems = emptyList())) },
+              onClearMarkup = {
+                commitChange(recipe.copy(strokes = emptyList(), textItems = emptyList()))
+              },
             )
             HorizontalDivider(color = extended.borderSubtle)
             EditorToolTabRow(activeTab = activeTab, onSelectTab = { activeTab = it })
@@ -498,12 +567,18 @@ fun PhotoEditorScreen(
               showSaveDialog = false
               onApplyNonDestructive(recipe)
             },
-            modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize().testTag("editor_save_nondestructive_btn"),
+            modifier =
+              Modifier.fillMaxWidth()
+                .minimumInteractiveComponentSize()
+                .testTag("editor_save_nondestructive_btn"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
           ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+              modifier = Modifier.padding(14.dp),
+              verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
               Text(
                 text = "Apply Non-Destructively",
                 style = MaterialTheme.typography.labelLarge,
@@ -522,12 +597,18 @@ fun PhotoEditorScreen(
               showSaveDialog = false
               onSaveAsCopy(recipe)
             },
-            modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize().testTag("editor_save_copy_btn"),
+            modifier =
+              Modifier.fillMaxWidth()
+                .minimumInteractiveComponentSize()
+                .testTag("editor_save_copy_btn"),
             shape = RoundedCornerShape(16.dp),
             color = extended.surfaceHigh,
             border = BorderStroke(1.dp, extended.borderStrong),
           ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+              modifier = Modifier.padding(14.dp),
+              verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
               Text(
                 text = "Save as New Copy",
                 style = MaterialTheme.typography.labelLarge,
@@ -548,7 +629,10 @@ fun PhotoEditorScreen(
                 onRevertToOriginal()
                 onClose()
               },
-              modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize().testTag("editor_revert_original_btn"),
+              modifier =
+                Modifier.fillMaxWidth()
+                  .minimumInteractiveComponentSize()
+                  .testTag("editor_revert_original_btn"),
             ) {
               Text("Revert Existing Photo to Original")
             }
@@ -687,16 +771,28 @@ private fun EditorActiveToolTray(
         onSelectAspect = { preset, aspect ->
           onUpdateCrop(applyAspectPresetToCrop(recipe.crop, preset, aspect), true)
         },
-        onStraightenChange = { deg -> onUpdateCrop(recipe.crop.copy(straightenDegrees = deg), false) },
+        onStraightenChange = { deg ->
+          onUpdateCrop(recipe.crop.copy(straightenDegrees = deg), false)
+        },
         onStraightenCommit = onCommit,
         onRotateLeft = {
-          onUpdateCrop(recipe.crop.copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 3) % 4), true)
+          onUpdateCrop(
+            recipe.crop.copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 3) % 4),
+            true,
+          )
         },
         onRotateRight = {
-          onUpdateCrop(recipe.crop.copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 1) % 4), true)
+          onUpdateCrop(
+            recipe.crop.copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 1) % 4),
+            true,
+          )
         },
-        onFlipH = { onUpdateCrop(recipe.crop.copy(flipHorizontal = !recipe.crop.flipHorizontal), true) },
-        onFlipV = { onUpdateCrop(recipe.crop.copy(flipVertical = !recipe.crop.flipVertical), true) },
+        onFlipH = {
+          onUpdateCrop(recipe.crop.copy(flipHorizontal = !recipe.crop.flipHorizontal), true)
+        },
+        onFlipV = {
+          onUpdateCrop(recipe.crop.copy(flipVertical = !recipe.crop.flipVertical), true)
+        },
         onResetCrop = { onUpdateCrop(CropParams(), true) },
       )
     EditorToolTab.BOKEH ->
@@ -748,7 +844,8 @@ private fun EditorToolTabRow(
         }
       Surface(
         onClick = { onSelectTab(tab) },
-        modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_tab_${tab.name.lowercase()}"),
+        modifier =
+          Modifier.minimumInteractiveComponentSize().testTag("editor_tab_${tab.name.lowercase()}"),
         shape = RoundedCornerShape(14.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
       ) {
@@ -766,7 +863,8 @@ private fun EditorToolTabRow(
           Text(
             text = tab.label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else extended.textMuted,
+            color =
+              if (selected) MaterialTheme.colorScheme.onPrimaryContainer else extended.textMuted,
           )
         }
       }

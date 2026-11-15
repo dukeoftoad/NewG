@@ -51,8 +51,17 @@ class ToadGalleryRobolectricTest {
         .getOrDefault(false)
     }
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
+    // Selection is emitted by the ViewModel independently of Compose's frame
+    // clock. Wait for the resulting action bar to finish entering before
+    // asserting it is visible.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule.onNodeWithText("9 selected").assertIsDisplayed()
+          composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("selection_clear_button").performClick()
     composeTestRule.waitUntil(timeoutMillis = 10_000) {
       runCatching {
@@ -70,7 +79,15 @@ class ToadGalleryRobolectricTest {
       .onNodeWithTag("albums_list")
       .performScrollToNode(hasTestTag("albums_hidden_vault_button"))
     composeTestRule.onNodeWithTag("albums_hidden_vault_button").performClick()
-    composeTestRule.waitForIdle()
+    // The vault visibility is delivered through the combined ViewModel state flow;
+    // wait for the overlay itself instead of assuming waitForIdle drains background work.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("hidden_vault_screen").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
 
     composeTestRule.onNodeWithTag("vault_key_1").performClick()
     composeTestRule.onNodeWithTag("vault_key_2").performClick()
@@ -90,10 +107,24 @@ class ToadGalleryRobolectricTest {
 
     // Navigate to Search tab and switch between Magic Search and Places Map
     composeTestRule.onNodeWithTag("nav_tab_search").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("magic_search_input").assertIsDisplayed()
+    // The vault overlay and NavHost destination are both state-driven. Wait
+    // for the Search content to become visible after the overlay is dismissed.
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("magic_search_input").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("search_mode_map").performClick()
-    composeTestRule.waitForIdle()
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("map_mode_pins").assertIsDisplayed()
+          composeTestRule.onNodeWithTag("map_gps_summary_pill").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("map_mode_pins").assertIsDisplayed()
     composeTestRule.onNodeWithTag("map_gps_summary_pill").assertIsDisplayed()
 

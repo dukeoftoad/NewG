@@ -252,7 +252,13 @@ class PhotoEditorAndDepthRobolectricTest {
     composeTestRule.onNodeWithTag("media_card_1").performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("lightbox_edit_button").performClick()
-    composeTestRule.waitForIdle()
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("photo_editor_screen").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
 
     composeTestRule.onNodeWithTag("photo_editor_screen").assertIsDisplayed()
     composeTestRule.onNodeWithTag("editor_canvas").assertIsDisplayed()

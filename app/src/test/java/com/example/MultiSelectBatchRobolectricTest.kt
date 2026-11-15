@@ -128,9 +128,14 @@ class MultiSelectBatchRobolectricTest {
 
     // Deselect All -> bottom action bar disappears again
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithText("0 selected").assertIsDisplayed()
-    composeTestRule.onNodeWithTag("batch_action_bar").assertDoesNotExist()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithText("0 selected").assertIsDisplayed()
+          composeTestRule.onNodeWithTag("batch_action_bar").assertDoesNotExist()
+          true
+        }
+        .getOrDefault(false)
+    }
 
     // Use section quick-select pill for November 2026 (5 items) -> bottom action bar reappears
     composeTestRule
@@ -144,8 +149,15 @@ class MultiSelectBatchRobolectricTest {
 
     // Open Batch Move Destination dialog and create a new album + move
     composeTestRule.onNodeWithTag("batch_move_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("batch_move_dialog").assertIsDisplayed()
+    // The dialog visibility is driven by the ViewModel's combined UI state;
+    // wait for that state to reach Compose instead of assuming idle drains it.
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("batch_move_dialog").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
     composeTestRule.onNodeWithTag("move_dest_vault").assertIsDisplayed()
     composeTestRule.onNodeWithTag("move_dest_folder_travel").performScrollTo().assertIsDisplayed()
 
@@ -165,12 +177,31 @@ class MultiSelectBatchRobolectricTest {
     composeTestRule.onNodeWithTag("menu_multi_select").performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
-    composeTestRule.waitForIdle()
+    // The action bar is animated and its child actions expose merged
+    // semantics only after the entrance transition has completed. Wait for
+    // the actual Delete control in the unmerged tree before interacting.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      runCatching {
+          composeTestRule
+            .onNodeWithTag("batch_delete_button", useUnmergedTree = true)
+            .assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
 
-    // Tap Delete -> opens confirmation dialog
-    composeTestRule.onNodeWithTag("batch_delete_button").performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithTag("batch_delete_confirm_dialog").assertIsDisplayed()
+    // Tap Delete -> opens confirmation dialog. The action item is nested in
+    // a clickable Surface, so target its own semantics node explicitly after it is displayed.
+    composeTestRule
+      .onNodeWithTag("batch_delete_button", useUnmergedTree = true)
+      .performClick()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      runCatching {
+          composeTestRule.onNodeWithTag("batch_delete_confirm_dialog").assertIsDisplayed()
+          true
+        }
+        .getOrDefault(false)
+    }
 
     // Cancel preserves selection
     composeTestRule.onNodeWithTag("cancel_batch_delete_button").performClick()
