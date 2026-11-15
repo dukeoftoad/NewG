@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 
 enum class MapDisplayMode(val label: String) {
@@ -218,6 +219,98 @@ class GalleryViewModel(
     ) { faceRows, facePeople, exclusions, assignments, history ->
       FacePeopleBundle(faceRows, facePeople, exclusions, assignments, history)
     }
+      // Face indexing can update Room once per photo. Coalesce those invalidations
+      // instead of rebuilding the complete People graph for every individual write.
+      .sample(2_000)
+
+  private val facePeopleGroupsFlow =
+    combine(facePeopleBundleFlow, prefsRepo.preferences) { bundle, prefs ->
+      withContext(Dispatchers.Default) {
+        val personRecords = bundle.facePeople.associateBy { it.clusterId }
+        val rowsById = bundle.faceRows.associateBy { it.id }
+        val manuallyAssignedPersonIds = bundle.faceAssignments.map { it.personClusterId }.toSet()
+        val excludedFaceReferences = bundle.faceExclusions.mapNotNull { exclusion ->
+          val row = rowsById[exclusion.photoId] ?: return@mapNotNull null
+          val currentIndex = if (exclusion.faceId != null) {
+            FacePersonClusterer.faceIndexForId(row, exclusion.faceId)
+          } else exclusion.faceIndex
+          currentIndex?.let { FaceReference(exclusion.photoId, it) }
+        }.toSet()
+        val manualFaceAssignments = bundle.faceAssignments.mapNotNull { assignment ->
+          val row = rowsById[assignment.photoId] ?: return@mapNotNull null
+          val currentIndex = if (assignment.faceId != null) {
+            FacePersonClusterer.faceIndexForId(row, assignment.faceId)
+          } else assignment.faceIndex
+          currentIndex?.let { FaceReference(assignment.photoId, it) to assignment.personClusterId }
+        }.toMap()
+        val allDetectedGroups =
+          FacePersonClusterer.cluster(
+            rows = bundle.faceRows,
+            distanceThreshold = prefs.clusteringThreshold,
+            excludedFaces = excludedFaceReferences,
+            manualAssignments = manualFaceAssignments,
+            minimumPhotos = 1,
+          ).map { group ->
+            val record = personRecords[group.id]
+            val savedCoverIsInGroup = record?.coverPhotoId?.let { it in group.photoIds } == true
+            val stableCoverIndex = if (savedCoverIsInGroup && record?.coverFaceId != null) {
+              rowsById[record.coverPhotoId!!]?.let { row ->
+                FacePersonClusterer.faceIndexForId(row, record.coverFaceId!!)
+              }
+            } else null
+            val coverFaceIndex = when {
+              stableCoverIndex != null -> stableCoverIndex
+              record?.coverFaceId == null && savedCoverIsInGroup ->
+                record.coverFaceIndex ?: group.coverFaceIndex
+              else -> group.coverFaceIndex
+            }
+            group.copy(
+              name = record?.name,
+              coverPhotoId = if (savedCoverIsInGroup) record!!.coverPhotoId!! else group.coverPhotoId,
+              coverFaceIndex = coverFaceIndex,
+            )
+          }
+        val detectedGroups = allDetectedGroups.filter { group ->
+          group.photoIds.size >= 2 ||
+            group.id in manuallyAssignedPersonIds ||
+            personRecords.containsKey(group.id)
+        }
+        val unassignedFaceGroups = allDetectedGroups.filter { group ->
+          group.photoIds.size == 1 &&
+            group.id !in manuallyAssignedPersonIds &&
+            personRecords[group.id] == null
+        }
+        val ignoredPeopleGroups = detectedGroups.filter { personRecords[it.id]?.isIgnored == true }
+        val peopleGroups =
+          detectedGroups
+            .filter { personRecords[it.id]?.isIgnored != true }
+            .groupBy { group ->
+              group.name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "cluster:${group.id}"
+            }
+            .values
+            .map { samePerson ->
+              if (samePerson.size == 1) samePerson.single()
+              else {
+                val first = samePerson.first()
+                first.copy(
+                  id = "person:${first.name.orEmpty().trim().lowercase()}",
+                  photoIds = samePerson.flatMap { it.photoIds }.distinct().sortedDescending(),
+                  faceCount = samePerson.sumOf { it.faceCount },
+                  clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
+                  faces = samePerson.flatMap { it.faces }.distinct(),
+                  faceBounds = samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
+                )
+              }
+            }
+            .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.name ?: it.id })
+        FacePeopleGroupsBundle(peopleGroups, unassignedFaceGroups, ignoredPeopleGroups)
+      }
+    }
+      .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = FacePeopleGroupsBundle(),
+      )
 
   private val mediaBundleFlow =
     combine(
@@ -244,7 +337,7 @@ class GalleryViewModel(
     }
 
   val uiState: StateFlow<GalleryUiState> =
-    combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow) { prefs, media, ctrls ->
+    combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow, facePeopleGroupsFlow) { prefs, media, ctrls, faceGroups ->
       // Building the gallery state includes whole-library filtering and face clustering.
       // Keep that CPU work off Android's main thread so scrolling and input stay responsive.
       withContext(Dispatchers.Default) {
@@ -274,86 +367,9 @@ class GalleryViewModel(
           }
 
         val q = searchCtrl.query.trim().lowercase()
-        val personRecords = media.facePeople.associateBy { it.clusterId }
-        val rowsById = media.faceRows.associateBy { it.id }
-        val manuallyAssignedPersonIds = media.faceAssignments.map { it.personClusterId }.toSet()
-        val excludedFaceReferences = media.faceExclusions.mapNotNull { exclusion ->
-          val row = rowsById[exclusion.photoId] ?: return@mapNotNull null
-          val currentIndex = if (exclusion.faceId != null) {
-            FacePersonClusterer.faceIndexForId(row, exclusion.faceId)
-          } else exclusion.faceIndex
-          currentIndex?.let { FaceReference(exclusion.photoId, it) }
-        }.toSet()
-        val manualFaceAssignments = media.faceAssignments.mapNotNull { assignment ->
-          val row = rowsById[assignment.photoId] ?: return@mapNotNull null
-          val currentIndex = if (assignment.faceId != null) {
-            FacePersonClusterer.faceIndexForId(row, assignment.faceId)
-          } else assignment.faceIndex
-          currentIndex?.let { FaceReference(assignment.photoId, it) to assignment.personClusterId }
-        }.toMap()
-        val allDetectedGroups =
-          FacePersonClusterer.cluster(
-            rows = media.faceRows,
-            distanceThreshold = prefs.clusteringThreshold,
-            excludedFaces = excludedFaceReferences,
-            manualAssignments = manualFaceAssignments,
-            minimumPhotos = 1,
-          ).map { group ->
-            val record = personRecords[group.id]
-            val savedCoverIsInGroup = record?.coverPhotoId?.let { it in group.photoIds } == true
-            val stableCoverIndex = if (savedCoverIsInGroup && record?.coverFaceId != null) {
-              rowsById[record.coverPhotoId!!]?.let { row ->
-                FacePersonClusterer.faceIndexForId(row, record.coverFaceId!!)
-              }
-            } else null
-            val coverFaceIndex = when {
-              stableCoverIndex != null -> stableCoverIndex
-              record?.coverFaceId == null && savedCoverIsInGroup ->
-                record.coverFaceIndex ?: group.coverFaceIndex
-              else -> group.coverFaceIndex
-            }
-            group.copy(
-              name = record?.name,
-              coverPhotoId = if (savedCoverIsInGroup) record!!.coverPhotoId!! else group.coverPhotoId,
-              coverFaceIndex = coverFaceIndex,
-            )
-          }
-        // Ente's People review surface exposes unassigned single-photo face suggestions
-        // separately from recurring person groups. Keep user-curated singleton people visible.
-        val detectedGroups = allDetectedGroups.filter { group ->
-          group.photoIds.size >= 2 ||
-            group.id in manuallyAssignedPersonIds ||
-            personRecords.containsKey(group.id)
-        }
-        val unassignedFaceGroups = allDetectedGroups.filter { group ->
-          group.photoIds.size == 1 &&
-            group.id !in manuallyAssignedPersonIds &&
-            personRecords[group.id] == null
-        }
-        // Assigning the same name to multiple clusters merges them in the People list.
-        val ignoredPeopleGroups = detectedGroups.filter { personRecords[it.id]?.isIgnored == true }
-        val peopleGroups =
-          detectedGroups
-            .filter { personRecords[it.id]?.isIgnored != true }
-            .groupBy { group ->
-              group.name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "cluster:${group.id}"
-            }
-            .values
-            .map { samePerson ->
-              if (samePerson.size == 1) samePerson.single()
-              else {
-                val first = samePerson.first()
-                first.copy(
-                  id = "person:${first.name.orEmpty().trim().lowercase()}",
-                  photoIds = samePerson.flatMap { it.photoIds }.distinct().sortedDescending(),
-                  faceCount = samePerson.sumOf { it.faceCount },
-                  clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
-                  faces = samePerson.flatMap { it.faces }.distinct(),
-                  faceBounds = samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
-                )
-              }
-            }
-            .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.name ?: it.id })
+        val peopleGroups = faceGroups.peopleGroups
+        val unassignedFaceGroups = faceGroups.unassignedFaceGroups
+        val ignoredPeopleGroups = faceGroups.ignoredPeopleGroups
         // Ente's suggestion flow first filters by person/cluster mean distance,
         // then ranks candidates by sampled pairwise median distance. Keep this
         // local-only and compute suggestions only for the unassigned review queue.
@@ -1220,6 +1236,12 @@ class GalleryViewModel(
     val faceExclusions: List<com.example.data.local.FaceExclusionEntity>,
     val faceAssignments: List<FaceAssignmentEntity>,
     val faceCorrectionHistory: List<FaceCorrectionHistoryEntity>,
+  )
+
+  private data class FacePeopleGroupsBundle(
+    val peopleGroups: List<FacePersonGroup> = emptyList(),
+    val unassignedFaceGroups: List<FacePersonGroup> = emptyList(),
+    val ignoredPeopleGroups: List<FacePersonGroup> = emptyList(),
   )
 
   private data class MediaBundle(
