@@ -77,14 +77,14 @@ class FaceIndexManager(
             val bitmap = decodePhoto(photo)
             if (bitmap == null) {
               failures++
-              dao.updateFaceIndex(photo.id, EMPTY_FACE_RESULT, System.currentTimeMillis())
+              dao.updateFaceIndexAndReconcile(photo.id, EMPTY_FACE_RESULT, System.currentTimeMillis())
             } else {
               val result = try {
                 engine.analyze(bitmap, modelManager.detectorFile, modelManager.embedderFile).getOrThrow()
               } finally {
                 bitmap.recycle()
               }
-              dao.updateFaceIndex(photo.id, encodeResult(photo.id, result), System.currentTimeMillis())
+              dao.updateFaceIndexAndReconcile(photo.id, encodeResult(photo.id, result), System.currentTimeMillis())
               facesFound += result.faces.size
             }
           } catch (cancelled: CancellationException) {
@@ -92,7 +92,7 @@ class FaceIndexManager(
           } catch (_: Throwable) {
             failures++
             // Mark unreadable/unsupported files as attempted to avoid an endless retry loop.
-            dao.updateFaceIndex(photo.id, EMPTY_FACE_RESULT, System.currentTimeMillis())
+            dao.updateFaceIndexAndReconcile(photo.id, EMPTY_FACE_RESULT, System.currentTimeMillis())
           }
           processed++
           _state.value = FaceIndexState(
