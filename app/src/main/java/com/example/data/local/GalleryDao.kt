@@ -40,6 +40,9 @@ interface GalleryDao {
   @Query("SELECT * FROM face_assignments WHERE photoId = :photoId")
   suspend fun getFaceAssignmentsForPhoto(photoId: Long): List<FaceAssignmentEntity>
 
+  @Query("SELECT * FROM face_assignments WHERE personClusterId = :personClusterId")
+  suspend fun getFaceAssignmentsForPersonCluster(personClusterId: String): List<FaceAssignmentEntity>
+
   @Query("DELETE FROM face_assignments WHERE photoId = :photoId")
   suspend fun deleteFaceAssignmentsForPhoto(photoId: Long)
 
@@ -51,6 +54,9 @@ interface GalleryDao {
 
   @Query("SELECT * FROM face_correction_history WHERE photoId = :photoId")
   suspend fun getFaceCorrectionHistoryForPhoto(photoId: Long): List<FaceCorrectionHistoryEntity>
+
+  @Query("SELECT * FROM face_correction_history WHERE previousPersonClusterId = :personClusterId OR nextPersonClusterId = :personClusterId")
+  suspend fun getFaceCorrectionHistoryForPersonCluster(personClusterId: String): List<FaceCorrectionHistoryEntity>
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertFaceCorrectionHistory(entry: FaceCorrectionHistoryEntity)
@@ -81,6 +87,44 @@ interface GalleryDao {
       getPeopleWithCoverForPhoto(id).filter { it.coverFaceId == null }.forEach { person ->
         val coverIndex = person.coverFaceIndex ?: return@forEach
         legacyId(coverIndex)?.let { upsertFacePerson(person.copy(coverFaceId = it)) }
+      }
+      // Automatic v8 person IDs ended in the detector index. Re-key saved names,
+      // covers, assignments and history to the stable face-based group ID.
+      for (oldIndex in 0 until previousFaces.length()) {
+        val stableId = legacyId(oldIndex) ?: continue
+        val oldClusterId = "person-$id-$oldIndex"
+        val newClusterId = "person-$id-$stableId"
+        if (oldClusterId == newClusterId) continue
+        val oldPerson = getFacePerson(oldClusterId) ?: continue
+        val existingPerson = getFacePerson(newClusterId)
+        val preferred = when {
+          existingPerson == null -> oldPerson.copy(clusterId = newClusterId)
+          oldPerson.updatedAt > existingPerson.updatedAt -> oldPerson.copy(clusterId = newClusterId)
+          else -> existingPerson
+        }
+        val fallback = if (preferred.clusterId == newClusterId && preferred.updatedAt == oldPerson.updatedAt) {
+          existingPerson
+        } else oldPerson
+        val migratedPerson = preferred.copy(
+          name = preferred.name ?: fallback?.name,
+          coverPhotoId = preferred.coverPhotoId ?: fallback?.coverPhotoId,
+          coverFaceIndex = preferred.coverFaceIndex ?: fallback?.coverFaceIndex,
+          coverFaceId = preferred.coverFaceId ?: fallback?.coverFaceId,
+          updatedAt = maxOf(preferred.updatedAt, fallback?.updatedAt ?: preferred.updatedAt),
+        )
+        getFaceAssignmentsForPersonCluster(oldClusterId).forEach { assignment ->
+          upsertFaceAssignment(assignment.copy(personClusterId = newClusterId))
+        }
+        getFaceCorrectionHistoryForPersonCluster(oldClusterId).forEach { entry ->
+          upsertFaceCorrectionHistory(
+            entry.copy(
+              previousPersonClusterId = entry.previousPersonClusterId?.replace(oldClusterId, newClusterId),
+              nextPersonClusterId = entry.nextPersonClusterId?.replace(oldClusterId, newClusterId),
+            )
+          )
+        }
+        deleteFacePerson(oldClusterId)
+        upsertFacePerson(migratedPerson)
       }
     }
     updateFaceIndex(id, faceDataJson, indexedAt)
