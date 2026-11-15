@@ -87,6 +87,8 @@ fun SearchScreen(
   onExcludeFace: (Long, Int) -> Unit = { _, _ -> },
   onSetPersonCover: (FacePersonGroup, Long) -> Unit = { _, _ -> },
   onSetPersonIgnored: (FacePersonGroup, Boolean) -> Unit = { _, _ -> },
+  onAssignFace: (Long, Int, FacePersonGroup) -> Unit = { _, _, _ -> },
+  onUndoFaceCorrection: () -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
@@ -95,6 +97,7 @@ fun SearchScreen(
   var typeMenuExpanded by remember { mutableStateOf(false) }
   var personBeingNamed by remember { mutableStateOf<FacePersonGroup?>(null) }
   var personNameInput by remember { mutableStateOf("") }
+  var showFaceHistory by remember { mutableStateOf(false) }
   val prefsCols = uiState.preferences.columns.coerceIn(2, 10)
   val resultColumns = if (isWideLayout) (prefsCols + 1).coerceIn(2, 10) else prefsCols
   val compactResults = resultColumns >= 6
@@ -683,6 +686,27 @@ fun SearchScreen(
                   onExcludeFace(face.photoId, face.faceIndex)
                   personBeingNamed = null
                 }) { Text("Remove") }
+                var assignMenuExpanded by remember(face.photoId, face.faceIndex) { mutableStateOf(false) }
+                Box {
+                  TextButton(onClick = { assignMenuExpanded = true }) { Text("Assign") }
+                  DropdownMenu(
+                    expanded = assignMenuExpanded,
+                    onDismissRequest = { assignMenuExpanded = false },
+                  ) {
+                    uiState.peopleGroups.filter { target ->
+                      target.clusterIds.firstOrNull() != group.clusterIds.firstOrNull()
+                    }.forEach { target ->
+                      DropdownMenuItem(
+                        text = { Text(target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") },
+                        onClick = {
+                          onAssignFace(face.photoId, face.faceIndex, target)
+                          assignMenuExpanded = false
+                          personBeingNamed = null
+                        },
+                      )
+                    }
+                  }
+                }
               }
             }
           }
@@ -712,8 +736,36 @@ fun SearchScreen(
             }) { Text("Remove name") }
           }
           TextButton(onClick = { onSetPersonIgnored(group, true); personBeingNamed = null }) { Text("Ignore person") }
+          TextButton(onClick = { onUndoFaceCorrection() }) { Text("Undo correction") }
+          TextButton(onClick = { showFaceHistory = true }) { Text("History (${uiState.faceCorrectionHistory.size})") }
           TextButton(onClick = { personBeingNamed = null }) { Text("Cancel") }
         }
+      },
+    )
+  }
+  if (showFaceHistory) {
+    AlertDialog(
+      onDismissRequest = { showFaceHistory = false },
+      title = { Text("Face correction history") },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          if (uiState.faceCorrectionHistory.isEmpty()) {
+            Text("No face corrections yet")
+          } else {
+            uiState.faceCorrectionHistory.take(20).forEach { entry ->
+              val action = when {
+                entry.undoneAt != null -> "Undone"
+                entry.isExcluded -> "Removed from person"
+                entry.nextPersonClusterId != null -> "Assigned to another person"
+                else -> "Restored"
+              }
+              Text("$action • ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(entry.createdAt))}")
+            }
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(onClick = { showFaceHistory = false }) { Text("Close") }
       },
     )
   }
