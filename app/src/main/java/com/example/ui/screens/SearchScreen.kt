@@ -67,6 +67,7 @@ import com.example.ui.components.people.PersonManagementSheet
 import com.example.ui.components.pinchToZoomGridColumns
 import com.example.ui.theme.LocalToadColors
 import com.example.data.ai.FacePersonGroup
+import com.example.data.ai.orderFaceAssignmentTargets
 import com.example.ui.viewmodel.GalleryUiState
 import com.example.ui.viewmodel.MapDisplayMode
 
