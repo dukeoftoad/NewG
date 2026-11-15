@@ -29,14 +29,15 @@ import kotlinx.coroutines.withContext
 fun FaceThumbnail(
   item: GalleryMediaItem,
   bounds: FaceCropBounds?,
+  sourceRevision: Long = 0L,
   modifier: Modifier = Modifier,
 ) {
   val context = LocalContext.current
-  val bitmap by produceState<Bitmap?>(initialValue = null, item.uriString, bounds) {
+  val bitmap by produceState<Bitmap?>(initialValue = null, item.uriString, bounds, sourceRevision) {
     value = withContext(Dispatchers.IO) {
       runCatching {
         val uri = item.uriString?.let(Uri::parse) ?: return@runCatching null
-        val cropBytes = FaceCropper.crop(context, uri, bounds) ?: return@runCatching null
+        val cropBytes = FaceCropper.crop(context, uri, bounds, sourceRevision) ?: return@runCatching null
         BitmapFactory.decodeByteArray(cropBytes, 0, cropBytes.size)
       }.getOrNull()
     }
