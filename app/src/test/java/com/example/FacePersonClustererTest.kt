@@ -15,6 +15,35 @@ import org.robolectric.annotation.Config
 class FacePersonClustererTest {
 
   @Test
+  fun resolvesStableFaceIdentityWhenDetectorOrderingChanges() {
+    val original = media(
+      id = 20L,
+      timestamp = 1L,
+      embeddings = listOf(vector(0), vector(1)),
+      faceIds = listOf("face-a", "face-b"),
+    )
+    val reordered = media(
+      id = 20L,
+      timestamp = 1L,
+      embeddings = listOf(vector(1), vector(0)),
+      faceIds = listOf("face-b", "face-a"),
+    )
+    val nextPhoto = media(
+      id = 21L,
+      timestamp = 2L,
+      embeddings = listOf(vector(0), vector(1)),
+      faceIds = listOf("face-c", "face-d"),
+    )
+
+    assertEquals(0, FacePersonClusterer.faceIndexForId(original, "face-a"))
+    assertEquals(1, FacePersonClusterer.faceIndexForId(reordered, "face-a"))
+    assertEquals(
+      FacePersonClusterer.cluster(listOf(original, nextPhoto), 0.24f).map { it.id }.toSet(),
+      FacePersonClusterer.cluster(listOf(reordered, nextPhoto), 0.24f).map { it.id }.toSet(),
+    )
+  }
+
+  @Test
   fun groupsMatchingFacesAcrossDifferentPhotos() {
     val rows = listOf(
       media(id = 1L, timestamp = 1L, embeddings = listOf(vector(0))),
@@ -132,16 +161,21 @@ class FacePersonClustererTest {
     assertTrue(groups.all { it.faceCount == 2 })
   }
 
-  private fun media(id: Long, timestamp: Long, embeddings: List<FloatArray>): MediaItemEntity {
+  private fun media(
+    id: Long,
+    timestamp: Long,
+    embeddings: List<FloatArray>,
+    faceIds: List<String?>? = null,
+  ): MediaItemEntity {
     val faces = JSONArray()
-    embeddings.forEach { vector ->
+    embeddings.forEachIndexed { index, vector ->
       val values = JSONArray()
       vector.forEach { values.put(it.toDouble()) }
-      faces.put(
-        JSONObject()
-          .put("embedding", values)
-          .put("box", JSONArray().put(0.1).put(0.2).put(0.6).put(0.8))
-      )
+      val face = JSONObject()
+        .put("embedding", values)
+        .put("box", JSONArray().put(0.1).put(0.2).put(0.6).put(0.8))
+      faceIds?.getOrNull(index)?.let { face.put("faceId", it) }
+      faces.put(face)
     }
     return MediaItemEntity(
       id = id,
