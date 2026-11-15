@@ -171,7 +171,7 @@ data class UserPreferences(
   val aiMagicSearch: Boolean = true,
   val aiThings: Boolean = true,
   val clusteringThreshold: Float = 0.24f,
-  val faceModelInstalled: Boolean = true,
+  val faceModelInstalled: Boolean = false,
   val semanticModelInstalled: Boolean = false,
   val depthModelInstalled: Boolean = false,
   val showLocationExif: Boolean = true,

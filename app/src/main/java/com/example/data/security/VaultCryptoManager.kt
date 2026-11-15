@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.LruCache
 import com.example.data.local.MediaItemEntity
 import com.example.data.local.SampleMediaCatalog
 import java.io.File
@@ -20,6 +21,11 @@ class VaultCryptoManager(private val context: Context) {
   private val vaultDir: File by lazy {
     File(context.filesDir, "vault_encrypted").apply { mkdirs() }
   }
+
+  private val decryptedSessionCache =
+    object : LruCache<String, ByteArray>(16 * 1024 * 1024) {
+      override fun sizeOf(key: String, value: ByteArray): Int = value.size
+    }
 
   fun readSourceBytes(item: MediaItemEntity): ByteArray? {
     if (!item.uriString.isNullOrBlank()) {
@@ -51,29 +57,52 @@ class VaultCryptoManager(private val context: Context) {
       out.write(iv)
       out.write(ciphertext)
     }
-    return outFile.absolutePath
+    val absPath = outFile.absolutePath
+    synchronized(decryptedSessionCache) {
+      decryptedSessionCache.put(absPath, plainBytes)
+    }
+    return absPath
   }
 
   fun decryptMediaBytes(encryptedFilePath: String): ByteArray? {
+    synchronized(decryptedSessionCache) {
+      decryptedSessionCache.get(encryptedFilePath)?.let { return it }
+    }
     val file = File(encryptedFilePath)
     if (!file.exists()) return null
-    return runCatching {
-        val raw = file.readBytes()
-        if (raw.size < 2) return null
-        val ivLen = raw[0].toInt() and 0xFF
-        if (raw.size <= 1 + ivLen) return null
-        val iv = raw.copyOfRange(1, 1 + ivLen)
-        val ciphertext = raw.copyOfRange(1 + ivLen, raw.size)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
-        cipher.doFinal(ciphertext)
+    val decrypted =
+      runCatching {
+          val raw = file.readBytes()
+          if (raw.size < 2) return null
+          val ivLen = raw[0].toInt() and 0xFF
+          if (raw.size <= 1 + ivLen) return null
+          val iv = raw.copyOfRange(1, 1 + ivLen)
+          val ciphertext = raw.copyOfRange(1 + ivLen, raw.size)
+          val cipher = Cipher.getInstance(TRANSFORMATION)
+          cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+          cipher.doFinal(ciphertext)
+        }
+        .getOrNull()
+    if (decrypted != null) {
+      synchronized(decryptedSessionCache) {
+        decryptedSessionCache.put(encryptedFilePath, decrypted)
       }
-      .getOrNull()
+    }
+    return decrypted
   }
 
   fun deleteEncryptedFile(encryptedFilePath: String?) {
     if (encryptedFilePath.isNullOrBlank()) return
+    synchronized(decryptedSessionCache) {
+      decryptedSessionCache.remove(encryptedFilePath)
+    }
     runCatching { File(encryptedFilePath).delete() }
+  }
+
+  fun clearSessionCache() {
+    synchronized(decryptedSessionCache) {
+      decryptedSessionCache.evictAll()
+    }
   }
 
   fun vaultStorageSizeMb(): Float {

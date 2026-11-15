@@ -1,7 +1,6 @@
 package com.example.data.ai
 
 import com.example.data.local.MediaItemEntity
-import org.json.JSONObject
 import kotlin.math.sqrt
 
 data class FacePersonSuggestion(
@@ -29,7 +28,7 @@ object FacePersonSuggestionRanker {
     rankAll(listOf(candidate), people, rows, sampleSize, maxMeanDistance, maxMedianDistance)
       .getOrDefault(candidate.id, emptyList())
 
-  /** Rank many unassigned candidates while decoding each indexed face embedding only once. */
+  /** Rank many unassigned candidates while reusing cached parsed face embeddings. */
   fun rankAll(
     candidates: List<FacePersonGroup>,
     people: List<FacePersonGroup>,
@@ -41,26 +40,51 @@ object FacePersonSuggestionRanker {
     if (sampleSize <= 0 || candidates.isEmpty() || people.isEmpty()) return emptyMap()
     val rowsById = rows.associateBy { it.id }
     val references = (candidates + people).flatMap { it.faces }.distinct()
-    val vectorsByReference = references.mapNotNull { reference ->
-      val row = rowsById[reference.photoId] ?: return@mapNotNull null
-      vectorFor(row, reference.faceIndex)?.let { reference to it }
-    }.toMap()
+    val vectorsByReference = HashMap<FaceReference, FloatArray>(references.size)
+    references.forEach { reference ->
+      val row = rowsById[reference.photoId] ?: return@forEach
+      val parsed = FacePersonClusterer.parsePhotoFaces(row) ?: return@forEach
+      val entry = parsed.entries.firstOrNull { it.faceIndex == reference.faceIndex }
+      val vec = entry?.normalizedVector
+      if (vec != null) {
+        vectorsByReference[reference] = vec
+      }
+    }
+
+    // Precompute person means and samples once across all candidates
+    val preparedPeople =
+      people.mapNotNull { person ->
+        val personVectors = person.faces.distinct().mapNotNull(vectorsByReference::get)
+        if (personVectors.isEmpty()) return@mapNotNull null
+        val personMean = normalizedMean(personVectors) ?: return@mapNotNull null
+        val personSample = evenlySample(personVectors, sampleSize)
+        PreparedPerson(person.id, personMean, personSample)
+      }
+
+    if (preparedPeople.isEmpty()) return emptyMap()
 
     return candidates.associate { candidate ->
-      candidate.id to rankOne(
-        candidate,
-        people,
-        vectorsByReference,
-        sampleSize,
-        maxMeanDistance,
-        maxMedianDistance,
-      )
+      candidate.id to
+        rankOne(
+          candidate = candidate,
+          preparedPeople = preparedPeople,
+          vectorsByReference = vectorsByReference,
+          sampleSize = sampleSize,
+          maxMeanDistance = maxMeanDistance,
+          maxMedianDistance = maxMedianDistance,
+        )
     }
   }
 
+  private data class PreparedPerson(
+    val id: String,
+    val mean: FloatArray,
+    val sample: List<FloatArray>,
+  )
+
   private fun rankOne(
     candidate: FacePersonGroup,
-    people: List<FacePersonGroup>,
+    preparedPeople: List<PreparedPerson>,
     vectorsByReference: Map<FaceReference, FloatArray>,
     sampleSize: Int,
     maxMeanDistance: Float,
@@ -71,24 +95,23 @@ object FacePersonSuggestionRanker {
     val candidateMean = normalizedMean(candidateVectors) ?: return emptyList()
     val candidateSample = evenlySample(candidateVectors, sampleSize)
 
-    return people.asSequence()
+    return preparedPeople
+      .asSequence()
       .filter { person -> person.id != candidate.id }
       .mapNotNull { person ->
-        val personVectors = person.faces.distinct().mapNotNull(vectorsByReference::get)
-        if (personVectors.isEmpty()) return@mapNotNull null
-        val personMean = normalizedMean(personVectors) ?: return@mapNotNull null
-        val meanDistance = cosineDistance(candidateMean, personMean)
+        val meanDistance = cosineDistance(candidateMean, person.mean)
         if (meanDistance >= maxMeanDistance) return@mapNotNull null
 
-        val personSample = evenlySample(personVectors, sampleSize)
-        val distances = buildList(candidateSample.size * personSample.size) {
-          candidateSample.forEach { candidateVector ->
-            personSample.forEach { personVector ->
-              add(cosineDistance(candidateVector, personVector))
-            }
+        val distances = FloatArray(candidateSample.size * person.sample.size)
+        var k = 0
+        for (i in candidateSample.indices) {
+          val cVec = candidateSample[i]
+          for (j in person.sample.indices) {
+            distances[k++] = cosineDistance(cVec, person.sample[j])
           }
-        }.sorted()
-        if (distances.isEmpty()) return@mapNotNull null
+        }
+        if (k == 0) return@mapNotNull null
+        distances.sort()
         // Match Ente's upper-middle median (sorted[length ~/ 2]).
         val medianDistance = distances[distances.size / 2]
         if (medianDistance >= maxMedianDistance) return@mapNotNull null
@@ -98,33 +121,24 @@ object FacePersonSuggestionRanker {
       .toList()
   }
 
-  private fun vectorFor(row: MediaItemEntity, faceIndex: Int): FloatArray? {
-    val json = row.faceDataJson ?: return null
-    return runCatching {
-      val face = JSONObject(json).optJSONArray("faces")?.optJSONObject(faceIndex)
-        ?: return@runCatching null
-      val values = face.optJSONArray("embedding") ?: return@runCatching null
-      if (values.length() != EMBEDDING_SIZE) return@runCatching null
-      val vector = FloatArray(EMBEDDING_SIZE) { index ->
-        values.optDouble(index, Double.NaN).toFloat()
-      }
-      if (vector.any { !it.isFinite() }) return@runCatching null
-      val norm = sqrt(vector.sumOf { (it * it).toDouble() }).toFloat()
-      if (!norm.isFinite() || norm <= 1e-8f) return@runCatching null
-      for (index in vector.indices) vector[index] /= norm
-      vector
-    }.getOrNull()
-  }
-
   private fun normalizedMean(vectors: List<FloatArray>): FloatArray? {
     if (vectors.isEmpty()) return null
     val mean = FloatArray(EMBEDDING_SIZE)
-    vectors.forEach { vector ->
-      for (index in mean.indices) mean[index] += vector[index] / vectors.size
+    val invSize = 1f / vectors.size
+    for (vIdx in vectors.indices) {
+      val vector = vectors[vIdx]
+      for (index in 0 until EMBEDDING_SIZE) {
+        mean[index] += vector[index] * invSize
+      }
     }
-    val norm = sqrt(mean.sumOf { (it * it).toDouble() }).toFloat()
+    var sumSq = 0.0
+    for (index in 0 until EMBEDDING_SIZE) {
+      val v = mean[index].toDouble()
+      sumSq += v * v
+    }
+    val norm = sqrt(sumSq).toFloat()
     if (!norm.isFinite() || norm <= 1e-8f) return null
-    for (index in mean.indices) mean[index] /= norm
+    for (index in 0 until EMBEDDING_SIZE) mean[index] /= norm
     return mean
   }
 

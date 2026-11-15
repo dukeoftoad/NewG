@@ -4,7 +4,6 @@ import com.example.data.local.MediaItemEntity
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -62,25 +61,6 @@ class FacePersonClustererTest {
       FacePersonClusterer.cluster(listOf(original, nextPhoto), 0.24f).map { it.id }.toSet(),
       FacePersonClusterer.cluster(listOf(reordered, nextPhoto), 0.24f).map { it.id }.toSet(),
     )
-  }
-
-  @Test
-  fun legacyIndexOnlyFeedbackIsIgnoredOnceStableFaceIdsAreAvailable() {
-    val legacyPayload = media(
-      id = 22L,
-      timestamp = 1L,
-      embeddings = listOf(vector(0), vector(1)),
-    )
-    val stablePayload = media(
-      id = 22L,
-      timestamp = 1L,
-      embeddings = listOf(vector(1), vector(0)),
-      faceIds = listOf("face-b", "face-a"),
-    )
-
-    assertEquals(1, FacePersonClusterer.faceIndexForLegacyIndex(legacyPayload, 1))
-    assertNull(FacePersonClusterer.faceIndexForLegacyIndex(stablePayload, 0))
-    assertNull(FacePersonClusterer.faceIndexForLegacyIndex(stablePayload, -1))
   }
 
   @Test

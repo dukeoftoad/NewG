@@ -3,4 +3,7 @@
     <cache-path
         name="shared_media"
         path="shared_media/" />
+    <files-path
+        name="edited_media"
+        path="edited_media/" />
 </paths>

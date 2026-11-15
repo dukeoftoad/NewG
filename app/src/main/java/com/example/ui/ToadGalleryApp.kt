@@ -367,12 +367,21 @@ fun ToadGalleryApp(
       }
 
       // Full-Screen Pinch-Zoom Lightbox Overlay
+      val activeLightboxId = galleryState.activeLightboxId
       val lightboxList =
-        galleryState.filteredTimelineMedia.takeIf { list ->
-          galleryState.activeLightboxId?.let { id -> list.any { it.id == id } } == true
-        } ?: galleryState.visibleMedia
+        remember(activeLightboxId, galleryState.filteredTimelineMedia, galleryState.visibleMedia) {
+          if (activeLightboxId == null) emptyList()
+          else {
+            galleryState.filteredTimelineMedia.takeIf { list ->
+              list.any { it.id == activeLightboxId }
+            } ?: galleryState.visibleMedia
+          }
+        }
       val activeLightboxIdx =
-        galleryState.activeLightboxId?.let { id -> lightboxList.indexOfFirst { it.id == id } } ?: -1
+        remember(activeLightboxId, lightboxList) {
+          if (activeLightboxId == null) -1
+          else lightboxList.indexOfFirst { it.id == activeLightboxId }
+        }
       val activeLightboxItem = lightboxList.getOrNull(activeLightboxIdx)
       if (activeLightboxItem != null) {
         LightboxOverlay(
@@ -406,9 +415,12 @@ fun ToadGalleryApp(
       }
 
       // Full-Screen Photo Editor Studio Overlay
+      val activeEditorId = galleryState.activeEditorId
       val activeEditorItem =
-        galleryState.activeEditorId?.let { editId ->
-          galleryState.visibleMedia.firstOrNull { it.id == editId }
+        remember(activeEditorId, galleryState.visibleMedia) {
+          activeEditorId?.let { editId ->
+            galleryState.visibleMedia.firstOrNull { it.id == editId }
+          }
         }
       if (activeEditorItem != null) {
         PhotoEditorScreen(

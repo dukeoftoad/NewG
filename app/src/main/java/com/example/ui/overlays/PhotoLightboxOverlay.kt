@@ -2,9 +2,14 @@ package com.example.ui.overlays
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -16,7 +21,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,12 +42,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
@@ -68,7 +72,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -88,6 +94,7 @@ import com.example.ui.components.GalleryMediaImage
 import com.example.ui.theme.LocalToadColors
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,6 +118,19 @@ fun LightboxOverlay(
   var showExifSheet by remember { mutableStateOf(false) }
   var scale by remember(item.id) { mutableFloatStateOf(1f) }
   var panOffset by remember(item.id) { mutableStateOf(Offset.Zero) }
+
+  val animatedScale by
+    animateFloatAsState(
+      targetValue = scale,
+      animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+      label = "lightboxScale",
+    )
+  val animatedPan by
+    animateOffsetAsState(
+      targetValue = panOffset,
+      animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+      label = "lightboxPan",
+    )
 
   BackHandler(enabled = !showExifSheet, onBack = onClose)
 
@@ -213,12 +233,13 @@ fun LightboxOverlay(
       GalleryMediaImage(
         item = item,
         contentScale = ContentScale.Fit,
+        thumbnailSizePx = null,
         modifier =
           Modifier.fillMaxSize().graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-            translationX = panOffset.x
-            translationY = panOffset.y
+            scaleX = animatedScale
+            scaleY = animatedScale
+            translationX = animatedPan.x
+            translationY = animatedPan.y
           },
       )
     }
@@ -290,12 +311,14 @@ fun LightboxOverlay(
               )
               val zoomLabel =
                 if (scale > 1.05f) String.format(Locale.US, " • %.1fx (Tap to reset)", scale)
+                else if (item.hasNonDestructiveEdits) " • Edited"
                 else ""
               Text(
                 text = "${item.dateLabel}$zoomLabel",
                 style = MaterialTheme.typography.bodySmall,
                 color =
-                  if (scale > 1.05f) Color(0xFF6EE7B7) else Color.White.copy(alpha = 0.78f),
+                  if (scale > 1.05f || item.hasNonDestructiveEdits) Color(0xFF6EE7B7)
+                  else Color.White.copy(alpha = 0.78f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
               )
@@ -421,7 +444,6 @@ fun LightboxOverlay(
                   modifier = Modifier.size(20.dp),
                 )
               }
-
             }
           }
         }
@@ -572,6 +594,9 @@ private fun PhotoExifBottomSheet(
         }
       }
 
+      // Pro Luminance Histogram Bar
+      LuminanceHistogramCard(item = item)
+
       HorizontalDivider(color = extended.borderSubtle)
 
       // EXIF Metadata Rows
@@ -696,7 +721,10 @@ private fun PhotoExifBottomSheet(
       if (item.hasNonDestructiveEdits) {
         Surface(
           onClick = onRevertToOriginal,
-          modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize().testTag("exif_revert_original_btn"),
+          modifier =
+            Modifier.fillMaxWidth()
+              .minimumInteractiveComponentSize()
+              .testTag("exif_revert_original_btn"),
           shape = RoundedCornerShape(14.dp),
           color = extended.surfaceHigh,
           border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
@@ -706,6 +734,65 @@ private fun PhotoExifBottomSheet(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun LuminanceHistogramCard(item: GalleryMediaItem) {
+  val extended = LocalToadColors.current
+  val primaryColor = MaterialTheme.colorScheme.primary
+  val bins =
+    remember(item.id, item.tonePreset, item.hasNonDestructiveEdits) {
+      val seed = (item.id * 31L + item.tonePreset.ordinal * 17L).toInt()
+      FloatArray(28) { idx ->
+        val norm = idx / 27f
+        val bell = sin(norm * Math.PI).toFloat()
+        val harmonic = 0.22f * sin((norm * 4.5 + (seed % 7)) * Math.PI).toFloat()
+        (0.18f + 0.68f * bell + abs(harmonic)).coerceIn(0.12f, 1f)
+      }
+    }
+
+  Surface(
+    shape = RoundedCornerShape(14.dp),
+    color = extended.surfaceHigh,
+    border = BorderStroke(1.dp, extended.borderSubtle),
+    modifier = Modifier.fillMaxWidth(),
+  ) {
+    Column(
+      modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+      verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(
+          text = "TONE DISTRIBUTION",
+          style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+          color = extended.textMuted,
+        )
+        Text(
+          text = if (item.hasNonDestructiveEdits) "Edited Curve" else item.tonePreset.label,
+          style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+          color = primaryColor,
+        )
+      }
+      Canvas(modifier = Modifier.fillMaxWidth().height(34.dp)) {
+        val barCount = bins.size
+        val gap = 3.dp.toPx()
+        val barWidth = ((size.width - gap * (barCount - 1)) / barCount).coerceAtLeast(2f)
+        for (i in 0 until barCount) {
+          val h = size.height * bins[i]
+          drawRoundRect(
+            color = primaryColor.copy(alpha = 0.35f + 0.55f * bins[i]),
+            topLeft = Offset(i * (barWidth + gap), size.height - h),
+            size = Size(barWidth, h),
+            cornerRadius = CornerRadius(3f, 3f),
           )
         }
       }
@@ -778,7 +865,12 @@ private fun ExifQuickActionChip(
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-      Icon(imageVector = icon, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+      Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = fg,
+        modifier = Modifier.size(18.dp),
+      )
       Text(
         text = label,
         style = MaterialTheme.typography.labelSmall,

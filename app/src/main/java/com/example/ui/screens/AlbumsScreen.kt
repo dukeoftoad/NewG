@@ -398,12 +398,18 @@ private fun AlbumFolderCard(
     Column {
       Box(modifier = Modifier.fillMaxWidth().height(110.dp)) {
         if (!folder.coverUriString.isNullOrBlank()) {
-          AsyncImage(
-            model =
-              ImageRequest.Builder(LocalContext.current)
+          val ctx = LocalContext.current
+          val coverReq =
+            remember(ctx, folder.coverUriString) {
+              ImageRequest.Builder(ctx)
                 .data(folder.coverUriString)
-                .crossfade(true)
-                .build(),
+                .size(384)
+                .crossfade(100)
+                .allowHardware(true)
+                .build()
+            }
+          AsyncImage(
+            model = coverReq,
             contentDescription = folder.name,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),

@@ -1,14 +1,17 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import coil.imageLoader
 import com.example.data.ai.DepthModelManager
-import com.example.data.ai.FaceModelManager
+import com.example.data.ai.DepthModelPackState
+import com.example.data.ai.FaceCropper
 import com.example.data.ai.FaceIndexManager
 import com.example.data.ai.FaceIndexState
+import com.example.data.ai.FaceModelManager
 import com.example.data.ai.FaceModelPackState
-import com.example.data.ai.DepthModelPackState
 import com.example.data.model.AppearanceMode
 import com.example.data.model.GroupByMode
 import com.example.data.model.LayoutMode
@@ -17,6 +20,9 @@ import com.example.data.model.ThemePalette
 import com.example.data.model.UserPreferences
 import com.example.data.model.VaultAutoLock
 import com.example.data.preferences.UserPreferencesRepository
+import java.io.File
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -28,6 +34,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SettingsUiState(
   val preferences: UserPreferences = UserPreferences(),
@@ -45,6 +52,7 @@ data class SettingsUiState(
 )
 
 class SettingsViewModel(
+  private val appContext: Context,
   private val prefsRepo: UserPreferencesRepository,
   private val depthModelManager: DepthModelManager,
   private val faceModelManager: FaceModelManager,
@@ -165,9 +173,7 @@ class SettingsViewModel(
   }
 
   fun setColumns(columns: Int) {
-    viewModelScope.launch {
-      prefsRepo.updateColumns(columns.coerceIn(2, 10))
-    }
+    viewModelScope.launch { prefsRepo.updateColumns(columns.coerceIn(2, 10)) }
   }
 
   fun setGroupBy(groupBy: GroupByMode) {
@@ -205,7 +211,7 @@ class SettingsViewModel(
       viewModelScope.launch {
         faceIndexManager.pauseAndWait()
         val freedMb = faceModelManager.deleteModelPack()
-        _messages.tryEmit(String.format("Removed Ente face models (%.1f MB freed)", freedMb))
+        _messages.tryEmit(String.format(Locale.US, "Removed Ente face models (%.1f MB freed)", freedMb))
       }
       return
     }
@@ -246,7 +252,7 @@ class SettingsViewModel(
     if (cur.isInstalled) {
       viewModelScope.launch {
         val freedMb = depthModelManager.deleteModelPack()
-        _messages.tryEmit(String.format("Removed bokeh-depth-dav2 (%.1f MB freed)", freedMb))
+        _messages.tryEmit(String.format(Locale.US, "Removed bokeh-depth-dav2 (%.1f MB freed)", freedMb))
       }
       return
     }
@@ -313,29 +319,46 @@ class SettingsViewModel(
 
   fun clearCache() {
     viewModelScope.launch {
-      val freed = uiState.value.preferences.cacheSizeMb
+      val priorMb = uiState.value.preferences.cacheSizeMb
+      val actualDiskFreedMb =
+        withContext(Dispatchers.IO) {
+          val faceFreed = FaceCropper.clearCache(appContext)
+          runCatching { appContext.imageLoader.memoryCache?.clear() }
+          val coilDir = File(appContext.cacheDir, "coil_image_cache")
+          val coilBytes = coilDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+          runCatching { coilDir.deleteRecursively() }
+          val sharedDir = File(appContext.cacheDir, "shared_media")
+          val sharedBytes = sharedDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+          runCatching { sharedDir.deleteRecursively() }
+          faceFreed + (coilBytes + sharedBytes) / (1024f * 1024f)
+        }
+      val reportedFreed = maxOf(priorMb, actualDiskFreedMb)
       prefsRepo.setCacheSizeMb(0.0f)
-      _messages.tryEmit(String.format("Freed %.1f MB of thumbnail cache", freed))
+      _messages.tryEmit(String.format(Locale.US, "Freed %.1f MB of thumbnail cache", reportedFreed))
     }
   }
 
   fun clearMlIndexStore() {
     faceIndexManager.clear()
     viewModelScope.launch {
+      FaceCropper.clearCache(appContext)
       val freed = uiState.value.preferences.mlIndexSizeMb
       prefsRepo.setMlIndexSizeMb(0.0f)
-      _messages.tryEmit(String.format("Cleared ML index store (%.1f MB freed)", freed))
+      _messages.tryEmit(String.format(Locale.US, "Cleared ML index store (%.1f MB freed)", freed))
     }
   }
 
   fun runEngineSelfTest() {
     val dav2Ready = depthModelManager.state.value.isInstalled
     val faceReady = faceModelManager.state.value.isInstalled
-    selfTestOutput.value = when {
-      !faceReady -> "Face model pack is not installed; download it before indexing."
-      dav2Ready -> "Model files verified • Face detector, MobileFaceNet and depth model are installed. Run library indexing to execute face inference."
-      else -> "Model files verified • Face detector and MobileFaceNet are installed. Depth model is not downloaded."
-    }
+    selfTestOutput.value =
+      when {
+        !faceReady -> "Face model pack is not installed; download it before indexing."
+        dav2Ready ->
+          "Model files verified • Face detector, MobileFaceNet and depth model are installed. Run library indexing to execute face inference."
+        else ->
+          "Model files verified • Face detector and MobileFaceNet are installed. Depth model is not downloaded."
+      }
     _messages.tryEmit("Model availability check completed")
   }
 
@@ -355,6 +378,7 @@ class SettingsViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
           SettingsViewModel(
+            container.appContext,
             container.preferencesRepository,
             container.depthModelManager,
             container.faceModelManager,
