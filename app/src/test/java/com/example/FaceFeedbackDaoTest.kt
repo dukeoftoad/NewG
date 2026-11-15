@@ -247,7 +247,9 @@ class FaceFeedbackDaoTest {
     assertEquals(1, history.faceIndex)
     assertEquals(expectedFaceId, history.faceId)
     assertEquals(stableClusterId, history.nextPersonClusterId)
-    assertEquals(secondStableClusterId, histories.single { it.nextPersonClusterId == secondStableClusterId }.nextPersonClusterId)
+    val unnamedHistory = histories.single { it.nextPersonClusterId == secondStableClusterId }
+    assertEquals(0, unnamedHistory.faceIndex)
+    assertEquals(secondFaceId, unnamedHistory.faceId)
     assertNull(dao.getFacePerson(legacyClusterId))
     val cover = dao.getFacePerson(stableClusterId)
     assertEquals("Legacy", cover?.name)
