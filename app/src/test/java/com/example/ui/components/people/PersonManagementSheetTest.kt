@@ -18,6 +18,7 @@ import com.example.ui.screens.SearchScreen
 import com.example.ui.theme.ToadGalleryTheme
 import com.example.ui.viewmodel.GalleryUiState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -98,8 +99,7 @@ class PersonManagementSheetTest {
 
     // Bitmap ownership stays with its producer; Compose may still retain a
     // recorded drawing layer after the node leaves the composition.
-    org.junit.Assert.assertFalse(bitmap.isRecycled)
-    bitmap.recycle()
+    assertFalse(bitmap.isRecycled)
   }
 
   @Test
