@@ -46,6 +46,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -352,9 +354,9 @@ class GalleryViewModel(
         // Ente's suggestion flow first filters by person/cluster mean distance,
         // then ranks candidates by sampled pairwise median distance. Keep this
         // local-only and compute suggestions only for the unassigned review queue.
-        val facePersonSuggestions = unassignedFaceGroups.associate { candidate ->
-          candidate.id to FacePersonSuggestionRanker.rank(
-            candidate = candidate,
+        val facePersonSuggestions = withContext(Dispatchers.Default) {
+          FacePersonSuggestionRanker.rankAll(
+            candidates = unassignedFaceGroups,
             people = peopleGroups,
             rows = media.faceRows,
           )
