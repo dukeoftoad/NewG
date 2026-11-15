@@ -781,7 +781,7 @@ fun SearchScreen(
                     onDismissRequest = { assignMenuExpanded = false },
                   ) {
                     uiState.peopleGroups.filter { target ->
-                      target.clusterIds.firstOrNull() != group.clusterIds.firstOrNull()
+                      target.clusterIds.none { it in group.clusterIds }
                     }.forEach { target ->
                       DropdownMenuItem(
                         text = { Text(target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") },
