@@ -8,5 +8,7 @@ import androidx.room.PrimaryKey
 data class FaceExclusionEntity(
   val photoId: Long,
   val faceIndex: Int,
+  /** Stable detector-independent identity; nullable for legacy rows. */
+  val faceId: String? = null,
   val updatedAt: Long = System.currentTimeMillis(),
 )
