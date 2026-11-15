@@ -25,6 +25,7 @@ object FacePersonClusterer {
     rows: List<MediaItemEntity>,
     distanceThreshold: Float,
     excludedFaces: Set<FaceReference> = emptySet(),
+    manualAssignments: Map<FaceReference, String> = emptyMap(),
   ): List<FacePersonGroup> {
     val clusters = mutableListOf<Cluster>()
     rows.sortedBy { it.timestamp }.forEach { row ->
@@ -32,7 +33,8 @@ object FacePersonClusterer {
       val json = runCatching { JSONObject(rawJson) }.getOrNull() ?: return@forEach
       val faces = json.optJSONArray("faces") ?: return@forEach
       for (index in 0 until faces.length()) {
-        if (FaceReference(row.id, index) in excludedFaces) continue
+        val reference = FaceReference(row.id, index)
+        if (reference in excludedFaces || reference in manualAssignments) continue
         val values = faces.optJSONObject(index)?.optJSONArray("embedding") ?: continue
         if (values.length() != EMBEDDING_SIZE) continue
         val vector = FloatArray(EMBEDDING_SIZE) { i -> values.optDouble(i, Double.NaN).toFloat() }
@@ -61,7 +63,8 @@ object FacePersonClusterer {
         }
       }
     }
-    return clusters.filter { it.samples.map(Sample::photoId).distinct().size >= MIN_PHOTOS }
+    val automaticGroups = clusters
+      .filter { it.samples.map(Sample::photoId).distinct().size >= MIN_PHOTOS }
       .map { group ->
         val ids = group.samples.map(Sample::photoId).distinct().sortedDescending()
         FacePersonGroup(
@@ -69,6 +72,43 @@ object FacePersonClusterer {
           clusterIds = listOf(group.id),
           faces = group.samples.map { FaceReference(it.photoId, it.faceIndex) },
         )
+      }
+
+    // Ente's PersonService keeps explicit cluster/person assignments separate from
+    // automatic similarity clustering. Assigned faces are therefore excluded above
+    // and reattached to their chosen stable person here, so later reclustering cannot
+    // silently move a manually corrected face back to an unrelated person.
+    val manualGroups = manualAssignments.entries
+      .groupBy({ it.value }, { it.key })
+      .mapNotNull { (personClusterId, references) ->
+        val photoIds = references.map(FaceReference::photoId).distinct().sortedDescending()
+        if (photoIds.isEmpty()) null
+        else FacePersonGroup(
+          id = personClusterId,
+          photoIds = photoIds,
+          faceCount = references.size,
+          coverPhotoId = photoIds.first(),
+          clusterIds = listOf(personClusterId),
+          faces = references,
+        )
+      }
+
+    return (automaticGroups + manualGroups)
+      .groupBy(FacePersonGroup::id)
+      .values
+      .map { samePerson ->
+        if (samePerson.size == 1) samePerson.single()
+        else {
+          val first = samePerson.first()
+          val photoIds = samePerson.flatMap(FacePersonGroup::photoIds).distinct().sortedDescending()
+          first.copy(
+            photoIds = photoIds,
+            faceCount = samePerson.sumOf(FacePersonGroup::faceCount),
+            coverPhotoId = first.coverPhotoId.takeIf { it in photoIds } ?: photoIds.first(),
+            clusterIds = samePerson.flatMap(FacePersonGroup::clusterIds).distinct(),
+            faces = samePerson.flatMap(FacePersonGroup::faces).distinct(),
+          )
+        }
       }
       .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.id })
   }
