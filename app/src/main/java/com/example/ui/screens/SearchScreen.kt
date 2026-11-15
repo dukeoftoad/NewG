@@ -459,6 +459,54 @@ fun SearchScreen(
                     }
                   }
                 }
+                if (uiState.unassignedFaceGroups.isNotEmpty()) {
+                  Spacer(Modifier.height(8.dp))
+                  Text("UNASSIGNED FACES", style = MaterialTheme.typography.labelSmall, color = extended.textMuted)
+                  uiState.unassignedFaceGroups.forEach { candidate ->
+                    val face = candidate.faces.firstOrNull()
+                    val photo = face?.let { ref -> uiState.visibleMedia.firstOrNull { it.id == ref.photoId } }
+                    if (face != null && photo != null) {
+                      Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                      ) {
+                        FaceThumbnail(
+                          item = photo,
+                          bounds = candidate.faceBounds[face],
+                          modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)),
+                        )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                          Text(photo.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                          Text("Unassigned detected face", style = MaterialTheme.typography.labelSmall, color = extended.textMuted)
+                        }
+                        TextButton(onClick = {
+                          personBeingNamed = candidate
+                          personNameInput = ""
+                        }) { Text("Name") }
+                        var assignMenuExpanded by remember(face.photoId, face.faceIndex) { mutableStateOf(false) }
+                        Box {
+                          TextButton(onClick = { assignMenuExpanded = true }) { Text("Assign") }
+                          DropdownMenu(
+                            expanded = assignMenuExpanded,
+                            onDismissRequest = { assignMenuExpanded = false },
+                          ) {
+                            uiState.peopleGroups.forEach { target ->
+                              DropdownMenuItem(
+                                text = { Text(target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") },
+                                onClick = {
+                                  onAssignFace(face.photoId, face.faceIndex, target)
+                                  assignMenuExpanded = false
+                                },
+                              )
+                            }
+                          }
+                        }
+                        TextButton(onClick = { onSetPersonIgnored(candidate, true) }) { Text("Ignore") }
+                      }
+                    }
+                  }
+                }
                 if (uiState.ignoredPeopleGroups.isNotEmpty()) {
                   Spacer(Modifier.height(8.dp))
                   Text("IGNORED PEOPLE", style = MaterialTheme.typography.labelSmall, color = extended.textMuted)
