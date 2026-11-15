@@ -50,6 +50,29 @@ class FacePersonClustererTest {
     )
   }
 
+
+  @Test
+  fun manualFaceAssignmentOverridesSimilarityClusterAndPersistsPersonIdentity() {
+    val rows = listOf(
+      media(id = 1L, timestamp = 1L, embeddings = listOf(vector(0))),
+      media(id = 2L, timestamp = 2L, embeddings = listOf(vector(0))),
+      media(id = 3L, timestamp = 3L, embeddings = listOf(vector(1))),
+      media(id = 4L, timestamp = 4L, embeddings = listOf(vector(1))),
+    )
+
+    val groups = FacePersonClusterer.cluster(
+      rows,
+      distanceThreshold = 0.24f,
+      manualAssignments = mapOf(FaceReference(1L, 0) to "person-3-0"),
+    )
+
+    assertEquals(1, groups.size)
+    assertEquals("person-3-0", groups.single().id)
+    assertEquals(listOf(4L, 3L, 1L), groups.single().photoIds)
+    assertEquals(3, groups.single().faceCount)
+    assertTrue(FaceReference(1L, 0) in groups.single().faces)
+  }
+
   @Test
   fun doesNotExposeAClusterFoundInOnlyOnePhoto() {
     val rows = listOf(
