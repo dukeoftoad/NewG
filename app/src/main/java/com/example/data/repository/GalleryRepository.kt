@@ -12,6 +12,8 @@ import android.provider.OpenableColumns
 import com.example.data.local.AlbumEntity
 import com.example.data.local.GalleryDao
 import com.example.data.local.FacePersonEntity
+import com.example.data.local.FaceAssignmentEntity
+import com.example.data.local.FaceCorrectionHistoryEntity
 import com.example.data.local.FaceExclusionEntity
 import com.example.data.local.MediaItemEntity
 import com.example.data.local.SampleMediaCatalog
