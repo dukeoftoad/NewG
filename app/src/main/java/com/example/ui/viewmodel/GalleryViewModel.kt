@@ -333,8 +333,7 @@ class GalleryViewModel(
 
   private val baseUiState: StateFlow<GalleryUiState> =
     combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow) { prefs, media, ctrls ->
-      // Building the gallery state includes whole-library filtering and face clustering.
-      // Keep that CPU work off Android's main thread so scrolling and input stay responsive.
+      // Derive gallery filters and folder summaries away from the main thread.
       withContext(Dispatchers.Default) {
         val syncCtrl = ctrls.sync
         val selCtrl = ctrls.selection
