@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
  * app cache directory; no face image is uploaded or shared.
  */
 object FaceCropper {
-  private const val CACHE_VERSION = 1
+  private const val CACHE_VERSION = 2
   private const val JPEG_QUALITY = 90
   private const val MAX_DECODE_DIMENSION = 2048
   private const val MAX_DISK_CACHE_BYTES = 32L * 1024L * 1024L
@@ -32,8 +32,9 @@ object FaceCropper {
     context: Context,
     uri: Uri,
     bounds: FaceCropBounds?,
+    sourceRevision: Long = 0L,
   ): ByteArray? = withContext(Dispatchers.IO) {
-    val key = cacheKey(uri, bounds)
+    val key = cacheKey(uri, bounds, sourceRevision)
     synchronized(memoryCache) { memoryCache.get(key) }?.let { return@withContext it }
 
     val cacheDir = File(context.cacheDir, "ente-face-crops-v$CACHE_VERSION")
@@ -136,9 +137,9 @@ object FaceCropper {
     }
   }
 
-  private fun cacheKey(uri: Uri, bounds: FaceCropBounds?): String {
+  private fun cacheKey(uri: Uri, bounds: FaceCropBounds?, sourceRevision: Long): String {
     val value = buildString {
-      append(uri.toString()).append('|').append(CACHE_VERSION)
+      append(uri.toString()).append('|').append(CACHE_VERSION).append('|').append(sourceRevision)
       if (bounds == null) append("|full")
       else append('|').append(bounds.left).append('|').append(bounds.top)
         .append('|').append(bounds.right).append('|').append(bounds.bottom)
