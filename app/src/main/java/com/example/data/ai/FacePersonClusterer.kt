@@ -21,7 +21,12 @@ data class FacePersonGroup(
 
 object FacePersonClusterer {
   private data class Sample(val photoId: Long, val faceIndex: Int, val vector: FloatArray, val bounds: FaceCropBounds?)
-  private data class Cluster(val id: String, val samples: MutableList<Sample>, var centroid: FloatArray)
+  private data class Cluster(
+    val id: String,
+    val samples: MutableList<Sample>,
+    var centroid: FloatArray,
+    val photoIds: MutableSet<Long>,
+  )
 
   /** Chronological cosine-distance clustering. A photo contributes at most one face per group. */
   fun cluster(
@@ -82,7 +87,7 @@ object FacePersonClusterer {
         // and avoids letting one outlier dominate the person representation.
         val matchThreshold = distanceThreshold.coerceIn(0.05f, 0.8f)
         val match = clusters.asSequence()
-          .filter { group -> group.samples.none { it.photoId == row.id } }
+          .filter { group -> row.id !in group.photoIds }
           .map { group ->
             group to FaceClusterRanker.score(
               query = vector,
@@ -94,10 +99,16 @@ object FacePersonClusterer {
           .minByOrNull { it.second }
         val sample = Sample(row.id, index, vector, bounds)
         if (match == null) {
-          clusters += Cluster("person-${row.id}-${stableFaceId ?: index}", mutableListOf(sample), vector.copyOf())
+          clusters += Cluster(
+            "person-${row.id}-${stableFaceId ?: index}",
+            mutableListOf(sample),
+            vector.copyOf(),
+            mutableSetOf(row.id),
+          )
         } else {
           val group = match.first
           group.samples += sample
+          group.photoIds += row.id
           val count = group.samples.size.toFloat()
           val mean = FloatArray(EMBEDDING_SIZE) { i ->
             group.centroid[i] * ((count - 1f) / count) + vector[i] / count
@@ -208,12 +219,24 @@ internal object FaceClusterRanker {
     require(query.size == centroid.size && members.all { it.size == query.size })
     val centroidDistance = cosineDistance(query, centroid)
     if (members.isEmpty()) return centroidDistance
-    val sortedDistances = members.map { cosineDistance(query, it) }.sorted()
-    val middle = sortedDistances.size / 2
-    val medianDistance = if (sortedDistances.size % 2 == 0) {
-      (sortedDistances[middle - 1] + sortedDistances[middle]) / 2f
+    // Bound the per-candidate work for large people groups. Uniform deterministic
+    // sampling preserves a robust median signal without scanning every stored face
+    // embedding each time a new face is indexed.
+    val sampleCount = minOf(members.size, MAX_MEDIAN_SAMPLES)
+    val distances = FloatArray(sampleCount) { sampleIndex ->
+      val memberIndex = if (members.size <= MAX_MEDIAN_SAMPLES) {
+        sampleIndex
+      } else {
+        sampleIndex * (members.size - 1) / (sampleCount - 1)
+      }
+      cosineDistance(query, members[memberIndex])
+    }
+    distances.sort()
+    val middle = distances.size / 2
+    val medianDistance = if (distances.size % 2 == 0) {
+      (distances[middle - 1] + distances[middle]) / 2f
     } else {
-      sortedDistances[middle]
+      distances[middle]
     }
     return medianDistance * 0.7f + centroidDistance * 0.3f
   }
@@ -223,4 +246,6 @@ internal object FaceClusterRanker {
     for (i in a.indices) similarity += a[i] * b[i]
     return (1f - similarity).coerceIn(0f, 2f)
   }
+
+  private const val MAX_MEDIAN_SAMPLES = 16
 }
