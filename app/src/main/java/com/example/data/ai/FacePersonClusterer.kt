@@ -32,16 +32,14 @@ object FacePersonClusterer {
     minimumPhotos: Int = MIN_PHOTOS,
   ): List<FacePersonGroup> {
     val clusters = mutableListOf<Cluster>()
+    val rejectedFaceGroups = mutableListOf<FacePersonGroup>()
     rows.sortedBy { it.timestamp }.forEach { row ->
       val rawJson = row.faceDataJson ?: return@forEach
       val json = runCatching { JSONObject(rawJson) }.getOrNull() ?: return@forEach
       val faces = json.optJSONArray("faces") ?: return@forEach
       for (index in 0 until faces.length()) {
         val reference = FaceReference(row.id, index)
-        if (reference in excludedFaces || reference in manualAssignments) continue
         val faceObject = faces.optJSONObject(index) ?: continue
-        val values = faceObject.optJSONArray("embedding") ?: continue
-        if (values.length() != EMBEDDING_SIZE) continue
         val box = faceObject.optJSONArray("box")
         val bounds = if (box != null && box.length() >= 4) {
           val left = box.optDouble(0, Double.NaN).toFloat()
@@ -52,6 +50,26 @@ object FacePersonClusterer {
             FaceCropBounds(left.coerceIn(0f, 1f), top.coerceIn(0f, 1f), right.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
           } else null
         } else null
+
+        // Ente turns a rejected face into its own cluster instead of deleting it.
+        // Keep it visible as an unassigned correction candidate so it can be assigned elsewhere.
+        if (reference in excludedFaces) {
+          val rejectedId = "rejected-${row.id}-$index"
+          rejectedFaceGroups += FacePersonGroup(
+            id = rejectedId,
+            photoIds = listOf(row.id),
+            faceCount = 1,
+            coverPhotoId = row.id,
+            coverFaceIndex = index,
+            clusterIds = listOf(rejectedId),
+            faces = listOf(reference),
+            faceBounds = bounds?.let { mapOf(reference to it) } ?: emptyMap(),
+          )
+          continue
+        }
+        if (reference in manualAssignments) continue
+        val values = faceObject.optJSONArray("embedding") ?: continue
+        if (values.length() != EMBEDDING_SIZE) continue
         val vector = FloatArray(EMBEDDING_SIZE) { i -> values.optDouble(i, Double.NaN).toFloat() }
         if (vector.any { !it.isFinite() }) continue
         val norm = sqrt(vector.sumOf { (it * it).toDouble() }).toFloat()
@@ -127,7 +145,7 @@ object FacePersonClusterer {
         )
       }
 
-    return (automaticGroups + manualGroups)
+    return (automaticGroups + manualGroups + rejectedFaceGroups)
       .groupBy(FacePersonGroup::id)
       .values
       .map { samePerson ->
