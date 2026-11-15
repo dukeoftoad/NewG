@@ -1,10 +1,12 @@
 package com.example.ui.components.people
 
-import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
+import android.graphics.Bitmap
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.onNodeWithContentDescription
 import com.example.data.ai.FacePersonGroup
 import com.example.data.ai.FaceReference
 import com.example.data.model.AppearanceMode
@@ -78,6 +80,29 @@ class PersonManagementSheetTest {
   )
 
   @Test
+  fun removingFaceThumbnailDoesNotRecycleBitmapUsedByCompose() {
+    val bitmap = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
+    val isVisible = mutableStateOf(true)
+    compose.setContent {
+      if (isVisible.value) {
+        FaceThumbnailBitmap(
+          bitmap = bitmap,
+          contentDescription = "Lifecycle face thumbnail",
+        )
+      }
+    }
+
+    compose.onNodeWithContentDescription("Lifecycle face thumbnail").assertIsDisplayed()
+    compose.runOnIdle { isVisible.value = false }
+    compose.waitForIdle()
+
+    // Bitmap ownership stays with its producer; Compose may still retain a
+    // recorded drawing layer after the node leaves the composition.
+    org.junit.Assert.assertFalse(bitmap.isRecycled)
+    bitmap.recycle()
+  }
+
+  @Test
   fun editorCanChooseAndPersistAnExactFaceAsCustomCover() {
     var selected: Triple<String, Long, Int>? = null
     compose.setContent {
@@ -131,7 +156,7 @@ class PersonManagementSheetTest {
     // Each detected face exposes its own assignment entry point. The
     // deterministic suggestion ordering is covered by FacePersonClustererTest;
     // Robolectric does not reliably expose Compose DropdownMenu popup semantics.
-    compose.onNodeWithText("Assign").assertExists()
+    compose.onNodeWithText("Assign").assertIsDisplayed()
   }
 
   @Test
