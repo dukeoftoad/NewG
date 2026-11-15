@@ -1,10 +1,17 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import coil.imageLoader
 import com.example.data.ai.DepthModelManager
 import com.example.data.ai.DepthModelPackState
+import com.example.data.ai.FaceCropper
+import com.example.data.ai.FaceIndexManager
+import com.example.data.ai.FaceIndexState
+import com.example.data.ai.FaceModelManager
+import com.example.data.ai.FaceModelPackState
 import com.example.data.model.AppearanceMode
 import com.example.data.model.GroupByMode
 import com.example.data.model.LayoutMode
@@ -13,6 +20,9 @@ import com.example.data.model.ThemePalette
 import com.example.data.model.UserPreferences
 import com.example.data.model.VaultAutoLock
 import com.example.data.preferences.UserPreferencesRepository
+import java.io.File
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,31 +34,33 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SettingsUiState(
   val preferences: UserPreferences = UserPreferences(),
   val currentSubPage: SettingsSubPage = SettingsSubPage.HUB,
   val searchQuery: String = "",
   val aiIndexing: Boolean = false,
-  val aiProgress: Int = 100,
-  val aiStatusText: String = "All 564 photos indexed • Healthy",
+  val aiProgress: Int = 0,
+  val aiStatusText: String = "Ready to index local photos",
   val semanticDownloading: Boolean = false,
   val semanticDownloadProgress: Int = 0,
+  val faceModelState: FaceModelPackState = FaceModelPackState(),
   val depthModelState: DepthModelPackState = DepthModelPackState(),
   val showDiagnostics: Boolean = false,
   val selfTestOutput: String? = null,
 )
 
 class SettingsViewModel(
+  private val appContext: Context,
   private val prefsRepo: UserPreferencesRepository,
   private val depthModelManager: DepthModelManager,
+  private val faceModelManager: FaceModelManager,
+  private val faceIndexManager: FaceIndexManager,
 ) : ViewModel() {
 
   private val currentSubPage = MutableStateFlow(SettingsSubPage.HUB)
   private val searchQuery = MutableStateFlow("")
-  private val aiIndexing = MutableStateFlow(false)
-  private val aiProgress = MutableStateFlow(100)
-  private val aiStatusText = MutableStateFlow("All 564 photos indexed • Healthy")
   private val semanticDownloading = MutableStateFlow(false)
   private val semanticDownloadProgress = MutableStateFlow(0)
   private val showDiagnostics = MutableStateFlow(false)
@@ -57,25 +69,25 @@ class SettingsViewModel(
   private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
   val messages: SharedFlow<String> = _messages.asSharedFlow()
 
-  private var indexJob: Job? = null
   private var downloadJob: Job? = null
 
   private val aiMonitorFlow =
     combine(
-      aiIndexing,
-      aiProgress,
-      aiStatusText,
       semanticDownloading,
       semanticDownloadProgress,
       depthModelManager.state,
+      faceModelManager.state,
+      faceIndexManager.state,
     ) { arr ->
+      val index = arr[4] as FaceIndexState
       AiMonitorState(
-        indexing = arr[0] as Boolean,
-        progress = arr[1] as Int,
-        statusText = arr[2] as String,
-        downloading = arr[3] as Boolean,
-        downloadProgress = arr[4] as Int,
-        depthState = arr[5] as DepthModelPackState,
+        indexing = index.running,
+        progress = index.progress,
+        statusText = index.progressLabel,
+        downloading = arr[0] as Boolean,
+        downloadProgress = arr[1] as Int,
+        depthState = arr[2] as DepthModelPackState,
+        faceState = arr[3] as FaceModelPackState,
       )
     }
 
@@ -105,6 +117,7 @@ class SettingsViewModel(
           semanticDownloading = ai.downloading,
           semanticDownloadProgress = ai.downloadProgress,
           depthModelState = ai.depthState,
+          faceModelState = ai.faceState,
           showDiagnostics = diag,
           selfTestOutput = selfTest,
         )
@@ -160,9 +173,7 @@ class SettingsViewModel(
   }
 
   fun setColumns(columns: Int) {
-    viewModelScope.launch {
-      prefsRepo.updateColumns(columns.coerceIn(2, 10))
-    }
+    viewModelScope.launch { prefsRepo.updateColumns(columns.coerceIn(2, 10)) }
   }
 
   fun setGroupBy(groupBy: GroupByMode) {
@@ -189,14 +200,22 @@ class SettingsViewModel(
     viewModelScope.launch { prefsRepo.setClusteringThreshold(threshold) }
   }
 
-  fun toggleFaceModelPack() {
-    viewModelScope.launch {
-      val next = !uiState.value.preferences.faceModelInstalled
-      prefsRepo.setFaceModelInstalled(next)
-      _messages.tryEmit(
-        if (next) "Face models verified & installed" else "Deleted face model pack"
-      )
+  fun handleFacePackAction() {
+    val current = faceModelManager.state.value
+    if (current.isDownloading) {
+      faceModelManager.cancelDownload()
+      _messages.tryEmit("Cancelled Ente face-model download")
+      return
     }
+    if (current.isInstalled) {
+      viewModelScope.launch {
+        faceIndexManager.pauseAndWait()
+        val freedMb = faceModelManager.deleteModelPack()
+        _messages.tryEmit(String.format(Locale.US, "Removed Ente face models (%.1f MB freed)", freedMb))
+      }
+      return
+    }
+    faceModelManager.startDownload { _, message -> _messages.tryEmit(message) }
   }
 
   fun handleSemanticPackAction() {
@@ -233,7 +252,7 @@ class SettingsViewModel(
     if (cur.isInstalled) {
       viewModelScope.launch {
         val freedMb = depthModelManager.deleteModelPack()
-        _messages.tryEmit(String.format("Removed bokeh-depth-dav2 (%.1f MB freed)", freedMb))
+        _messages.tryEmit(String.format(Locale.US, "Removed bokeh-depth-dav2 (%.1f MB freed)", freedMb))
       }
       return
     }
@@ -245,41 +264,18 @@ class SettingsViewModel(
   }
 
   fun runOrPauseIndex() {
-    if (aiIndexing.value) {
-      indexJob?.cancel()
-      aiIndexing.value = false
-      aiStatusText.value = "Paused at ${aiProgress.value}%"
-      return
+    if (faceIndexManager.state.value.running) {
+      faceIndexManager.pause()
+      _messages.tryEmit("Face indexing paused; completed results are saved")
+    } else {
+      val indexState = faceIndexManager.state.value
+      faceIndexManager.start(forceReindex = indexState.progress >= 100 && indexState.processed > 0)
     }
-    indexJob?.cancel()
-    indexJob =
-      viewModelScope.launch {
-        aiIndexing.value = true
-        if (aiProgress.value >= 100) aiProgress.value = 8
-        aiStatusText.value = "Warming up NPU worker..."
-        while (aiProgress.value < 100) {
-          delay(420)
-          val next = (aiProgress.value + 18).coerceAtMost(100)
-          aiProgress.value = next
-          aiStatusText.value =
-            when {
-              next < 50 -> "Clustering faces (Batch 1/3)..."
-              next < 95 -> "Generating CLIP embeddings..."
-              else -> "All 564 photos indexed • Healthy"
-            }
-        }
-        aiIndexing.value = false
-        prefsRepo.setMlIndexSizeMb(18.4f)
-        _messages.tryEmit("AI background index completed safely")
-      }
   }
 
   fun resetAiIndex() {
-    indexJob?.cancel()
-    aiIndexing.value = false
-    aiProgress.value = 0
-    aiStatusText.value = "Index cleared • Ready to start"
-    _messages.tryEmit("AI index queue reset")
+    faceIndexManager.clear()
+    _messages.tryEmit("Local face index cleared")
   }
 
   fun toggleLocationExif() {
@@ -323,33 +319,47 @@ class SettingsViewModel(
 
   fun clearCache() {
     viewModelScope.launch {
-      val freed = uiState.value.preferences.cacheSizeMb
+      val priorMb = uiState.value.preferences.cacheSizeMb
+      val actualDiskFreedMb =
+        withContext(Dispatchers.IO) {
+          val faceFreed = FaceCropper.clearCache(appContext)
+          runCatching { appContext.imageLoader.memoryCache?.clear() }
+          val coilDir = File(appContext.cacheDir, "coil_image_cache")
+          val coilBytes = coilDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+          runCatching { coilDir.deleteRecursively() }
+          val sharedDir = File(appContext.cacheDir, "shared_media")
+          val sharedBytes = sharedDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+          runCatching { sharedDir.deleteRecursively() }
+          faceFreed + (coilBytes + sharedBytes) / (1024f * 1024f)
+        }
+      val reportedFreed = maxOf(priorMb, actualDiskFreedMb)
       prefsRepo.setCacheSizeMb(0.0f)
-      _messages.tryEmit(String.format("Freed %.1f MB of thumbnail cache", freed))
+      _messages.tryEmit(String.format(Locale.US, "Freed %.1f MB of thumbnail cache", reportedFreed))
     }
   }
 
   fun clearMlIndexStore() {
-    indexJob?.cancel()
-    aiIndexing.value = false
-    aiProgress.value = 0
-    aiStatusText.value = "Index cleared • Ready to rebuild"
+    faceIndexManager.clear()
     viewModelScope.launch {
+      FaceCropper.clearCache(appContext)
       val freed = uiState.value.preferences.mlIndexSizeMb
       prefsRepo.setMlIndexSizeMb(0.0f)
-      _messages.tryEmit(String.format("Cleared ML index store (%.1f MB freed)", freed))
+      _messages.tryEmit(String.format(Locale.US, "Cleared ML index store (%.1f MB freed)", freed))
     }
   }
 
   fun runEngineSelfTest() {
     val dav2Ready = depthModelManager.state.value.isInstalled
+    val faceReady = faceModelManager.state.value.isInstalled
     selfTestOutput.value =
-      if (dav2Ready) {
-        "NNAPI Delegate OK • Face, CLIP & Depth-Anything-V2-Small-INT8 ready (14ms)"
-      } else {
-        "NNAPI Delegate OK • Face & CLIP tensor latency: 14ms (bokeh-depth-dav2 not downloaded)"
+      when {
+        !faceReady -> "Face model pack is not installed; download it before indexing."
+        dav2Ready ->
+          "Model files verified • Face detector, MobileFaceNet and depth model are installed. Run library indexing to execute face inference."
+        else ->
+          "Model files verified • Face detector and MobileFaceNet are installed. Depth model is not downloaded."
       }
-    _messages.tryEmit("Engine self-test passed (14ms)")
+    _messages.tryEmit("Model availability check completed")
   }
 
   private data class AiMonitorState(
@@ -359,6 +369,7 @@ class SettingsViewModel(
     val downloading: Boolean,
     val downloadProgress: Int,
     val depthState: DepthModelPackState,
+    val faceState: FaceModelPackState,
   )
 
   companion object {
@@ -367,8 +378,11 @@ class SettingsViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
           SettingsViewModel(
+            container.appContext,
             container.preferencesRepository,
             container.depthModelManager,
+            container.faceModelManager,
+            container.faceIndexManager,
           ) as T
       }
   }

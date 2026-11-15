@@ -38,7 +38,7 @@ class MediaShareHelper(private val context: Context) {
         val resolvedUri = resolveItemUri(item, shareDir)
         if (resolvedUri != null) {
           uris.add(resolvedUri)
-          mimeTypes.add(mimeTypeFor(item))
+          mimeTypes.add(mimeTypeFor(item, resolvedUri))
         }
       }
 
@@ -92,8 +92,27 @@ class MediaShareHelper(private val context: Context) {
     }
 
   private fun resolveItemUri(item: GalleryMediaItem, shareDir: File): Uri? {
-    if (!item.uriString.isNullOrBlank()) {
-      return runCatching { Uri.parse(item.uriString) }.getOrNull()
+    val activeUriStr = item.editedUriString?.takeIf { it.isNotBlank() } ?: item.uriString
+    if (!activeUriStr.isNullOrBlank()) {
+      val parsed = runCatching { Uri.parse(activeUriStr) }.getOrNull()
+      if (parsed != null) {
+        if (parsed.scheme.equals("file", ignoreCase = true)) {
+          val localFile = parsed.path?.let(::File)
+          if (localFile != null && localFile.isFile) {
+            return runCatching {
+              FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", localFile)
+            }.getOrElse {
+              val copyTarget = File(shareDir, localFile.name.ifBlank { "shared_${item.id}.jpg" })
+              runCatching {
+                localFile.copyTo(copyTarget, overwrite = true)
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", copyTarget)
+              }.getOrNull()
+            }
+          }
+        } else {
+          return parsed
+        }
+      }
     }
     return exportSampleDrawableToFileProvider(item, shareDir)
   }
@@ -113,19 +132,25 @@ class MediaShareHelper(private val context: Context) {
           .ifBlank { "media" }
       val outFile = File(shareDir, "toad_${item.id}_$safeSlug.png")
 
-      val copiedRaw =
-        runCatching {
-          context.resources.openRawResource(resId).use { input ->
-            FileOutputStream(outFile).use { output -> input.copyTo(output) }
+      if (!outFile.isFile || outFile.length() == 0L) {
+        val copiedRaw =
+          runCatching {
+            context.resources.openRawResource(resId).use { input ->
+              FileOutputStream(outFile).use { output -> input.copyTo(output) }
+            }
+            outFile.length() > 0L
           }
-          outFile.length() > 0L
-        }
-          .getOrDefault(false)
+            .getOrDefault(false)
 
-      if (!copiedRaw) {
-        val bmp = BitmapFactory.decodeResource(context.resources, resId) ?: return null
-        FileOutputStream(outFile).use { output ->
-          bmp.compress(Bitmap.CompressFormat.PNG, 100, output)
+        if (!copiedRaw) {
+          val bmp = BitmapFactory.decodeResource(context.resources, resId) ?: return null
+          try {
+            FileOutputStream(outFile).use { output ->
+              bmp.compress(Bitmap.CompressFormat.PNG, 100, output)
+            }
+          } finally {
+            bmp.recycle()
+          }
         }
       }
 
@@ -133,12 +158,15 @@ class MediaShareHelper(private val context: Context) {
     }
       .getOrNull()
 
-  private fun mimeTypeFor(item: GalleryMediaItem): String =
+  private fun mimeTypeFor(item: GalleryMediaItem, resolvedUri: Uri): String =
     when (item.mediaType) {
       MediaType.VIDEO -> "video/*"
       MediaType.GIF -> "image/gif"
       MediaType.PHOTO,
-      MediaType.SCREENSHOT -> "image/png"
+      MediaType.SCREENSHOT -> {
+        val path = resolvedUri.toString().lowercase()
+        if (path.endsWith(".jpg") || path.endsWith(".jpeg")) "image/jpeg" else "image/png"
+      }
     }
 
   private fun pruneOldCacheFiles(shareDir: File) {

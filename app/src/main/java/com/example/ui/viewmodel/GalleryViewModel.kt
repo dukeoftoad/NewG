@@ -11,8 +11,16 @@ import com.example.data.ai.DepthAnythingV2Engine
 import com.example.data.ai.DepthMapResult
 import com.example.data.ai.DepthModelManager
 import com.example.data.ai.DepthModelPackState
+import com.example.data.ai.FacePersonClusterer
+import com.example.data.ai.FacePersonGroup
+import com.example.data.ai.FacePersonSuggestion
+import com.example.data.ai.FacePersonSuggestionRanker
+import com.example.data.ai.FaceReference
 import com.example.data.editor.PhotoEditorRenderer
 import com.example.data.local.AlbumEntity
+import com.example.data.local.FaceAssignmentEntity
+import com.example.data.local.FaceCorrectionHistoryEntity
+import com.example.data.local.FacePersonEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaAccessLevel
 import com.example.data.media.MediaPermissionHelper
@@ -31,6 +39,8 @@ import com.example.data.model.UserPreferences
 import com.example.data.model.VaultAutoLock
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.GalleryRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -38,8 +48,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class MapDisplayMode(val label: String) {
   PINS("Pins"),
@@ -56,6 +68,12 @@ data class GalleryUiState(
   val visibleMedia: List<GalleryMediaItem> = emptyList(),
   val filteredTimelineMedia: List<GalleryMediaItem> = emptyList(),
   val customAlbums: List<AlbumEntity> = emptyList(),
+  val peopleGroups: List<FacePersonGroup> = emptyList(),
+  val unassignedFaceGroups: List<FacePersonGroup> = emptyList(),
+  val facePersonSuggestions: Map<String, List<FacePersonSuggestion>> = emptyMap(),
+  val ignoredPeopleGroups: List<FacePersonGroup> = emptyList(),
+  val faceCorrectionHistory: List<FaceCorrectionHistoryEntity> = emptyList(),
+  val faceIndexRevisions: Map<Long, Long> = emptyMap(),
   val folderDestinations: List<String> = listOf("Camera", "Travel", "Screenshots", "Downloads"),
   val stories: List<StorySlide> = SampleMediaCatalog.stories,
   val folderAlbums: List<AlbumFolder> = emptyList(),
@@ -97,6 +115,8 @@ class GalleryViewModel(
   private val mediaAccessLevel =
     MutableStateFlow(MediaPermissionHelper.checkAccessLevel(appContext))
   private val isSyncingMedia = MutableStateFlow(false)
+  private var syncJob: Job? = null
+  private var lastSilentSyncAtMs: Long = 0L
   private val permissionBannerDismissed = MutableStateFlow(false)
   private val activeCategory = MutableStateFlow(MediaCategory.ALL)
   private val activeFolderFilter = MutableStateFlow<TimelineFolderFilter?>(null)
@@ -113,10 +133,10 @@ class GalleryViewModel(
   private val searchTypeFilter = MutableStateFlow<MediaType?>(null)
   private val mapMode = MutableStateFlow(MapDisplayMode.PINS)
   private val selectedMapPinId = MutableStateFlow<Long?>(null)
-  private val activeLightboxId = MutableStateFlow<Long?>(null)
-  private val activeEditorId = MutableStateFlow<Long?>(null)
+  private val activeLightboxId = MutableStateFlow(null as Long?)
+  private val activeEditorId = MutableStateFlow(null as Long?)
   private val isSavingEdit = MutableStateFlow(false)
-  private val activeStoryIndex = MutableStateFlow<Int?>(null)
+  private val activeStoryIndex = MutableStateFlow(null as Int?)
   private val showVaultDialog = MutableStateFlow(false)
   private val isVaultUnlocked = MutableStateFlow(false)
   private val vaultDecryptedPreviews = MutableStateFlow<Map<Long, ByteArray>>(emptyMap())
@@ -192,6 +212,147 @@ class GalleryViewModel(
       )
     }
 
+  // Conflate rapid faceIndexedMedia emissions while keeping user feedback flows
+  // (naming, assigning, excluding, ignoring, undoing) instantaneous with zero sample() lag.
+  private val facePeopleBundleFlow =
+    combine(
+      galleryRepo.faceIndexedMedia.conflate(),
+      galleryRepo.facePeople,
+      galleryRepo.faceExclusions,
+      galleryRepo.faceAssignments,
+      galleryRepo.faceCorrectionHistory,
+    ) { faceRows, facePeople, exclusions, assignments, history ->
+      FacePeopleBundle(faceRows, facePeople, exclusions, assignments, history)
+    }.conflate()
+
+  private val facePeopleGroupsFlow =
+    combine(facePeopleBundleFlow, prefsRepo.preferences) { bundle, prefs ->
+        withContext(Dispatchers.Default) {
+          val personRecords = bundle.facePeople.associateBy { it.clusterId }
+          val rowsById = bundle.faceRows.associateBy { it.id }
+          val manuallyAssignedPersonIds = bundle.faceAssignments.mapTo(HashSet()) { it.personClusterId }
+          val excludedFaceReferences =
+            bundle.faceExclusions
+              .mapNotNull { exclusion ->
+                val row = rowsById[exclusion.photoId] ?: return@mapNotNull null
+                val currentIndex =
+                  if (exclusion.faceId != null) {
+                    FacePersonClusterer.faceIndexForId(row, exclusion.faceId)
+                  } else exclusion.faceIndex
+                currentIndex?.let { FaceReference(exclusion.photoId, it) }
+              }
+              .toSet()
+          val manualFaceAssignments =
+            bundle.faceAssignments
+              .mapNotNull { assignment ->
+                val row = rowsById[assignment.photoId] ?: return@mapNotNull null
+                val currentIndex =
+                  if (assignment.faceId != null) {
+                    FacePersonClusterer.faceIndexForId(row, assignment.faceId)
+                  } else assignment.faceIndex
+                currentIndex?.let { FaceReference(assignment.photoId, it) to assignment.personClusterId }
+              }
+              .toMap()
+          val allDetectedGroups =
+            FacePersonClusterer.cluster(
+                rows = bundle.faceRows,
+                distanceThreshold = prefs.clusteringThreshold,
+                excludedFaces = excludedFaceReferences,
+                manualAssignments = manualFaceAssignments,
+                minimumPhotos = 1,
+              )
+              .map { group ->
+                val record = personRecords[group.id]
+                val savedCoverIsInGroup = record?.coverPhotoId?.let { it in group.photoIds } == true
+                val stableCoverIndex =
+                  if (savedCoverIsInGroup && record?.coverFaceId != null) {
+                    rowsById[record.coverPhotoId!!]?.let { row ->
+                      FacePersonClusterer.faceIndexForId(row, record.coverFaceId!!)
+                    }
+                  } else null
+                val coverFaceIndex =
+                  when {
+                    stableCoverIndex != null -> stableCoverIndex
+                    record?.coverFaceId == null && savedCoverIsInGroup ->
+                      record.coverFaceIndex ?: group.coverFaceIndex
+                    else -> group.coverFaceIndex
+                  }
+                group.copy(
+                  name = record?.name,
+                  coverPhotoId =
+                    if (savedCoverIsInGroup) record!!.coverPhotoId!! else group.coverPhotoId,
+                  coverFaceIndex = coverFaceIndex,
+                )
+              }
+          val detectedGroups =
+            allDetectedGroups.filter { group ->
+              group.photoIds.size >= 2 ||
+                group.id in manuallyAssignedPersonIds ||
+                personRecords.containsKey(group.id)
+            }
+          val unassignedFaceGroups =
+            allDetectedGroups.filter { group ->
+              group.photoIds.size == 1 &&
+                group.id !in manuallyAssignedPersonIds &&
+                personRecords[group.id] == null
+            }
+          val ignoredPeopleGroups =
+            detectedGroups.filter { personRecords[it.id]?.isIgnored == true }
+          val peopleGroups =
+            detectedGroups
+              .filter { personRecords[it.id]?.isIgnored != true }
+              .groupBy { group ->
+                group.name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "cluster:${group.id}"
+              }
+              .values
+              .map { samePerson ->
+                if (samePerson.size == 1) samePerson.single()
+                else {
+                  val first = samePerson.first()
+                  first.copy(
+                    id = "person:${first.name.orEmpty().trim().lowercase()}",
+                    photoIds = samePerson.flatMap { it.photoIds }.distinct().sortedDescending(),
+                    faceCount = samePerson.sumOf { it.faceCount },
+                    clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
+                    faces = samePerson.flatMap { it.faces }.distinct(),
+                    faceBounds =
+                      samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
+                  )
+                }
+              }
+              .sortedWith(
+                compareByDescending<FacePersonGroup> { it.photoIds.size }
+                  .thenBy { it.name ?: it.id }
+              )
+
+          val suggestions =
+            if (unassignedFaceGroups.isNotEmpty() && peopleGroups.isNotEmpty()) {
+              FacePersonSuggestionRanker.rankAll(
+                candidates = unassignedFaceGroups,
+                people = peopleGroups,
+                rows = bundle.faceRows,
+              )
+            } else {
+              emptyMap()
+            }
+
+          val revisions = bundle.faceRows.associate { it.id to (it.faceIndexedAt ?: 0L) }
+          FacePeopleGroupsBundle(
+            peopleGroups = peopleGroups,
+            unassignedFaceGroups = unassignedFaceGroups,
+            facePersonSuggestions = suggestions,
+            ignoredPeopleGroups = ignoredPeopleGroups,
+            faceCorrectionHistory = bundle.faceCorrectionHistory,
+            faceIndexRevisions = revisions,
+          )
+        }
+      }
+      .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = FacePeopleGroupsBundle(),
+      )
+
   private val mediaBundleFlow =
     combine(
       galleryRepo.visibleMedia,
@@ -202,144 +363,222 @@ class GalleryViewModel(
       MediaBundle(visible, vault, trashed, albums)
     }
 
-  private val uiControlsBundleFlow =
-    combine(syncControlsFlow, selectionControlsFlow, searchControlsFlow, modalControlsFlow) {
-      syncCtrl,
-      selCtrl,
-      searchCtrl,
-      modals ->
-      UiControlsBundle(syncCtrl, selCtrl, searchCtrl, modals)
-    }
+  private val baseUiState: StateFlow<GalleryUiState> =
+    combine(prefsRepo.preferences, mediaBundleFlow, syncControlsFlow, searchControlsFlow) {
+        prefs,
+        media,
+        syncCtrl,
+        searchCtrl ->
+        withContext(Dispatchers.Default) {
+          val filteredTimeline =
+            media.visible.filter { item ->
+              val folderOk =
+                when (val f = syncCtrl.folderFilter) {
+                  null -> true
+                  TimelineFolderFilter.Favorites -> item.isFavorite
+                  is TimelineFolderFilter.DeviceBucket ->
+                    item.bucketName.equals(f.bucketName, ignoreCase = true)
+                  is TimelineFolderFilter.CustomAlbum -> item.albumId == f.albumId
+                }
+              val screenshotOk =
+                if (syncCtrl.folderFilter != null) true
+                else !(prefs.hideScreenshots && item.category == MediaCategory.SCREENSHOTS)
+              val categoryOk =
+                if (syncCtrl.category == MediaCategory.ALL) true
+                else item.category == syncCtrl.category
 
-  val uiState: StateFlow<GalleryUiState> =
-    combine(prefsRepo.preferences, mediaBundleFlow, uiControlsBundleFlow) { prefs, media, ctrls ->
-        val syncCtrl = ctrls.sync
-        val selCtrl = ctrls.selection
-        val searchCtrl = ctrls.search
-        val modals = ctrls.modals
+              folderOk && screenshotOk && categoryOk
+            }
 
-        val filteredTimeline =
-          media.visible.filter { item ->
-            val folderOk =
-              when (val f = syncCtrl.folderFilter) {
-                null -> true
-                TimelineFolderFilter.Favorites -> item.isFavorite
-                is TimelineFolderFilter.DeviceBucket ->
-                  item.bucketName.equals(f.bucketName, ignoreCase = true)
-                is TimelineFolderFilter.CustomAlbum -> item.albumId == f.albumId
+          val q = searchCtrl.query.trim().lowercase()
+          val searchMatches =
+            media.visible.filter { item ->
+              val locOk = !searchCtrl.onlyLoc || item.hasGps
+              val typeOk = searchCtrl.typeFilter == null || item.mediaType == searchCtrl.typeFilter
+              val queryOk =
+                q.isEmpty() ||
+                  item.title.lowercase().contains(q) ||
+                  item.locationName.lowercase().contains(q) ||
+                  item.bucketName.lowercase().contains(q) ||
+                  item.ocrText.lowercase().contains(q) ||
+                  item.tags.any { it.lowercase().contains(q) }
+              locOk && typeOk && queryOk
+            }
+
+          val geo = media.visible.filter { it.hasGps }
+          val favoritesList = media.visible.filter { it.isFavorite }
+          val favoritesFolder =
+            AlbumFolder(
+              id = -100L,
+              name = "Favorites",
+              itemCount = favoritesList.size,
+              coverUriString = favoritesList.firstOrNull()?.uriString,
+              coverDrawableName = favoritesList.firstOrNull()?.drawableResName ?: "sample_espresso",
+              filterCategory = null,
+              isFavoritesAlbum = true,
+            )
+
+          val deviceBucketFolders =
+            media.visible
+              .groupBy { it.bucketName.ifBlank { "Camera" } }
+              .entries
+              .sortedByDescending { it.value.size }
+              .mapIndexed { index, (bucket, itemsInBucket) ->
+                val cover = itemsInBucket.firstOrNull()
+                AlbumFolder(
+                  id = -(index + 1).toLong(),
+                  name = bucket,
+                  itemCount = itemsInBucket.size,
+                  coverUriString = cover?.uriString,
+                  coverDrawableName = cover?.drawableResName ?: "sample_forest_trail",
+                  filterCategory = null,
+                  filterBucketName = bucket,
+                )
               }
-            val screenshotOk =
-              if (syncCtrl.folderFilter != null) true
-              else !(prefs.hideScreenshots && item.category == MediaCategory.SCREENSHOTS)
-            val categoryOk =
-              if (syncCtrl.category == MediaCategory.ALL) true
-              else item.category == syncCtrl.category
 
-            folderOk && screenshotOk && categoryOk
-          }
-
-        val q = searchCtrl.query.trim().lowercase()
-        val searchMatches =
-          media.visible.filter { item ->
-            val locOk = !searchCtrl.onlyLoc || item.hasGps
-            val typeOk = searchCtrl.typeFilter == null || item.mediaType == searchCtrl.typeFilter
-            val queryOk =
-              q.isEmpty() ||
-                item.title.lowercase().contains(q) ||
-                item.locationName.lowercase().contains(q) ||
-                item.bucketName.lowercase().contains(q) ||
-                item.ocrText.lowercase().contains(q) ||
-                item.tags.any { it.lowercase().contains(q) }
-            locOk && typeOk && queryOk
-          }
-
-        val geo = media.visible.filter { it.hasGps }
-        val resolvedPinId =
-          modals.selectedPinId?.takeIf { id -> geo.any { it.id == id } } ?: geo.firstOrNull()?.id
-
-        val favoritesList = media.visible.filter { it.isFavorite }
-        val favoritesFolder =
-          AlbumFolder(
-            id = -100L,
-            name = "Favorites",
-            itemCount = favoritesList.size,
-            coverUriString = favoritesList.firstOrNull()?.uriString,
-            coverDrawableName = favoritesList.firstOrNull()?.drawableResName ?: "sample_espresso",
-            filterCategory = null,
-            isFavoritesAlbum = true,
-          )
-
-        val deviceBucketFolders =
-          media.visible
-            .groupBy { it.bucketName.ifBlank { "Camera" } }
-            .entries
-            .sortedByDescending { it.value.size }
-            .mapIndexed { index, (bucket, itemsInBucket) ->
-              val cover = itemsInBucket.firstOrNull()
+          val itemsByAlbumId = media.visible.filter { it.albumId != null }.groupBy { it.albumId }
+          val userFolders =
+            media.customAlbums.map { album ->
+              val albumItems = itemsByAlbumId[album.id].orEmpty()
+              val cover = albumItems.firstOrNull()
               AlbumFolder(
-                id = -(index + 1).toLong(),
-                name = bucket,
-                itemCount = itemsInBucket.size,
-                coverUriString = cover?.uriString,
-                coverDrawableName = cover?.drawableResName ?: "sample_forest_trail",
+                id = album.id,
+                name = album.name,
+                itemCount = albumItems.size,
+                coverUriString = cover?.uriString ?: album.coverUriString,
+                coverDrawableName =
+                  cover?.drawableResName ?: album.coverDrawableName ?: "sample_lake_sunset",
                 filterCategory = null,
-                filterBucketName = bucket,
+                customAlbumId = album.id,
               )
             }
 
-        val userFolders =
-          media.customAlbums.map { album ->
-            val albumItems = media.visible.filter { it.albumId == album.id }
-            val cover = albumItems.firstOrNull()
-            AlbumFolder(
-              id = album.id,
-              name = album.name,
-              itemCount = albumItems.size,
-              coverUriString = cover?.uriString ?: album.coverUriString,
-              coverDrawableName = cover?.drawableResName ?: album.coverDrawableName ?: "sample_lake_sunset",
-              filterCategory = null,
-              customAlbumId = album.id,
-            )
+          val folderDestSet = linkedSetOf<String>()
+          deviceBucketFolders.forEach { folderDestSet.add(it.name) }
+          listOf("Camera", "Travel", "Screenshots", "Downloads").forEach { folderDestSet.add(it) }
+
+          GalleryUiState(
+            preferences = prefs,
+            mediaAccessLevel = syncCtrl.accessLevel,
+            isSyncingMedia = syncCtrl.isSyncing,
+            permissionBannerDismissed = syncCtrl.bannerDismissed,
+            activeCategory = syncCtrl.category,
+            activeFolderFilter = syncCtrl.folderFilter,
+            visibleMedia = media.visible,
+            filteredTimelineMedia = filteredTimeline,
+            customAlbums = media.customAlbums,
+            peopleGroups = emptyList(),
+            unassignedFaceGroups = emptyList(),
+            facePersonSuggestions = emptyMap(),
+            ignoredPeopleGroups = emptyList(),
+            faceCorrectionHistory = emptyList(),
+            faceIndexRevisions = emptyMap(),
+            folderDestinations = folderDestSet.toList(),
+            folderAlbums = listOf(favoritesFolder) + deviceBucketFolders + userFolders,
+            vaultMedia = media.vault,
+            vaultDecryptedPreviews = emptyMap(),
+            trashedMedia = media.trashed,
+            selectedMediaIds = emptySet(),
+            isSelectionMode = false,
+            showBatchMoveDialog = false,
+            showBatchDeleteConfirmDialog = false,
+            isPreparingShare = false,
+            searchTabMode = searchCtrl.tabMode,
+            searchQuery = searchCtrl.query,
+            searchOnlyLocation = searchCtrl.onlyLoc,
+            searchTypeFilter = searchCtrl.typeFilter,
+            searchResults = searchMatches,
+            geoItems = geo,
+            mapMode = searchCtrl.mapMode,
+            selectedMapPinId = geo.firstOrNull()?.id,
+            activeLightboxId = null,
+            activeEditorId = null,
+            activeStoryIndex = null,
+            showVaultDialog = false,
+            isVaultUnlocked = false,
+            showRecycleBinSheet = false,
+            depthModelState = DepthModelPackState(),
+            isSavingEdit = false,
+          )
+        }
+      }
+      .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue =
+          GalleryUiState(mediaAccessLevel = MediaPermissionHelper.checkAccessLevel(appContext)),
+      )
+
+  val uiState: StateFlow<GalleryUiState> =
+    combine(
+        baseUiState,
+        facePeopleGroupsFlow,
+        selectionControlsFlow,
+        modalControlsFlow,
+      ) { base, groups, selection, modals ->
+        val q = base.searchQuery.trim().lowercase()
+        val isPeopleSearch = q == "portraits"
+        val selectedPersonGroup =
+          if (q.startsWith("person:")) {
+            groups.peopleGroups.firstOrNull { q == "person:${it.id.lowercase()}" || base.searchQuery.trim() == "person:${it.id}" }
+          } else null
+        val namedPersonGroup =
+          if (q.isNotEmpty() && !isPeopleSearch && selectedPersonGroup == null) {
+            groups.peopleGroups.firstOrNull { it.name?.equals(q, ignoreCase = true) == true }
+          } else null
+        val peopleSearchActive =
+          isPeopleSearch || selectedPersonGroup != null || namedPersonGroup != null
+
+        val searchResults =
+          if (!peopleSearchActive) {
+            base.searchResults
+          } else {
+            val targetPhotoIds =
+              when {
+                isPeopleSearch -> groups.peopleGroups.flatMapTo(HashSet()) { it.photoIds }
+                selectedPersonGroup != null -> selectedPersonGroup.photoIds.toHashSet()
+                else -> namedPersonGroup!!.photoIds.toHashSet()
+              }
+            base.visibleMedia.filter { item ->
+              val locOk = !base.searchOnlyLocation || item.hasGps
+              val typeOk = base.searchTypeFilter == null || item.mediaType == base.searchTypeFilter
+              locOk && typeOk && item.id in targetPhotoIds
+            }
           }
 
-        val validSelection = selCtrl.selectedIds.filter { id -> media.visible.any { it.id == id } }.toSet()
-        val folderDestSet = linkedSetOf<String>()
-        deviceBucketFolders.forEach { folderDestSet.add(it.name) }
-        listOf("Camera", "Travel", "Screenshots", "Downloads").forEach { folderDestSet.add(it) }
+        val validSelection =
+          if (selection.selectedIds.isEmpty()) {
+            emptySet()
+          } else {
+            val visibleIds = base.visibleMedia.mapTo(HashSet(base.visibleMedia.size)) { it.id }
+            selection.selectedIds.filterTo(HashSet()) { it in visibleIds }
+          }
+        val selectedPinId =
+          modals.selectedPinId?.takeIf { pinId -> base.geoItems.any { it.id == pinId } }
+            ?: base.geoItems.firstOrNull()?.id
 
-        GalleryUiState(
-          preferences = prefs,
-          mediaAccessLevel = syncCtrl.accessLevel,
-          isSyncingMedia = syncCtrl.isSyncing,
-          permissionBannerDismissed = syncCtrl.bannerDismissed,
-          activeCategory = syncCtrl.category,
-          activeFolderFilter = syncCtrl.folderFilter,
-          visibleMedia = media.visible,
-          filteredTimelineMedia = filteredTimeline,
-          customAlbums = media.customAlbums,
-          folderDestinations = folderDestSet.toList(),
-          folderAlbums = listOf(favoritesFolder) + deviceBucketFolders + userFolders,
-          vaultMedia = media.vault,
-          vaultDecryptedPreviews = modals.vaultPreviews,
-          trashedMedia = media.trashed,
+        base.copy(
+          peopleGroups = groups.peopleGroups,
+          unassignedFaceGroups = groups.unassignedFaceGroups,
+          facePersonSuggestions = if (isPeopleSearch) groups.facePersonSuggestions else emptyMap(),
+          ignoredPeopleGroups = groups.ignoredPeopleGroups,
+          faceCorrectionHistory = groups.faceCorrectionHistory,
+          faceIndexRevisions = groups.faceIndexRevisions,
+          searchResults = searchResults,
           selectedMediaIds = validSelection,
-          isSelectionMode = selCtrl.isSelectionMode && (validSelection.isNotEmpty() || explicitSelectionMode.value),
-          showBatchMoveDialog = selCtrl.showMoveDialog,
-          showBatchDeleteConfirmDialog = selCtrl.showDeleteConfirm,
-          isPreparingShare = selCtrl.isPreparingShare,
-          searchTabMode = searchCtrl.tabMode,
-          searchQuery = searchCtrl.query,
-          searchOnlyLocation = searchCtrl.onlyLoc,
-          searchTypeFilter = searchCtrl.typeFilter,
-          searchResults = searchMatches,
-          geoItems = geo,
-          mapMode = searchCtrl.mapMode,
-          selectedMapPinId = resolvedPinId,
+          isSelectionMode =
+            selection.isSelectionMode &&
+              (validSelection.isNotEmpty() || explicitSelectionMode.value),
+          showBatchMoveDialog = selection.showMoveDialog,
+          showBatchDeleteConfirmDialog = selection.showDeleteConfirm,
+          isPreparingShare = selection.isPreparingShare,
+          selectedMapPinId = selectedPinId,
           activeLightboxId = modals.lightboxId,
           activeEditorId = modals.editorId,
           activeStoryIndex = modals.storyIdx,
           showVaultDialog = modals.vaultDialog,
           isVaultUnlocked = modals.vaultUnlocked,
+          vaultDecryptedPreviews = modals.vaultPreviews,
           showRecycleBinSheet = modals.recycleSheet,
           depthModelState = modals.depthState,
           isSavingEdit = modals.savingEdit,
@@ -348,7 +587,8 @@ class GalleryViewModel(
       .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = GalleryUiState(mediaAccessLevel = MediaPermissionHelper.checkAccessLevel(appContext)),
+        initialValue =
+          GalleryUiState(mediaAccessLevel = MediaPermissionHelper.checkAccessLevel(appContext)),
       )
 
   init {
@@ -373,18 +613,28 @@ class GalleryViewModel(
       if (!silent) emitMessage("Media permission required to scan device library")
       return
     }
-    viewModelScope.launch {
-      isSyncingMedia.value = true
-      val synced = galleryRepo.syncDeviceMediaStore()
-      prefsRepo.setLastMediaSyncCount(synced)
-      isSyncingMedia.value = false
-      if (!silent) {
-        emitMessage(
-          if (synced > 0) "Synced $synced items from device MediaStore"
-          else "Device library is up to date"
-        )
-      }
+    val now = System.currentTimeMillis()
+    if (silent && (syncJob?.isActive == true || (now - lastSilentSyncAtMs) < 5_000L)) {
+      return
     }
+    if (syncJob?.isActive == true) return
+    syncJob =
+      viewModelScope.launch {
+        isSyncingMedia.value = true
+        try {
+          val synced = galleryRepo.syncDeviceMediaStore()
+          lastSilentSyncAtMs = System.currentTimeMillis()
+          prefsRepo.setLastMediaSyncCount(synced)
+          if (!silent) {
+            emitMessage(
+              if (synced > 0) "Synced $synced items from device MediaStore"
+              else "Device library is up to date"
+            )
+          }
+        } finally {
+          isSyncingMedia.value = false
+        }
+      }
   }
 
   fun dismissPermissionBanner() {
@@ -590,7 +840,9 @@ class GalleryViewModel(
       }
       onLaunchIntent(payload.chooserIntent)
       clearSelection()
-      emitMessage("Ready to share ${payload.itemCount} ${if (payload.itemCount == 1) "item" else "items"}")
+      emitMessage(
+        "Ready to share ${payload.itemCount} ${if (payload.itemCount == 1) "item" else "items"}"
+      )
     }
   }
 
@@ -601,6 +853,60 @@ class GalleryViewModel(
 
   fun setSearchQuery(query: String) {
     searchQuery.value = query
+  }
+
+  /** Persist a local person label. Reusing a name merges clusters in the People list. */
+  fun setFacePersonName(group: FacePersonGroup, name: String?) {
+    val cleanName = name?.trim()?.takeIf { it.isNotEmpty() }
+    viewModelScope.launch {
+      group.clusterIds.distinct().forEach { clusterId ->
+        galleryRepo.saveFacePerson(FacePersonEntity(clusterId = clusterId, name = cleanName))
+      }
+      emitMessage(if (cleanName == null) "Person label removed" else "Saved person as $cleanName")
+    }
+  }
+
+  fun setFacePersonIgnored(group: FacePersonGroup, ignored: Boolean) {
+    viewModelScope.launch {
+      group.clusterIds.distinct().forEach { clusterId ->
+        galleryRepo.setFacePersonIgnored(clusterId, ignored)
+      }
+      emitMessage(if (ignored) "Person hidden from People" else "Person restored to People")
+    }
+  }
+
+  fun setFacePersonCover(group: FacePersonGroup, photoId: Long, faceIndex: Int) {
+    if (group.faces.none { it.photoId == photoId && it.faceIndex == faceIndex }) return
+    viewModelScope.launch {
+      group.clusterIds.distinct().forEach { clusterId ->
+        galleryRepo.setFacePersonCover(clusterId, photoId, faceIndex)
+      }
+      emitMessage("Person cover updated")
+    }
+  }
+
+  /** Explicitly assign a detected face to a stable person, as Ente does for cluster membership. */
+  fun assignFaceToPerson(photoId: Long, faceIndex: Int, target: FacePersonGroup) {
+    val targetClusterId = target.clusterIds.minOrNull() ?: return
+    viewModelScope.launch {
+      galleryRepo.assignFaceToPerson(photoId, faceIndex, targetClusterId)
+      emitMessage("Face assigned to ${target.name?.takeIf { it.isNotBlank() } ?: "person"}")
+    }
+  }
+
+  /** Remove one incorrectly grouped face and persist the rejection locally. */
+  fun excludeFaceFromPerson(photoId: Long, faceIndex: Int) {
+    viewModelScope.launch {
+      galleryRepo.excludeFace(photoId, faceIndex)
+      emitMessage("Face removed from person")
+    }
+  }
+
+  fun undoLastFaceCorrection() {
+    viewModelScope.launch {
+      val undone = galleryRepo.undoLastFaceCorrection()
+      emitMessage(if (undone) "Last face correction undone" else "No face correction to undo")
+    }
   }
 
   fun toggleSearchOnlyLocation() {
@@ -797,14 +1103,18 @@ class GalleryViewModel(
     viewModelScope.launch {
       isSavingEdit.value = true
       try {
-        val fullSource = PhotoEditorRenderer.loadSourceBitmap(appContext, sourceItem, maxDimension = 2048)
+        val fullSource =
+          PhotoEditorRenderer.loadSourceBitmap(appContext, sourceItem, maxDimension = 2048)
         if (fullSource == null) {
           emitMessage("Unable to load source photo for export")
           return@launch
         }
         val depthMap =
           if (recipe.bokeh.enabled && depthModelManager.state.value.isInstalled) {
-            val geom = PhotoEditorRenderer.applyGeometryOnly(fullSource, recipe.crop)
+            val geom =
+              withContext(Dispatchers.Default) {
+                PhotoEditorRenderer.applyGeometryOnly(fullSource, recipe.crop)
+              }
             val res = depthEngine.estimateDepth(geom, depthModelManager.modelFile).getOrNull()
             if (geom !== fullSource) geom.recycle()
             res
@@ -843,14 +1153,18 @@ class GalleryViewModel(
           emitMessage("Reverted photo to original")
           return@launch
         }
-        val fullSource = PhotoEditorRenderer.loadSourceBitmap(appContext, sourceItem, maxDimension = 2048)
+        val fullSource =
+          PhotoEditorRenderer.loadSourceBitmap(appContext, sourceItem, maxDimension = 2048)
         if (fullSource == null) {
           emitMessage("Unable to render non-destructive edit")
           return@launch
         }
         val depthMap =
           if (recipe.bokeh.enabled && depthModelManager.state.value.isInstalled) {
-            val geom = PhotoEditorRenderer.applyGeometryOnly(fullSource, recipe.crop)
+            val geom =
+              withContext(Dispatchers.Default) {
+                PhotoEditorRenderer.applyGeometryOnly(fullSource, recipe.crop)
+              }
             val res = depthEngine.estimateDepth(geom, depthModelManager.modelFile).getOrNull()
             if (geom !== fullSource) geom.recycle()
             res
@@ -897,6 +1211,12 @@ class GalleryViewModel(
     activeStoryIndex.value = (current + 1) % SampleMediaCatalog.stories.size
   }
 
+  fun previousStorySlide() {
+    val current = activeStoryIndex.value ?: return
+    activeStoryIndex.value =
+      if (current > 0) current - 1 else SampleMediaCatalog.stories.lastIndex
+  }
+
   fun openVaultDialog() {
     val prefs = uiState.value.preferences
     val withinGraceWindow =
@@ -921,12 +1241,14 @@ class GalleryViewModel(
     if (uiState.value.preferences.vaultAutoLock == VaultAutoLock.IMMEDIATELY) {
       isVaultUnlocked.value = false
       vaultDecryptedPreviews.value = emptyMap()
+      galleryRepo.vaultCryptoManager.clearSessionCache()
     }
   }
 
   fun lockVaultNow() {
     isVaultUnlocked.value = false
     vaultDecryptedPreviews.value = emptyMap()
+    galleryRepo.vaultCryptoManager.clearSessionCache()
     viewModelScope.launch { prefsRepo.clearVaultUnlockSession() }
     emitMessage("Hidden Vault locked")
   }
@@ -1016,18 +1338,28 @@ class GalleryViewModel(
     val savingEdit: Boolean,
   )
 
+  private data class FacePeopleBundle(
+    val faceRows: List<com.example.data.local.MediaItemEntity>,
+    val facePeople: List<FacePersonEntity>,
+    val faceExclusions: List<com.example.data.local.FaceExclusionEntity>,
+    val faceAssignments: List<FaceAssignmentEntity>,
+    val faceCorrectionHistory: List<FaceCorrectionHistoryEntity>,
+  )
+
+  private data class FacePeopleGroupsBundle(
+    val peopleGroups: List<FacePersonGroup> = emptyList(),
+    val unassignedFaceGroups: List<FacePersonGroup> = emptyList(),
+    val facePersonSuggestions: Map<String, List<FacePersonSuggestion>> = emptyMap(),
+    val ignoredPeopleGroups: List<FacePersonGroup> = emptyList(),
+    val faceCorrectionHistory: List<FaceCorrectionHistoryEntity> = emptyList(),
+    val faceIndexRevisions: Map<Long, Long> = emptyMap(),
+  )
+
   private data class MediaBundle(
     val visible: List<GalleryMediaItem>,
     val vault: List<GalleryMediaItem>,
     val trashed: List<GalleryMediaItem>,
     val customAlbums: List<AlbumEntity>,
-  )
-
-  private data class UiControlsBundle(
-    val sync: SyncAndFilterControls,
-    val selection: SelectionControls,
-    val search: SearchControls,
-    val modals: ModalControls,
   )
 
   companion object {

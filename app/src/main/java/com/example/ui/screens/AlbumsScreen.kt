@@ -91,11 +91,11 @@ fun AlbumsScreen(
   var newAlbumName by remember { mutableStateOf("") }
 
   val smartCollections =
-    remember(prefs.aiPeople, prefs.aiThings, uiState.geoItems.size) {
+    remember(prefs.aiPeople, prefs.aiThings, uiState.geoItems.size, uiState.peopleGroups.size) {
       listOf(
         SmartCollectionTile(
           name = "People",
-          subtitle = if (prefs.aiPeople) "4 clusters" else "Disabled in AI",
+          subtitle = if (prefs.aiPeople) "${uiState.peopleGroups.size} people found" else "Disabled in AI",
           drawableName = "sample_portrait_warm",
           icon = Icons.Filled.Group,
           enabled = prefs.aiPeople,
@@ -398,12 +398,18 @@ private fun AlbumFolderCard(
     Column {
       Box(modifier = Modifier.fillMaxWidth().height(110.dp)) {
         if (!folder.coverUriString.isNullOrBlank()) {
-          AsyncImage(
-            model =
-              ImageRequest.Builder(LocalContext.current)
+          val ctx = LocalContext.current
+          val coverReq =
+            remember(ctx, folder.coverUriString) {
+              ImageRequest.Builder(ctx)
                 .data(folder.coverUriString)
-                .crossfade(true)
-                .build(),
+                .size(384)
+                .crossfade(100)
+                .allowHardware(true)
+                .build()
+            }
+          AsyncImage(
+            model = coverReq,
             contentDescription = folder.name,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),

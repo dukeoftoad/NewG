@@ -56,11 +56,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.ai.FaceModelManager
 import com.example.data.model.VaultAutoLock
 import com.example.ui.components.StorageBreakdownBar
 import com.example.ui.components.ToadSwitch
@@ -331,11 +331,13 @@ internal fun SettingsSubAiEnginePage(
                 color = MaterialTheme.colorScheme.primary,
               )
 
-              // Face Pack
+              // Ente face detector + MobileFaceNet pack
+              val facePack = uiState.faceModelState
               Surface(
                 shape = RoundedCornerShape(18.dp),
                 color = extended.surfaceHigh,
                 border = BorderStroke(1.dp, extended.borderSubtle),
+                modifier = Modifier.testTag("face_model_pack_card"),
               ) {
                 Column(
                   modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -348,11 +350,11 @@ internal fun SettingsSubAiEnginePage(
                   ) {
                     Column(modifier = Modifier.weight(1f)) {
                       Text(
-                        "Face Detection & Embeddings",
+                        "Ente Face Detection & Embeddings",
                         style = MaterialTheme.typography.labelLarge,
                       )
                       Text(
-                        "~37.6 MB • SHA-256 verified",
+                        "YOLOv5Face Small + MobileFaceNet • ~35.9 MiB",
                         style = MaterialTheme.typography.bodySmall,
                         color = extended.textMuted,
                       )
@@ -360,35 +362,155 @@ internal fun SettingsSubAiEnginePage(
                     Surface(
                       shape = CircleShape,
                       color =
-                        if (prefs.faceModelInstalled) MaterialTheme.colorScheme.primaryContainer
+                        if (facePack.isInstalled) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surface,
                     ) {
                       Text(
-                        text = if (prefs.faceModelInstalled) "Installed" else "Removed",
+                        text =
+                          when {
+                            facePack.isInstalled -> "Installed"
+                            facePack.isDownloading -> "${facePack.progressPercent}%"
+                            facePack.status == com.example.data.ai.FaceModelStatus.ERROR -> "Error"
+                            else -> "On-Demand"
+                          },
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         color =
-                          if (prefs.faceModelInstalled) MaterialTheme.colorScheme.onPrimaryContainer
+                          if (facePack.isInstalled) MaterialTheme.colorScheme.onPrimaryContainer
                           else extended.textMuted,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                       )
                     }
                   }
+                  if (facePack.isDownloading) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                      LinearProgressIndicator(
+                        progress = { facePack.progressPercent / 100f },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                      )
+                      Text(
+                        text = facePack.progressLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                      )
+                    }
+                  } else if (!facePack.errorMessage.isNullOrBlank()) {
+                    Text(
+                      text = facePack.errorMessage,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.error,
+                    )
+                  } else if (facePack.isInstalled) {
+                    Text(
+                      text = facePack.progressLabel,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = extended.textMuted,
+                    )
+                  }
                   Button(
-                    onClick = viewModel::toggleFaceModelPack,
+                    onClick = viewModel::handleFacePackAction,
                     modifier = Modifier.testTag("toggle_face_pack_btn"),
                     colors =
                       ButtonDefaults.buttonColors(
                         containerColor =
-                          if (prefs.faceModelInstalled) extended.dangerContainer
+                          if (facePack.isInstalled) extended.dangerContainer
                           else MaterialTheme.colorScheme.primary,
                         contentColor =
-                          if (prefs.faceModelInstalled) extended.onDangerContainer
+                          if (facePack.isInstalled) extended.onDangerContainer
                           else MaterialTheme.colorScheme.onPrimary,
                       ),
                   ) {
                     Text(
-                      if (prefs.faceModelInstalled) "Delete Pack" else "Download (~37.6 MB)",
+                      text =
+                        when {
+                          facePack.isInstalled -> "Delete Face Pack"
+                          facePack.isDownloading -> "Cancel Download"
+                          else -> "Download (~35.9 MiB)"
+                        },
                       style = MaterialTheme.typography.labelMedium,
+                    )
+                  }
+                }
+              }
+
+              var showFaceModelDetails by remember { mutableStateOf(false) }
+              Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, extended.borderSubtle),
+              ) {
+                Column(
+                  modifier = Modifier.fillMaxWidth().padding(12.dp),
+                  verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                  Row(
+                    modifier =
+                      Modifier.fillMaxWidth().clickable {
+                        showFaceModelDetails = !showFaceModelDetails
+                      },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                  ) {
+                    Text(
+                      "What do these models do?",
+                      style = MaterialTheme.typography.labelLarge,
+                    )
+                    Icon(
+                      imageVector =
+                        if (showFaceModelDetails) Icons.Filled.ExpandLess
+                        else Icons.Filled.ExpandMore,
+                      contentDescription =
+                        if (showFaceModelDetails) "Hide model details"
+                        else "Show model details",
+                      tint = extended.textMuted,
+                    )
+                  }
+                  if (showFaceModelDetails) {
+                    Text(
+                      "1. YOLOv5Face Small — scans each photo and finds face locations. " +
+                        "It proposes face boxes and five facial landmarks; non-maximum " +
+                        "suppression removes duplicate overlapping detections.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    Text(
+                      "2. Face alignment — uses the detected landmarks to rotate, scale " +
+                        "and align each crop so faces can be compared more consistently. " +
+                        "This step is preprocessing; it is not a separate downloaded model.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    Text(
+                      "3. MobileFaceNet — converts each aligned face into a compact " +
+                        "192-D L2-normalized embedding. Similar-looking faces have embeddings " +
+                        "with small cosine distance; the vector stays strictly on-device.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    HorizontalDivider(color = extended.borderSubtle)
+                    Text(
+                      "How NewG uses them",
+                      style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                      "Use Re-index Library above to scan eligible local photos. " +
+                        "NewG groups recurring faces using centroid + median-member cosine " +
+                        "distance, powers People albums, and supports cover selection, " +
+                        "merge/split, face assignment/exclusion, and undo history.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
+                    Text(
+                      "Current status: Both ONNX models, stable per-photo face IDs, " +
+                        "People clustering, suggested face matches, and local Room undo " +
+                        "history run 100% offline on-device.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                      "Model format: ONNX • Runtime: ONNX Runtime Android • " +
+                        "Source: Ente FlutterFace demo (GPL-3.0 project).",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = extended.textMuted,
                     )
                   }
                 }
@@ -482,6 +604,7 @@ internal fun SettingsSubAiEnginePage(
         // Depth Anything V2 Small int8 ONNX Pack (bokeh-depth-dav2)
         item {
           val depthPack = uiState.depthModelState
+          val facePack = uiState.faceModelState
           SettingsGroupCard {
             Column(
               modifier = Modifier.padding(16.dp),
@@ -621,23 +744,24 @@ internal fun SettingsSubAiEnginePage(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                       )
+                    val faceReady = facePack.isInstalled || prefs.faceModelInstalled
                     Text(
                       "• Engine library: present (ONNX Runtime 1.20)",
                       style = diagStyle,
                       color = extended.textMuted,
                     )
                     Text(
-                      "• yolov5s_face_640_static.onnx — ${if (prefs.faceModelInstalled) "installed" else "missing"}",
+                      "• ${FaceModelManager.DETECTOR_FILE_NAME} — ${if (faceReady) "installed & SHA-1 verified" else "on-demand"}",
                       style = diagStyle,
                       color = extended.textMuted,
                     )
                     Text(
-                      "• mobilefacenet_portable.onnx — ${if (prefs.faceModelInstalled) "installed" else "missing"}",
+                      "• ${FaceModelManager.EMBEDDER_FILE_NAME} — ${if (faceReady) "installed & SHA-1 verified" else "on-demand"}",
                       style = diagStyle,
                       color = extended.textMuted,
                     )
                     Text(
-                      "• mobileclip_s2_image.onnx — ${if (prefs.semanticModelInstalled) "installed" else "missing"}",
+                      "• mobileclip_s2_image.onnx — ${if (prefs.semanticModelInstalled) "installed" else "on-demand"}",
                       style = diagStyle,
                       color = extended.textMuted,
                     )
@@ -647,7 +771,7 @@ internal fun SettingsSubAiEnginePage(
                       color = extended.textMuted,
                     )
                     Text(
-                      "• Worker Guard: ForegroundService + Thermal Backoff",
+                      "• Worker Guard: Coroutine Semaphore + Thermal Backoff",
                       style = diagStyle,
                       color = extended.textMuted,
                     )
@@ -851,10 +975,12 @@ internal fun SettingsSubStoragePage(
 ) {
   val extended = LocalToadColors.current
   val prefs = uiState.preferences
+  val faceInstalled = uiState.faceModelState.isInstalled || prefs.faceModelInstalled
+  val depthInstalled = uiState.depthModelState.isInstalled || prefs.depthModelInstalled
   val mlModelsMb =
-    (if (prefs.faceModelInstalled) 37.6f else 0f) +
+    (if (faceInstalled) 35.9f else 0f) +
       (if (prefs.semanticModelInstalled) 213.0f else 0f) +
-      (if (uiState.depthModelState.isInstalled || prefs.depthModelInstalled) 27.3f else 0f)
+      (if (depthInstalled) 27.3f else 0f)
   val totalMb = 14.2f + mlModelsMb + prefs.mlIndexSizeMb + prefs.cacheSizeMb
 
   Column(modifier = Modifier.fillMaxSize()) {
@@ -892,9 +1018,9 @@ internal fun SettingsSubStoragePage(
               }
 
               StorageBreakdownBar(
-                faceModelInstalled = prefs.faceModelInstalled,
+                faceModelInstalled = faceInstalled,
                 semanticModelInstalled = prefs.semanticModelInstalled,
-                depthModelInstalled = uiState.depthModelState.isInstalled || prefs.depthModelInstalled,
+                depthModelInstalled = depthInstalled,
                 mlIndexMb = prefs.mlIndexSizeMb,
                 cacheMb = prefs.cacheSizeMb,
               )

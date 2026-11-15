@@ -9,8 +9,13 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import com.example.data.ai.FacePersonFeedbackManager
 import com.example.data.local.AlbumEntity
 import com.example.data.local.GalleryDao
+import com.example.data.local.FacePersonEntity
+import com.example.data.local.FaceAssignmentEntity
+import com.example.data.local.FaceCorrectionHistoryEntity
+import com.example.data.local.FaceExclusionEntity
 import com.example.data.local.MediaItemEntity
 import com.example.data.local.SampleMediaCatalog
 import com.example.data.media.MediaStoreScanner
@@ -28,6 +33,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -37,6 +43,7 @@ class GalleryRepository(
   val vaultCryptoManager: VaultCryptoManager = VaultCryptoManager(context),
   private val mediaStoreScanner: MediaStoreScanner = MediaStoreScanner(context),
 ) {
+  private val faceFeedback = FacePersonFeedbackManager(dao)
 
   val visibleMedia: Flow<List<GalleryMediaItem>> =
     dao.observeVisibleMedia().map { list -> list.map { it.toDomain() } }
@@ -48,6 +55,39 @@ class GalleryRepository(
     dao.observeTrashedMedia().map { list -> list.map { it.toDomain() } }
 
   val customAlbums: Flow<List<AlbumEntity>> = dao.observeAlbums()
+
+  val faceIndexedMedia: Flow<List<MediaItemEntity>> = dao.observeFaceIndexedMedia()
+
+  val facePeople: Flow<List<FacePersonEntity>> = dao.observeFacePeople()
+
+  val faceExclusions: Flow<List<FaceExclusionEntity>> = dao.observeFaceExclusions()
+
+  val faceAssignments: Flow<List<FaceAssignmentEntity>> = dao.observeFaceAssignments()
+
+  val faceCorrectionHistory: Flow<List<FaceCorrectionHistoryEntity>> =
+    dao.observeFaceCorrectionHistory()
+
+  suspend fun assignFaceToPerson(photoId: Long, faceIndex: Int, personClusterId: String) =
+    faceFeedback.assignFace(photoId, faceIndex, personClusterId)
+
+  suspend fun excludeFace(photoId: Long, faceIndex: Int) =
+    faceFeedback.rejectFace(photoId, faceIndex)
+
+  suspend fun restoreFace(photoId: Long, faceIndex: Int) =
+    faceFeedback.restoreFace(photoId, faceIndex)
+
+  suspend fun undoLastFaceCorrection(): Boolean = faceFeedback.undoLastCorrection()
+
+  suspend fun saveFacePerson(person: FacePersonEntity) =
+    faceFeedback.setPersonName(person.clusterId, person.name)
+
+  suspend fun setFacePersonIgnored(clusterId: String, ignored: Boolean) =
+    faceFeedback.setPersonIgnored(clusterId, ignored)
+
+  suspend fun setFacePersonCover(clusterId: String, photoId: Long, faceIndex: Int) =
+    faceFeedback.setPersonCover(clusterId, photoId, faceIndex)
+
+  suspend fun removeFacePersonLabel(clusterId: String) = dao.deleteFacePerson(clusterId)
 
   suspend fun seedInitialDataIfEmpty() =
     withContext(Dispatchers.IO) {

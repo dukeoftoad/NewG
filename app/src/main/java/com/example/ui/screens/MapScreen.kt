@@ -33,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +54,7 @@ import com.example.ui.components.GalleryMediaImage
 import com.example.ui.theme.LocalToadColors
 import com.example.ui.viewmodel.GalleryUiState
 import com.example.ui.viewmodel.MapDisplayMode
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 @Composable
@@ -66,7 +69,22 @@ fun PlacesMapContent(
   val extended = LocalToadColors.current
   val geoItems = uiState.geoItems
   val selectedItem =
-    geoItems.firstOrNull { it.id == uiState.selectedMapPinId } ?: geoItems.firstOrNull()
+    remember(geoItems, uiState.selectedMapPinId) {
+      geoItems.firstOrNull { it.id == uiState.selectedMapPinId } ?: geoItems.firstOrNull()
+    }
+
+  // Compute spatial cluster counts once per geoItems change
+  val pinClusterCounts =
+    remember(geoItems) {
+      geoItems.associate { anchor ->
+        val nearby =
+          geoItems.count { other ->
+            hypot((anchor.mapX - other.mapX).toDouble(), (anchor.mapY - other.mapY).toDouble()) <=
+              0.09
+          }
+        anchor.id to nearby.coerceAtLeast(1)
+      }
+    }
 
   val pulseAnim = rememberInfiniteTransition(label = "pinPulse")
   val pulseScale by
@@ -248,10 +266,10 @@ fun PlacesMapContent(
 
         val boxW = constraints.maxWidth.toFloat()
         val boxH = constraints.maxHeight.toFloat()
-        geoItems.forEachIndexed { idx, item ->
+        geoItems.forEach { item ->
           val isSelected = selectedItem?.id == item.id
           val pinSize = if (isSelected) 54.dp else 46.dp
-          val clusterCount = if (idx == 0) 14 else if (idx == 1) 8 else 3
+          val clusterCount = pinClusterCounts[item.id] ?: 1
 
           Box(
             modifier =
@@ -267,11 +285,17 @@ fun PlacesMapContent(
             contentAlignment = Alignment.Center,
           ) {
             if (isSelected) {
+              // Defer pulse scale & alpha reads to graphicsLayer so map never relayouts at 60fps
               Box(
                 modifier =
-                  Modifier.size((52 * pulseScale).dp)
+                  Modifier.size(52.dp)
+                    .graphicsLayer {
+                      scaleX = pulseScale
+                      scaleY = pulseScale
+                      alpha = pulseAlpha
+                    }
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = pulseAlpha))
+                    .background(MaterialTheme.colorScheme.primary)
               )
             }
 
@@ -292,6 +316,7 @@ fun PlacesMapContent(
             ) {
               GalleryMediaImage(
                 item = item,
+                thumbnailSizePx = 160,
                 modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)),
               )
             }
@@ -363,6 +388,7 @@ fun PlacesMapContent(
         ) {
           GalleryMediaImage(
             item = selectedItem,
+            thumbnailSizePx = 220,
             modifier = Modifier.size(60.dp).clip(RoundedCornerShape(16.dp)),
           )
           Column(modifier = Modifier.weight(1f)) {
