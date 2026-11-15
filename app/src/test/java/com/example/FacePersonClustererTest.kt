@@ -44,6 +44,39 @@ class FacePersonClustererTest {
   }
 
   @Test
+  fun rejectedFaceCandidateIdSurvivesDetectorOrderingChanges() {
+    val original = media(
+      id = 30L,
+      timestamp = 1L,
+      embeddings = listOf(vector(0), vector(1)),
+      faceIds = listOf("face-a", "face-b"),
+    )
+    val reordered = media(
+      id = 30L,
+      timestamp = 1L,
+      embeddings = listOf(vector(1), vector(0)),
+      faceIds = listOf("face-b", "face-a"),
+    )
+
+    val before = FacePersonClusterer.cluster(
+      listOf(original),
+      distanceThreshold = 0.24f,
+      excludedFaces = setOf(FaceReference(30L, 0)),
+      minimumPhotos = 1,
+    ).single { it.id.startsWith("rejected-") }
+    val after = FacePersonClusterer.cluster(
+      listOf(reordered),
+      distanceThreshold = 0.24f,
+      excludedFaces = setOf(FaceReference(30L, 1)),
+      minimumPhotos = 1,
+    ).single { it.id.startsWith("rejected-") }
+
+    assertEquals(before.id, after.id)
+    assertEquals("rejected-30-face-a", after.id)
+    assertEquals(FaceReference(30L, 1), after.faces.single())
+  }
+
+  @Test
   fun groupsMatchingFacesAcrossDifferentPhotos() {
     val rows = listOf(
       media(id = 1L, timestamp = 1L, embeddings = listOf(vector(0))),
