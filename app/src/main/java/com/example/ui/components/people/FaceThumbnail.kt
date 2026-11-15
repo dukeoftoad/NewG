@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
@@ -43,18 +42,34 @@ fun FaceThumbnail(
     }
   }
 
-  DisposableEffect(bitmap) {
-    onDispose { bitmap?.takeIf { !it.isRecycled }?.recycle() }
-  }
-
-  if (bitmap != null && !bitmap!!.isRecycled) {
-    Image(
-      bitmap = bitmap!!.asImageBitmap(),
+  if (bitmap != null) {
+    FaceThumbnailBitmap(
+      bitmap = bitmap!!,
       contentDescription = "Detected face in ${item.title}",
-      contentScale = ContentScale.Crop,
       modifier = modifier,
     )
   } else {
     GalleryMediaImage(item = item, modifier = modifier)
   }
+}
+
+/**
+ * Displays a bitmap without taking ownership of its lifetime. Compose may keep
+ * recorded draw commands after this node leaves composition, so the producer
+ * must not recycle the bitmap from a DisposableEffect/onDispose callback.
+ * Once no longer referenced by Compose or its producer, the bitmap is reclaimed
+ * normally by the runtime.
+ */
+@Composable
+internal fun FaceThumbnailBitmap(
+  bitmap: Bitmap,
+  contentDescription: String,
+  modifier: Modifier = Modifier,
+) {
+  Image(
+    bitmap = bitmap.asImageBitmap(),
+    contentDescription = contentDescription,
+    contentScale = ContentScale.Crop,
+    modifier = modifier,
+  )
 }
