@@ -420,6 +420,7 @@ fun SearchScreen(
                           FaceThumbnail(
                             item = coverItem,
                             bounds = group.faceBounds[coverFace],
+                            sourceRevision = uiState.faceIndexRevisions[coverFace.photoId] ?: 0L,
                             modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)),
                           )
                         } else {
@@ -469,6 +470,7 @@ fun SearchScreen(
                         FaceThumbnail(
                           item = photo,
                           bounds = candidate.faceBounds[face],
+                          sourceRevision = uiState.faceIndexRevisions[face.photoId] ?: 0L,
                           modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)),
                         )
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -516,7 +518,7 @@ fun SearchScreen(
                         } ?: group.faces.firstOrNull()
                         val cover = coverFace?.let { face -> uiState.visibleMedia.firstOrNull { it.id == face.photoId } }
                         if (coverFace != null && cover != null) {
-                          FaceThumbnail(item = cover, bounds = group.faceBounds[coverFace], modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)))
+                          FaceThumbnail(item = cover, bounds = group.faceBounds[coverFace], sourceRevision = uiState.faceIndexRevisions[coverFace.photoId] ?: 0L, modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)))
                         }
                         Column {
                           Text(group.name?.takeIf { it.isNotBlank() } ?: "Ignored person ${index + 1}", style = MaterialTheme.typography.bodyMedium)
