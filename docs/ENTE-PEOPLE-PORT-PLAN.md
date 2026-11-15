@@ -58,18 +58,19 @@ Do not vendor unrelated memory-lane screens, contact-linking workflows, server/A
 | App-level callback wiring | `app/src/main/java/com/example/ui/ToadGalleryApp.kt` |
 | Behavior and persistence tests | `app/src/test/java/com/example/` plus Room instrumentation tests under `app/src/androidTest/java/com/example/` |
 
-Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHistoryEntity` are retained. Correction writes and undo now run in DAO-level Room transactions. Room v8 adds nullable `coverFaceIndex` to preserve the exact selected avatar face; migration 7→8 is additive.
+Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHistoryEntity` are retained. Correction writes and undo now run in DAO-level Room transactions. Room v8 added nullable `coverFaceIndex`; Room v9 adds nullable `faceId` columns to assignments, exclusions and correction history, plus `coverFaceId` on person metadata. Migrations 7→8 and 8→9 are additive.
 
 ## Required behavioral parity
 
-1. Expose unassigned single-photo face candidates; allow naming, ignoring, or assigning an individual detected face to a selected person. Assignment remains stable across automatic reclustering.
+1. Expose unassigned single-photo face candidates; allow naming, ignoring, or assigning an individual detected face to a selected person. Newly saved assignments/rejections/covers/history carry a deterministic per-photo face ID and are resolved against the current detector index after re-indexing.
 2. Remove a wrongly assigned face from a person without deleting the source photo; persist the rejection/exclusion so it is not immediately reintroduced.
 3. Ignore a person or unassigned cluster, and provide a visible ignored-people area with an explicit unignore/restore action.
-4. Select a custom cover from eligible photos containing a face belonging to that person; resolve and render the selected face crop, with safe fallback when the crop cannot be produced.
-5. Show actual face crops in People cards and correction/review UI, never database row IDs as the primary user-facing identifier. Rejected faces return to the unassigned review surface rather than disappearing.
-6. Support person merge and cluster split/detach using stable local IDs.
-7. Record each local correction in Room and provide undo/history. **This is a NewG extension:** the inspected Ente files provide correction operations but not a durable undo/history ledger. Corrections and undo are now atomic Room transactions, with DAO persistence tests.
-8. Keep all face metadata, assignments, exclusions, covers and correction history local to the device. Do not import Ente's remote entity sync or contact integrations.
+4. Keep person cluster IDs stable when detector result ordering changes by deriving automatic seed IDs from stable face identity, not array index.
+5. Select a custom cover from eligible photos containing a face belonging to that person; persist stable cover face identity and resolve/render the selected crop, with safe fallback when the crop cannot be produced.
+6. Show actual face crops in People cards and correction/review UI, never database row IDs as the primary user-facing identifier. Rejected faces return to the unassigned review surface rather than disappearing.
+7. Support person merge and cluster split/detach using stable local IDs.
+8. Record each local correction in Room and provide undo/history. **This is a NewG extension:** the inspected Ente files provide correction operations but not a durable undo/history ledger. Corrections and undo are now atomic Room transactions, with DAO persistence tests.
+9. Keep all face metadata, assignments, exclusions, covers and correction history local to the device. Do not import Ente's remote entity sync or contact integrations.
 
 ## Implementation sequence
 
@@ -89,3 +90,8 @@ Existing `FaceAssignmentEntity`, `FaceExclusionEntity`, and `FaceCorrectionHisto
 - Do not claim undo/history is copied from Ente; it is NewG-local functionality.
 - Keep the independent FlutterFace model-weight licensing caveat separate from Ente source-code licensing.
 - Do not merge PR #2 or modify `main` or PR #1.
+
+
+## Re-index identity implementation note
+
+New face index records contain a stable per-photo face ID generated from the pinned model, quantized face bounds and normalized embedding. New assignments, exclusions, correction-history rows and custom covers persist that ID. Automatic person cluster IDs also use it, and ViewModel/undo resolves the current detector index before applying the saved feedback. Room v9 introduces nullable fields so existing installations migrate without destructive reset. Legacy records created before v9 remain index-only until a backfill/recovery policy is added; do not claim full legacy correction migration. A Robolectric test covers index reorder and correction undo resolution; Room migration/restart tests and final CI are still required.
