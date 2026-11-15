@@ -168,6 +168,16 @@ object FacePersonClusterer {
       .sortedWith(compareByDescending<FacePersonGroup> { it.photoIds.size }.thenBy { it.id })
   }
 
+  /** Resolve a persisted stable face ID to its current detector array index. */
+  fun faceIndexForId(row: MediaItemEntity, faceId: String): Int? {
+    val faces = runCatching {
+      row.faceDataJson?.let { JSONObject(it).optJSONArray("faces") }
+    }.getOrNull() ?: return null
+    return (0 until faces.length()).firstOrNull { index ->
+      faces.optJSONObject(index)?.optString("faceId") == faceId
+    }
+  }
+
   private fun cosineDistance(a: FloatArray, b: FloatArray): Float {
     var similarity = 0f
     for (i in a.indices) similarity += a[i] * b[i]
