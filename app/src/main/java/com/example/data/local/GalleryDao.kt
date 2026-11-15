@@ -101,6 +101,30 @@ interface GalleryDao {
   @Query("DELETE FROM face_exclusions WHERE photoId = :photoId AND faceIndex = :faceIndex")
   suspend fun deleteFaceExclusion(photoId: Long, faceIndex: Int)
 
+  @Query("SELECT * FROM face_assignments")
+  fun observeFaceAssignments(): Flow<List<FaceAssignmentEntity>>
+
+  @Query("SELECT * FROM face_assignments WHERE photoId = :photoId AND faceIndex = :faceIndex LIMIT 1")
+  suspend fun getFaceAssignment(photoId: Long, faceIndex: Int): FaceAssignmentEntity?
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertFaceAssignment(assignment: FaceAssignmentEntity)
+
+  @Query("DELETE FROM face_assignments WHERE photoId = :photoId AND faceIndex = :faceIndex")
+  suspend fun deleteFaceAssignment(photoId: Long, faceIndex: Int)
+
+  @Insert
+  suspend fun insertFaceCorrectionHistory(entry: FaceCorrectionHistoryEntity): Long
+
+  @Query("SELECT * FROM face_correction_history ORDER BY createdAt DESC LIMIT :limit")
+  fun observeFaceCorrectionHistory(limit: Int = 50): Flow<List<FaceCorrectionHistoryEntity>>
+
+  @Query("SELECT * FROM face_correction_history WHERE undoneAt IS NULL ORDER BY id DESC LIMIT 1")
+  suspend fun getLatestUndoableFaceCorrection(): FaceCorrectionHistoryEntity?
+
+  @Query("UPDATE face_correction_history SET undoneAt = :undoneAt WHERE id = :id")
+  suspend fun markFaceCorrectionUndone(id: Long, undoneAt: Long)
+
   @Query("SELECT * FROM face_people ORDER BY name COLLATE NOCASE ASC")
   fun observeFacePeople(): Flow<List<FacePersonEntity>>
 
