@@ -13,6 +13,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
+import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -70,6 +72,93 @@ class FaceFeedbackDaoTest {
     assertTrue(dao.isFaceExcluded(9L, 2))
     assertTrue(dao.undoLatestFaceCorrection())
     assertFalse(dao.isFaceExcluded(9L, 2))
+  }
+
+  @Test
+  fun assignmentsAndUndoFollowStableFaceIdAfterDetectorReordering() = runBlocking {
+    dao.insertSingleMedia(
+      MediaItemEntity(
+        id = 91L,
+        title = "Face identity fixture",
+        category = "CAMERA",
+        mediaType = "PHOTO",
+        dateLabel = "",
+        weekGroup = "",
+        monthGroup = "",
+        timestamp = 1L,
+        locationName = "",
+        hasGps = false,
+        mapX = 0f,
+        mapY = 0f,
+        aspectRatio = 1f,
+        tagsCsv = "",
+        ocrText = "",
+        exifSummary = "",
+        faceDataJson = faceJson("face-a", "face-b"),
+      )
+    )
+    dao.assignFaceWithHistory(
+      photoId = 91L,
+      faceIndex = 0,
+      personClusterId = "person-before",
+      changedAt = 100L,
+      faceId = "face-a",
+    )
+
+    dao.updateFaceIndex(91L, faceJson("face-b", "face-a"), 200L)
+    dao.assignFaceWithHistory(
+      photoId = 91L,
+      faceIndex = 1,
+      personClusterId = "person-after",
+      changedAt = 300L,
+      faceId = "face-a",
+    )
+
+    assertNull(dao.getFaceAssignment(91L, 0))
+    assertEquals("person-after", dao.getFaceAssignment(91L, 1)?.personClusterId)
+    assertTrue(dao.undoLatestFaceCorrection())
+    assertNull(dao.getFaceAssignment(91L, 0))
+    assertEquals("person-before", dao.getFaceAssignment(91L, 1)?.personClusterId)
+    assertEquals("face-a", dao.getFaceAssignment(91L, 1)?.faceId)
+  }
+
+  @Test
+  fun exclusionsAndUndoResolveTheCurrentFaceIndexAfterReordering() = runBlocking {
+    dao.insertSingleMedia(
+      MediaItemEntity(
+        id = 92L,
+        title = "Face exclusion fixture",
+        category = "CAMERA",
+        mediaType = "PHOTO",
+        dateLabel = "",
+        weekGroup = "",
+        monthGroup = "",
+        timestamp = 1L,
+        locationName = "",
+        hasGps = false,
+        mapX = 0f,
+        mapY = 0f,
+        aspectRatio = 1f,
+        tagsCsv = "",
+        ocrText = "",
+        exifSummary = "",
+        faceDataJson = faceJson("face-a", "face-b"),
+      )
+    )
+    dao.excludeFaceWithHistory(92L, 0, 100L, "face-a")
+    dao.updateFaceIndex(92L, faceJson("face-b", "face-a"), 200L)
+    assertTrue(dao.isFaceExcludedByFaceId(92L, "face-a"))
+
+    dao.restoreFaceWithHistory(92L, 1, 300L, "face-a")
+    assertFalse(dao.isFaceExcludedByFaceId(92L, "face-a"))
+    assertTrue(dao.undoLatestFaceCorrection())
+    assertTrue(dao.isFaceExcludedByFaceId(92L, "face-a"))
+  }
+
+  private fun faceJson(vararg ids: String): String {
+    val faces = JSONArray()
+    ids.forEach { id -> faces.put(JSONObject().put("faceId", id)) }
+    return JSONObject().put("version", 2).put("faces", faces).toString()
   }
 
   @Test
