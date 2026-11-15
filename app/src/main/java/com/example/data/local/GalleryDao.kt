@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import org.json.JSONObject
 
 @Dao
 interface GalleryDao {
@@ -121,11 +122,23 @@ interface GalleryDao {
   @Query("DELETE FROM face_exclusions WHERE photoId = :photoId AND faceIndex = :faceIndex")
   suspend fun deleteFaceExclusion(photoId: Long, faceIndex: Int)
 
+  @Query("SELECT EXISTS(SELECT 1 FROM face_exclusions WHERE photoId = :photoId AND faceId = :faceId)")
+  suspend fun isFaceExcludedByFaceId(photoId: Long, faceId: String): Boolean
+
+  @Query("DELETE FROM face_exclusions WHERE photoId = :photoId AND faceId = :faceId")
+  suspend fun deleteFaceExclusionByFaceId(photoId: Long, faceId: String)
+
   @Query("SELECT * FROM face_assignments")
   fun observeFaceAssignments(): Flow<List<FaceAssignmentEntity>>
 
   @Query("SELECT * FROM face_assignments WHERE photoId = :photoId AND faceIndex = :faceIndex LIMIT 1")
   suspend fun getFaceAssignment(photoId: Long, faceIndex: Int): FaceAssignmentEntity?
+
+  @Query("SELECT * FROM face_assignments WHERE photoId = :photoId AND faceId = :faceId LIMIT 1")
+  suspend fun getFaceAssignmentByFaceId(photoId: Long, faceId: String): FaceAssignmentEntity?
+
+  @Query("DELETE FROM face_assignments WHERE photoId = :photoId AND faceId = :faceId")
+  suspend fun deleteFaceAssignmentByFaceId(photoId: Long, faceId: String)
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertFaceAssignment(assignment: FaceAssignmentEntity)
