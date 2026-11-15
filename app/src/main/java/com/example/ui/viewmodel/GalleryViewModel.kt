@@ -293,6 +293,7 @@ class GalleryViewModel(
                   faceCount = samePerson.sumOf { it.faceCount },
                   clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
                   faces = samePerson.flatMap { it.faces }.distinct(),
+                  faceBounds = samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
                 )
               }
             }
