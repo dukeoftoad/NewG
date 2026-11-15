@@ -95,18 +95,23 @@ interface GalleryDao {
         val oldClusterId = "person-$id-$oldIndex"
         val newClusterId = "person-$id-$stableId"
         if (oldClusterId == newClusterId) continue
-        val oldPerson = getFacePerson(oldClusterId) ?: continue
-        val existingPerson = getFacePerson(newClusterId)
-        val oldRecordIsNewer = existingPerson == null || oldPerson.updatedAt > existingPerson.updatedAt
-        val preferred = if (oldRecordIsNewer) oldPerson.copy(clusterId = newClusterId) else existingPerson!!
-        val fallback = if (oldRecordIsNewer) existingPerson else oldPerson
-        val migratedPerson = preferred.copy(
-          name = preferred.name ?: fallback?.name,
-          coverPhotoId = preferred.coverPhotoId ?: fallback?.coverPhotoId,
-          coverFaceIndex = preferred.coverFaceIndex ?: fallback?.coverFaceIndex,
-          coverFaceId = preferred.coverFaceId ?: fallback?.coverFaceId,
-          updatedAt = maxOf(preferred.updatedAt, fallback?.updatedAt ?: preferred.updatedAt),
-        )
+        val oldPerson = getFacePerson(oldClusterId)
+        if (oldPerson != null) {
+          val existingPerson = getFacePerson(newClusterId)
+          val oldRecordIsNewer = existingPerson == null || oldPerson.updatedAt > existingPerson.updatedAt
+          val preferred = if (oldRecordIsNewer) oldPerson.copy(clusterId = newClusterId) else existingPerson!!
+          val fallback = if (oldRecordIsNewer) existingPerson else oldPerson
+          val migratedPerson = preferred.copy(
+            name = preferred.name ?: fallback?.name,
+            coverPhotoId = preferred.coverPhotoId ?: fallback?.coverPhotoId,
+            coverFaceIndex = preferred.coverFaceIndex ?: fallback?.coverFaceIndex,
+            coverFaceId = preferred.coverFaceId ?: fallback?.coverFaceId,
+            updatedAt = maxOf(preferred.updatedAt, fallback?.updatedAt ?: preferred.updatedAt),
+          )
+          deleteFacePerson(oldClusterId)
+          upsertFacePerson(migratedPerson)
+        }
+        // Assignments/history can reference an unnamed cluster with no face_people row.
         getFaceAssignmentsForPersonCluster(oldClusterId).forEach { assignment ->
           upsertFaceAssignment(assignment.copy(personClusterId = newClusterId))
         }
@@ -122,8 +127,6 @@ interface GalleryDao {
             )
           )
         }
-        deleteFacePerson(oldClusterId)
-        upsertFacePerson(migratedPerson)
       }
     }
     updateFaceIndex(id, faceDataJson, indexedAt)
