@@ -46,6 +46,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.stateIn
@@ -102,6 +104,7 @@ data class GalleryUiState(
   val isSavingEdit: Boolean = false,
 )
 
+@OptIn(FlowPreview::class)
 class GalleryViewModel(
   private val appContext: Context,
   private val galleryRepo: GalleryRepository,
@@ -221,7 +224,12 @@ class GalleryViewModel(
     }
       // Face indexing can update Room once per photo. Coalesce those invalidations
       // instead of rebuilding the complete People graph for every individual write.
+      // Emit an immediate empty snapshot so the rest of the gallery UI is not blocked
+      // while the first sampled Room emission is pending.
       .sample(2_000)
+      .onStart {
+        emit(FacePeopleBundle(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
+      }
 
   private val facePeopleGroupsFlow =
     combine(facePeopleBundleFlow, prefsRepo.preferences) { bundle, prefs ->
