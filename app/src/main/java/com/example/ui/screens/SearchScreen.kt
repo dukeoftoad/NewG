@@ -1,11 +1,5 @@
 package com.example.ui.screens
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.net.Uri
-import androidx.exifinterface.media.ExifInterface
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,11 +46,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,19 +56,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.MediaType
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.example.data.model.SearchTabMode
 import com.example.ui.components.GalleryMediaImage
+import com.example.ui.components.people.FaceThumbnail
 import com.example.ui.components.pinchToZoomGridColumns
 import com.example.ui.theme.LocalToadColors
 import com.example.data.ai.FacePersonGroup
@@ -678,7 +666,7 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
               ) {
                 if (photo != null) {
-                  FaceCropPreview(
+                  FaceThumbnail(
                     item = photo,
                     bounds = group.faceBounds[face],
                     modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
@@ -783,81 +771,5 @@ fun SearchScreen(
         TextButton(onClick = { showFaceHistory = false }) { Text("Close") }
       },
     )
-  }
-}
-
-
-/**
- * Face thumbnail ported from Ente's FileFaceWidget/FaceThumbnailGenerator flow.
- * Uses the detector's normalized face box and only decodes the local photo URI.
- */
-@Composable
-private fun FaceCropPreview(
-  item: com.example.data.model.GalleryMediaItem,
-  bounds: FaceCropBounds?,
-  modifier: Modifier = Modifier,
-) {
-  val context = LocalContext.current
-  val bitmap by produceState<Bitmap?>(initialValue = null, item.uriString, bounds) {
-    value = withContext(Dispatchers.IO) {
-      val uri = item.uriString?.let(Uri::parse) ?: return@withContext null
-      val resolver = context.contentResolver
-      val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-      resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, boundsOptions) }
-      if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) return@withContext null
-      var sample = 1
-      while (maxOf(boundsOptions.outWidth, boundsOptions.outHeight) / sample > 1200) sample *= 2
-      val decoded = resolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply {
-          inSampleSize = sample
-          inPreferredConfig = Bitmap.Config.ARGB_8888
-        })
-      } ?: return@withContext null
-      val orientation = runCatching {
-        resolver.openInputStream(uri)?.use { ExifInterface(it).getAttributeInt(
-          ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL,
-        ) } ?: ExifInterface.ORIENTATION_NORMAL
-      }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
-      val matrix = Matrix()
-      when (orientation) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
-        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
-        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(270f)
-        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
-        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f, -1f)
-      }
-      val oriented = if (!matrix.isIdentity) {
-        Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also {
-          if (it !== decoded) decoded.recycle()
-        }
-      } else decoded
-      val box = bounds ?: return@withContext oriented
-      val left = box.left.coerceIn(0f, 1f)
-      val top = box.top.coerceIn(0f, 1f)
-      val right = box.right.coerceIn(left, 1f)
-      val bottom = box.bottom.coerceIn(top, 1f)
-      val padX = (right - left) * 0.4f
-      val padY = (bottom - top) * 0.4f
-      val x0 = ((left - padX).coerceAtLeast(0f) * oriented.width).toInt().coerceIn(0, oriented.width - 1)
-      val y0 = ((top - padY).coerceAtLeast(0f) * oriented.height).toInt().coerceIn(0, oriented.height - 1)
-      val x1 = ((right + padX).coerceAtMost(1f) * oriented.width).toInt().coerceIn(x0 + 1, oriented.width)
-      val y1 = ((bottom + padY).coerceAtMost(1f) * oriented.height).toInt().coerceIn(y0 + 1, oriented.height)
-      Bitmap.createBitmap(oriented, x0, y0, x1 - x0, y1 - y0).also {
-        if (it !== oriented) oriented.recycle()
-      }
-    }
-  }
-  DisposableEffect(bitmap) {
-    onDispose { bitmap?.recycle() }
-  }
-  if (bitmap != null) {
-    Image(
-      bitmap = bitmap!!.asImageBitmap(),
-      contentDescription = "Detected face in ${item.title}",
-      contentScale = ContentScale.Crop,
-      modifier = modifier,
-    )
-  } else {
-    GalleryMediaImage(item = item, modifier = modifier)
   }
 }
