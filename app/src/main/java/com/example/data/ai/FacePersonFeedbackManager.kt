@@ -2,6 +2,7 @@ package com.example.data.ai
 
 import com.example.data.local.FacePersonEntity
 import com.example.data.local.GalleryDao
+import org.json.JSONObject
 
 /**
  * Coordinates Ente-style local person feedback.
@@ -21,18 +22,19 @@ class FacePersonFeedbackManager(
       photoId = photoId,
       faceIndex = faceIndex,
       personClusterId = personClusterId,
+      faceId = faceId(photoId, faceIndex),
       changedAt = System.currentTimeMillis(),
     )
   }
 
   suspend fun rejectFace(photoId: Long, faceIndex: Int) {
     require(photoId > 0L && faceIndex >= 0)
-    dao.excludeFaceWithHistory(photoId, faceIndex, System.currentTimeMillis())
+    dao.excludeFaceWithHistory(photoId, faceIndex, faceId(photoId, faceIndex), System.currentTimeMillis())
   }
 
   suspend fun restoreFace(photoId: Long, faceIndex: Int) {
     require(photoId > 0L && faceIndex >= 0)
-    dao.restoreFaceWithHistory(photoId, faceIndex, System.currentTimeMillis())
+    dao.restoreFaceWithHistory(photoId, faceIndex, faceId(photoId, faceIndex), System.currentTimeMillis())
   }
 
   suspend fun undoLastCorrection(): Boolean = dao.undoLatestFaceCorrection()
@@ -58,8 +60,17 @@ class FacePersonFeedbackManager(
       existing.copy(
         coverPhotoId = photoId,
         coverFaceIndex = faceIndex,
+        coverFaceId = faceId(photoId, faceIndex),
         updatedAt = System.currentTimeMillis(),
       )
     )
   }
+
+
+  private suspend fun faceId(photoId: Long, faceIndex: Int): String? =
+    runCatching {
+      val json = dao.getMediaById(photoId)?.faceDataJson ?: return@runCatching null
+      val faces = JSONObject(json).optJSONArray("faces") ?: return@runCatching null
+      faces.optJSONObject(faceIndex)?.optString("faceId")?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 }
