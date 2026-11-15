@@ -25,10 +25,48 @@ object FacePersonSuggestionRanker {
     sampleSize: Int = 20,
     maxMeanDistance: Float = 0.55f,
     maxMedianDistance: Float = 0.55f,
-  ): List<FacePersonSuggestion> {
-    if (sampleSize <= 0) return emptyList()
+  ): List<FacePersonSuggestion> =
+    rankAll(listOf(candidate), people, rows, sampleSize, maxMeanDistance, maxMedianDistance)
+      .getOrDefault(candidate.id, emptyList())
+
+  /** Rank many unassigned candidates while decoding each indexed face embedding only once. */
+  fun rankAll(
+    candidates: List<FacePersonGroup>,
+    people: List<FacePersonGroup>,
+    rows: List<MediaItemEntity>,
+    sampleSize: Int = 20,
+    maxMeanDistance: Float = 0.55f,
+    maxMedianDistance: Float = 0.55f,
+  ): Map<String, List<FacePersonSuggestion>> {
+    if (sampleSize <= 0 || candidates.isEmpty() || people.isEmpty()) return emptyMap()
     val rowsById = rows.associateBy { it.id }
-    val candidateVectors = vectorsFor(candidate, rowsById)
+    val references = (candidates + people).flatMap { it.faces }.distinct()
+    val vectorsByReference = references.mapNotNull { reference ->
+      val row = rowsById[reference.photoId] ?: return@mapNotNull null
+      vectorFor(row, reference.faceIndex)?.let { reference to it }
+    }.toMap()
+
+    return candidates.associate { candidate ->
+      candidate.id to rankOne(
+        candidate,
+        people,
+        vectorsByReference,
+        sampleSize,
+        maxMeanDistance,
+        maxMedianDistance,
+      )
+    }
+  }
+
+  private fun rankOne(
+    candidate: FacePersonGroup,
+    people: List<FacePersonGroup>,
+    vectorsByReference: Map<FaceReference, FloatArray>,
+    sampleSize: Int,
+    maxMeanDistance: Float,
+    maxMedianDistance: Float,
+  ): List<FacePersonSuggestion> {
+    val candidateVectors = candidate.faces.distinct().mapNotNull(vectorsByReference::get)
     if (candidateVectors.isEmpty()) return emptyList()
     val candidateMean = normalizedMean(candidateVectors) ?: return emptyList()
     val candidateSample = evenlySample(candidateVectors, sampleSize)
@@ -36,7 +74,7 @@ object FacePersonSuggestionRanker {
     return people.asSequence()
       .filter { person -> person.id != candidate.id }
       .mapNotNull { person ->
-        val personVectors = vectorsFor(person, rowsById)
+        val personVectors = person.faces.distinct().mapNotNull(vectorsByReference::get)
         if (personVectors.isEmpty()) return@mapNotNull null
         val personMean = normalizedMean(personVectors) ?: return@mapNotNull null
         val meanDistance = cosineDistance(candidateMean, personMean)
@@ -60,13 +98,10 @@ object FacePersonSuggestionRanker {
       .toList()
   }
 
-  private fun vectorsFor(
-    group: FacePersonGroup,
-    rowsById: Map<Long, MediaItemEntity>,
-  ): List<FloatArray> = group.faces.distinct().mapNotNull { reference ->
-    val json = rowsById[reference.photoId]?.faceDataJson ?: return@mapNotNull null
-    runCatching {
-      val face = JSONObject(json).optJSONArray("faces")?.optJSONObject(reference.faceIndex)
+  private fun vectorFor(row: MediaItemEntity, faceIndex: Int): FloatArray? {
+    val json = row.faceDataJson ?: return null
+    return runCatching {
+      val face = JSONObject(json).optJSONArray("faces")?.optJSONObject(faceIndex)
         ?: return@runCatching null
       val values = face.optJSONArray("embedding") ?: return@runCatching null
       if (values.length() != EMBEDDING_SIZE) return@runCatching null
