@@ -729,7 +729,7 @@ class GalleryViewModel(
 
   /** Explicitly assign a detected face to a stable person, as Ente does for cluster membership. */
   fun assignFaceToPerson(photoId: Long, faceIndex: Int, target: FacePersonGroup) {
-    val targetClusterId = target.clusterIds.firstOrNull() ?: return
+    val targetClusterId = target.clusterIds.minOrNull() ?: return
     viewModelScope.launch {
       galleryRepo.assignFaceToPerson(photoId, faceIndex, targetClusterId)
       emitMessage("Face assigned to ${target.name?.takeIf { it.isNotBlank() } ?: "person"}")
