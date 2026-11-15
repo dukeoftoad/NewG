@@ -46,7 +46,6 @@ class PeopleSuggestionMenuRobolectricTest {
       photoIds = listOf(3L),
       faceCount = 1,
       coverPhotoId = 3L,
-      name = "Bob",
     )
     val photo = GalleryMediaItem(
       id = 1L,
@@ -104,6 +103,6 @@ class PeopleSuggestionMenuRobolectricTest {
     composeRule.onNodeWithText("Assign").performClick()
     composeRule.onNodeWithText("SUGGESTED MATCHES").assertIsDisplayed()
     composeRule.onNodeWithText("Alice · Suggested").assertIsDisplayed()
-    composeRule.onNodeWithText("Bob").assertIsDisplayed()
+    composeRule.onNodeWithText("Unnamed person").assertIsDisplayed()
   }
 }
