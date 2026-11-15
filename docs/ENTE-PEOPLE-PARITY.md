@@ -83,7 +83,7 @@ Ente maintains normalized cluster-centroid summaries and supports nearest-centro
 
 ### 4. Face thumbnail pipeline
 
-Ente `face_thumbnail_cache.dart` uses bounded in-memory LRU caches for full crops and thumbnails, a person/cluster-to-cover-face cache, optional disk-persisted crops, bounded generation queues, retry/backoff, and source-file fallback. `face_thumbnail_generator.dart` delegates crop generation to a worker isolate and distinguishes unsupported formats. NewG `FaceThumbnail.kt` decodes the source URI and crops during Compose state production, applies EXIF orientation, and falls back to `GalleryMediaImage`, but has no LRU/disk cache, bounded generation queue, retry policy or separate thumbnail/full-crop variants. **Finding: Partial parity with a performance gap.** Replace repeated composable decoding with a reusable local `FaceCropper` using bounded memory/disk caching, background work, cancellation and invalidation keyed by photo + face identity + bounds/version.
+Ente `face_thumbnail_cache.dart` uses bounded in-memory LRU caches for full crops and thumbnails, a person/cluster-to-cover-face cache, optional disk-persisted crops, bounded generation queues, retry/backoff, and source-file fallback. `face_thumbnail_generator.dart` delegates crop generation to a worker isolate and distinguishes unsupported formats. NewG now has `data/ai/FaceCropper.kt`, called by `FaceThumbnail.kt`. It performs EXIF-aware background cropping, uses an 8 MiB memory LRU and app-private disk cache with a 32 MiB trim limit, and falls back to `GalleryMediaImage` on failure. The cache key includes source URI, crop bounds and a cache version. It still lacks Ente's separate thumbnail/full-crop caches, bounded per-photo generation queues, retry/backoff and explicit invalidation hooks when face detections are replaced. **Finding: Improved partial parity.** Add queue/cancellation and detection-version invalidation; test cache hit, corrupt cache recovery, EXIF variants and source removal.
 
 ### 5. People screens and cover selection
 
@@ -101,3 +101,8 @@ Ente has separate People, cluster and person-cluster screens; its avatar picker 
 ### Verification limits
 
 This is a source/code inspection comparison only. It does not establish successful Android compilation, device behavior, persistence restart tests or visual parity. The latest observed CI run was still in progress; cancelled runs are not passes.
+
+
+### Follow-up implementation — local crop cache
+
+`FaceCropper.kt` was added and `FaceThumbnail.kt` now delegates crop generation to it. This ports the essential local cache/generator separation from Ente into Kotlin while intentionally not bringing over Flutter isolates or Ente's download/server fallback. The implementation has not yet been compiled or device-tested.
