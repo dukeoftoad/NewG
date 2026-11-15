@@ -191,7 +191,7 @@ class MultiSelectBatchRobolectricTest {
     }
 
     // Tap Delete -> opens confirmation dialog. The action item is nested in
-    // a clickable Surface, so target its own semantics node explicitly.
+    // a clickable Surface, so target its own semantics node explicitly after it is displayed.
     composeTestRule
       .onNodeWithTag("batch_delete_button", useUnmergedTree = true)
       .performClick()
