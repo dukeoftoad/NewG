@@ -87,7 +87,7 @@ class AppIconSwitcherTest {
     }
 
     @Test
-    fun `default classic keeps the v1.0 icon`() {
+    fun `default classic keeps the shipped icon`() {
         assertEquals("ic_launcher", AppIcon.CLASSIC_TOAD.mipmapName)
     }
 }

@@ -94,7 +94,7 @@ class UpdateCheckerParsingTest {
         assertTrue(GithubReleaseChecker.exceptionFor(403) is UpdateCheckRateLimitException)
         val e = GithubReleaseChecker.exceptionFor(502)
         assertTrue(e is UpdateCheckRetryableException)
-        assertTrue((e as UpdateCheckRetryableException).message.contains("502"))
+        assertTrue((e as UpdateCheckRetryableException).message!!.contains("502"))
         val other = GithubReleaseChecker.exceptionFor(404)
         assertTrue(other is IOException && other !is UpdateCheckRetryableException)
     }
