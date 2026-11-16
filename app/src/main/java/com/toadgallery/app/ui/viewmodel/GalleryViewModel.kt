@@ -63,6 +63,7 @@ data class GalleryUiState(
   val mediaAccessLevel: MediaAccessLevel = MediaAccessLevel.NONE,
   val isSyncingMedia: Boolean = false,
   val permissionBannerDismissed: Boolean = false,
+  val mediaManagementPrompt: Boolean = false,
   val activeCategory: MediaCategory = MediaCategory.ALL,
   val activeFolderFilter: TimelineFolderFilter? = null,
   val visibleMedia: List<GalleryMediaItem> = emptyList(),
@@ -141,6 +142,7 @@ class GalleryViewModel(
   private val isVaultUnlocked = MutableStateFlow(false)
   private val vaultDecryptedPreviews = MutableStateFlow<Map<Long, ByteArray>>(emptyMap())
   private val showRecycleBinSheet = MutableStateFlow(false)
+  private val showMediaManagementPrompt = MutableStateFlow(false)
 
   private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 10)
   val messages: SharedFlow<String> = _messages.asSharedFlow()
@@ -194,6 +196,7 @@ class GalleryViewModel(
       isVaultUnlocked,
       vaultDecryptedPreviews,
       showRecycleBinSheet,
+      showMediaManagementPrompt,
       depthModelManager.state,
       isSavingEdit,
     ) { arr ->
@@ -207,8 +210,9 @@ class GalleryViewModel(
         vaultUnlocked = arr[5] as Boolean,
         vaultPreviews = arr[6] as Map<Long, ByteArray>,
         recycleSheet = arr[7] as Boolean,
-        depthState = arr[8] as DepthModelPackState,
-        savingEdit = arr[9] as Boolean,
+        mediaManagementPrompt = arr[8] as Boolean,
+        depthState = arr[9] as DepthModelPackState,
+        savingEdit = arr[10] as Boolean,
       )
     }
 
@@ -582,6 +586,7 @@ class GalleryViewModel(
           showRecycleBinSheet = modals.recycleSheet,
           depthModelState = modals.depthState,
           isSavingEdit = modals.savingEdit,
+          mediaManagementPrompt = modals.mediaManagementPrompt,
         )
       }
       .stateIn(
@@ -639,6 +644,29 @@ class GalleryViewModel(
 
   fun dismissPermissionBanner() {
     permissionBannerDismissed.value = true
+  }
+
+  fun dismissMediaManagementPrompt() {
+    viewModelScope.launch {
+      prefsRepo.setMediaManagementPromptSeen()
+      showMediaManagementPrompt.value = false
+    }
+  }
+
+  /**
+   * After a multi-item batch op, offer the "Media management" permission
+   * once: with it granted, system-level trash/favorite PendingIntents
+   * execute silently instead of the system confirming every single item.
+   * Persisted so it is offered at most once per install.
+   */
+  private fun maybeOfferMediaManagement(count: Int) {
+    if (count < 2) return
+    if (MediaPermissionHelper.hasMediaManagementPermission(appContext)) return
+    if (uiState.value.preferences.mediaManagementPromptSeen) return
+    viewModelScope.launch {
+      prefsRepo.setMediaManagementPromptSeen()
+      showMediaManagementPrompt.value = true
+    }
   }
 
   fun setPhotoCategory(category: MediaCategory) {
@@ -760,9 +788,23 @@ class GalleryViewModel(
       return
     }
     viewModelScope.launch {
+      val selected = uiState.value.visibleMedia.filter { it.id in ids }
       galleryRepo.setTrashedBatch(ids, true)
+      val synced =
+        if (uiState.value.preferences.systemMediaSync) {
+          galleryRepo.syncSystemTrash(selected, trashed = true)
+        } else {
+          0
+        }
       clearSelection()
-      emitMessage("Moved ${ids.size} ${if (ids.size == 1) "item" else "items"} to Recycle Bin")
+      emitMessage(
+        if (synced > 0) {
+          "Moved ${ids.size} ${if (ids.size == 1) "item" else "items"} to Recycle Bin (system sync: $synced)"
+        } else {
+          "Moved ${ids.size} ${if (ids.size == 1) "item" else "items"} to Recycle Bin"
+        }
+      )
+      maybeOfferMediaManagement(ids.size)
     }
   }
 
@@ -773,12 +815,25 @@ class GalleryViewModel(
     val allAlreadyFav = ids.all { visibleMap[it]?.isFavorite == true }
     val targetFav = !allAlreadyFav
     viewModelScope.launch {
+      val selected = uiState.value.visibleMedia.filter { it.id in ids }
       galleryRepo.setFavoriteBatch(ids, targetFav)
+      val synced =
+        if (uiState.value.preferences.systemMediaSync) {
+          galleryRepo.syncSystemFavorites(selected, targetFav)
+        } else {
+          0
+        }
       clearSelection()
       emitMessage(
-        if (targetFav) "Added ${ids.size} items to Favorites"
-        else "Removed ${ids.size} items from Favorites"
+        if (targetFav) {
+          if (synced > 0) "Added ${ids.size} items to Favorites (system sync: $synced)"
+          else "Added ${ids.size} items to Favorites"
+        } else {
+          if (synced > 0) "Removed ${ids.size} items from Favorites (system sync: $synced)"
+          else "Removed ${ids.size} items from Favorites"
+        }
       )
+      maybeOfferMediaManagement(ids.size)
     }
   }
 
@@ -789,6 +844,7 @@ class GalleryViewModel(
       val count = galleryRepo.hideToVaultEncrypted(ids)
       clearSelection()
       emitMessage("Encrypted & moved $count items to Hidden Vault")
+      maybeOfferMediaManagement(count)
     }
   }
 
@@ -1336,6 +1392,7 @@ class GalleryViewModel(
     val recycleSheet: Boolean,
     val depthState: DepthModelPackState,
     val savingEdit: Boolean,
+    val mediaManagementPrompt: Boolean,
   )
 
   private data class FacePeopleBundle(

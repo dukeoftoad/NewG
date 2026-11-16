@@ -2,8 +2,11 @@ package com.toadgallery.app.data.media
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 
 enum class MediaAccessLevel(val label: String) {
@@ -13,6 +16,8 @@ enum class MediaAccessLevel(val label: String) {
 }
 
 object MediaPermissionHelper {
+
+  const val MANAGE_MEDIA_PERMISSION = "android.permission.MANAGE_MEDIA"
 
   fun requiredMediaPermissions(): Array<String> =
     when {
@@ -66,6 +71,46 @@ object MediaPermissionHelper {
       isGranted(context, Manifest.permission.ACCESS_MEDIA_LOCATION)
     } else {
       true
+    }
+
+  /**
+   * "Media management" is the Android 11+ special app-op permission
+   * (android.permission.MANAGE_MEDIA). With it granted, MediaStore write
+   * requests issued via PendingIntent — trash/delete/favorite — execute
+   * SILENTLY, instead of popping a system confirmation dialog for every
+   * batch operation. On pre-Android 11 builds writes go through legacy
+   * storage, so the concept does not exist and we report granted.
+   */
+  fun isMediaManagementSupported(): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
+  fun hasMediaManagementPermission(context: Context): Boolean =
+    if (isMediaManagementSupported()) {
+      isGranted(context, MANAGE_MEDIA_PERMISSION)
+    } else {
+      true
+    }
+
+  /**
+   * Opens the system "Media management" panel for this app. Android 12+
+   * uses the dedicated request screen; Android 11 falls back to the app
+   * details page where the toggle lives. Returns null when unsupported.
+   */
+  fun mediaManagementRequestIntent(context: Context): Intent? =
+    when {
+      !isMediaManagementSupported() -> null
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+        Intent(
+            Settings.ACTION_REQUEST_MANAGE_MEDIA,
+            Uri.parse("package:${context.packageName}"),
+          )
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      else ->
+        Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:${context.packageName}"),
+          )
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
   private fun isGranted(context: Context, permission: String): Boolean =
