@@ -152,6 +152,7 @@ fun PhotosScreen(
   onResetFilters: () -> Unit,
   onOpenStory: (Int) -> Unit,
   onOpenLightbox: (Long) -> Unit,
+  onToggleFavorite: (GalleryMediaItem) -> Unit,
   onEnterSelectionMode: (Long?) -> Unit,
   onToggleMediaSelection: (Long) -> Unit,
   onToggleSectionSelection: (List<Long>) -> Unit,
@@ -914,6 +915,9 @@ fun PhotosScreen(
                           else onOpenLightbox(item.id)
                         },
                         onLongClick = { onEnterSelectionMode(item.id) },
+                        onDoubleClick = {
+                          if (!uiState.isSelectionMode) onToggleFavorite(item)
+                        },
                         modifier = Modifier.weight(1f),
                       )
                     }

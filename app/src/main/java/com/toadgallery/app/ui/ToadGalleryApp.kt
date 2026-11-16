@@ -41,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -75,6 +76,9 @@ import com.toadgallery.app.ui.screens.PhotosScreen
 import com.toadgallery.app.ui.screens.SearchScreen
 import com.toadgallery.app.ui.screens.SettingsScreen
 import com.toadgallery.app.ui.theme.LocalToadColors
+import com.toadgallery.app.ui.update.UpdateViewModel
+import com.toadgallery.app.update.StartupUpdateCheck
+import com.toadgallery.app.update.UpdateBanner
 import com.toadgallery.app.ui.theme.ToadGalleryTheme
 import com.toadgallery.app.ui.viewmodel.GalleryViewModel
 import com.toadgallery.app.ui.viewmodel.SettingsViewModel
@@ -103,6 +107,15 @@ fun ToadGalleryApp(
   val lifecycleOwner = LocalLifecycleOwner.current
   val galleryState by galleryViewModel.uiState.collectAsStateWithLifecycle()
   val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+
+  // Self-update flow (ported from toadFILES): silent once-per-process check on
+  // app open + the dismissible banner deep-linking into Settings → About.
+  val updateViewModel: UpdateViewModel =
+    viewModel(factory = UpdateViewModel.factory(context.applicationContext))
+  val startupUpdate = remember { StartupUpdateCheck.instance }
+  val updateBannerRelease by startupUpdate.banner.collectAsStateWithLifecycle()
+  val updateBannerDismissed by startupUpdate.bannerDismissed.collectAsStateWithLifecycle()
+  LaunchedEffect(Unit) { startupUpdate.checkOnce(this) }
   val prefs = galleryState.preferences
 
   val snackbarHostState = remember { SnackbarHostState() }
@@ -267,11 +280,22 @@ fun ToadGalleryApp(
           }
 
           Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-            NavHost(
-              navController = navController,
-              startDestination = TopLevelTab.PHOTOS.route,
-              modifier = Modifier.fillMaxSize(),
-            ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+              if (!updateBannerDismissed) {
+                UpdateBanner(
+                  release = updateBannerRelease,
+                  onOpenUpdateFlow = {
+                    navigateToTab(TopLevelTab.SETTINGS)
+                    settingsViewModel.openSubPage(SettingsSubPage.ABOUT)
+                  },
+                  onDismiss = startupUpdate::dismissBanner,
+                )
+              }
+              NavHost(
+                navController = navController,
+                startDestination = TopLevelTab.PHOTOS.route,
+                modifier = Modifier.fillMaxSize().weight(1f),
+              ) {
               composable(TopLevelTab.PHOTOS.route) {
                 PhotosScreen(
                   uiState = galleryState,
@@ -292,6 +316,7 @@ fun ToadGalleryApp(
                   onResetFilters = galleryViewModel::resetPhotoFilters,
                   onOpenStory = galleryViewModel::openStory,
                   onOpenLightbox = galleryViewModel::openLightbox,
+                  onToggleFavorite = galleryViewModel::toggleFavorite,
                   onEnterSelectionMode = galleryViewModel::enterSelectionMode,
                   onToggleMediaSelection = galleryViewModel::toggleMediaSelection,
                   onToggleSectionSelection = galleryViewModel::toggleSectionSelection,

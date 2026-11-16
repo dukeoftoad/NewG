@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.toadgallery.app.data.model.AppearanceMode
+import com.toadgallery.app.domain.AppIcon
 import com.toadgallery.app.data.model.GroupByMode
 import com.toadgallery.app.data.model.LayoutMode
 import com.toadgallery.app.data.model.ThemePalette
@@ -67,6 +68,7 @@ class UserPreferencesRepository(context: Context) {
     val ML_INDEX_SIZE_MB = floatPreferencesKey("ml_index_size_mb")
     val SYSTEM_MEDIA_SYNC = booleanPreferencesKey("system_media_sync")
     val MEDIA_MGMT_PROMPT_SEEN = booleanPreferencesKey("media_mgmt_prompt_seen")
+    val APP_ICON = stringPreferencesKey("app_icon")
   }
 
   val preferences: Flow<UserPreferences> =
@@ -110,6 +112,9 @@ class UserPreferencesRepository(context: Context) {
         mlIndexSizeMb = prefs[Keys.ML_INDEX_SIZE_MB] ?: 18.4f,
         systemMediaSync = prefs[Keys.SYSTEM_MEDIA_SYNC] ?: false,
         mediaManagementPromptSeen = prefs[Keys.MEDIA_MGMT_PROMPT_SEEN] ?: false,
+        appIcon =
+          prefs[Keys.APP_ICON]?.let { runCatching { AppIcon.valueOf(it) }.getOrNull() }
+            ?: AppIcon.CLASSIC_TOAD,
       )
     }
 
@@ -159,6 +164,10 @@ class UserPreferencesRepository(context: Context) {
 
   suspend fun setMediaManagementPromptSeen() {
     dataStore.edit { it[Keys.MEDIA_MGMT_PROMPT_SEEN] = true }
+  }
+
+  suspend fun setAppIcon(icon: AppIcon) {
+    dataStore.edit { it[Keys.APP_ICON] = icon.name }
   }
 
   suspend fun updatePalette(palette: ThemePalette) {
