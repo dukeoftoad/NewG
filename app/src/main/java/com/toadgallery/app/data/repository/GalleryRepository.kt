@@ -327,7 +327,7 @@ class GalleryRepository(
       items.forEach { item ->
         val uri = item.uriString?.takeIf { it.isNotBlank() } ?: return@forEach
         runCatching {
-          val pi = MediaStore.createTrashRequest(resolver, Uri.parse(uri), trashed)
+          val pi = MediaStore.createTrashRequest(resolver, listOf(Uri.parse(uri)), trashed)
           pi.send()
           synced++
         }
