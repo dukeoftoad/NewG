@@ -90,7 +90,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.annotation.OptIn
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -923,7 +922,7 @@ private fun aspectRatioLabel(aspectRatio: Float): String =
  * pauses during playback, and the player is released when the item changes
  * or the lightbox closes.
  */
-@OptIn(UnstableApi::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun LightboxVideoPlayer(uriString: String, modifier: Modifier = Modifier) {
   val context = LocalContext.current
