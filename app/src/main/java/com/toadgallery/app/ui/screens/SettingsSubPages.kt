@@ -7,7 +7,6 @@ import com.toadgallery.app.domain.AppIcon
 import com.toadgallery.app.BuildConfig
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.Image
 import android.content.Context
@@ -74,6 +73,8 @@ import androidx.compose.ui.unit.sp
 import com.toadgallery.app.data.ai.FaceModelManager
 import com.toadgallery.app.data.model.VaultAutoLock
 import com.toadgallery.app.ui.components.StorageBreakdownBar
+import androidx.core.content.ContextCompat
+import com.toadgallery.app.ui.components.DrawablePainter
 import com.toadgallery.app.ui.components.ToadSwitch
 import com.toadgallery.app.ui.theme.LocalToadColors
 import com.toadgallery.app.ui.viewmodel.SettingsUiState
@@ -1334,6 +1335,7 @@ private fun AppIconTile(
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
+  val context = LocalContext.current
   Column(
     modifier =
       modifier
@@ -1347,11 +1349,19 @@ private fun AppIconTile(
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
     if (resId != 0) {
-      Image(
-        painter = painterResource(resId),
-        contentDescription = "App icon ${icon.label}",
-        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)),
-      )
+      // Launcher mipmaps resolve to <adaptive-icon> XMLs on API 26+, which
+      // painterResource rejects; load through the framework and draw via a
+      // plain Drawable-backed Painter instead.
+      val painter = remember(resId) {
+        ContextCompat.getDrawable(context, resId)?.let(::DrawablePainter)
+      }
+      if (painter != null) {
+        Image(
+          painter = painter,
+          contentDescription = "App icon ${icon.label}",
+          modifier = Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)),
+        )
+      }
     }
     Spacer(modifier = Modifier.height(6.dp))
     Text(
