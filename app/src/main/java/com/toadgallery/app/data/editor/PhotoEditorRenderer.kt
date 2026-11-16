@@ -45,6 +45,9 @@ object PhotoEditorRenderer {
     maxDimension: Int = 1280,
   ): Bitmap? =
     withContext(Dispatchers.IO) {
+      val cacheKey =
+        EditorSourceBitmapCache.cacheKey(item.id, item.uriString ?: item.drawableResName, maxDimension)
+      EditorSourceBitmapCache[cacheKey]?.let { return@withContext it }
       runCatching {
           val uriStr = item.uriString
           val raw =
@@ -55,7 +58,11 @@ object PhotoEditorRenderer {
               val resId = SampleMediaCatalog.resolveDrawableRes(item.drawableResName)
               decodeBoundedFromRes(context, resId, maxDimension)
             }
-          raw?.let { ensureMutablePixelBacked(it, recycleInput = true) }
+          raw?.let { source ->
+            ensureMutablePixelBacked(source, recycleInput = true).also { mutable ->
+              EditorSourceBitmapCache.put(cacheKey, mutable)
+            }
+          }
         }
         .getOrNull()
     }
@@ -179,22 +186,32 @@ object PhotoEditorRenderer {
 
   fun applyGeometryOnly(source: Bitmap, crop: CropParams): Bitmap {
     val working = applyTransformOnly(source, crop)
-    val cropLeft = (crop.left.coerceIn(0f, 0.92f) * working.width).roundToInt().coerceIn(0, working.width - 4)
-    val cropTop = (crop.top.coerceIn(0f, 0.92f) * working.height).roundToInt().coerceIn(0, working.height - 4)
-    val cropRight =
-      (crop.right.coerceIn(crop.left + 0.08f, 1f) * working.width)
-        .roundToInt()
-        .coerceIn(cropLeft + 4, working.width)
-    val cropBottom =
-      (crop.bottom.coerceIn(crop.top + 0.08f, 1f) * working.height)
-        .roundToInt()
-        .coerceIn(cropTop + 4, working.height)
+    // Normalize edges first: saved recipes from older builds can carry
+    // out-of-range or swapped values. The previous implementation coerced
+    // the raw crop.left into the right bound (crop.right.coerceIn(crop.left
+    // + 0.08f, 1f)), which threw IllegalArgumentException whenever left
+    // exceeded 0.92 because coerceIn received min > max.
+    val l = minOf(crop.left, crop.right).coerceIn(0f, 1f)
+    val r = maxOf(crop.left, crop.right).coerceIn(0f, 1f)
+    val t = minOf(crop.top, crop.bottom).coerceIn(0f, 1f)
+    val b = maxOf(crop.top, crop.bottom).coerceIn(0f, 1f)
 
-    if (cropLeft == 0 && cropTop == 0 && cropRight == working.width && cropBottom == working.height) {
+    val minSpanPx = 4
+    val leftPx = (l * working.width).roundToInt().coerceIn(0, working.width - 1)
+    val topPx = (t * working.height).roundToInt().coerceIn(0, working.height - 1)
+    val rightPx =
+      (r * working.width).roundToInt()
+        .coerceIn((leftPx + minSpanPx).coerceAtMost(working.width), working.width)
+    val bottomPx =
+      (b * working.height).roundToInt()
+        .coerceIn((topPx + minSpanPx).coerceAtMost(working.height), working.height)
+
+    if (leftPx == 0 && topPx == 0 && rightPx == working.width && bottomPx == working.height) {
       return if (working === source) working.copy(Bitmap.Config.ARGB_8888, true) else working
     }
 
-    val cropped = Bitmap.createBitmap(working, cropLeft, cropTop, cropRight - cropLeft, cropBottom - cropTop)
+    val cropped =
+      Bitmap.createBitmap(working, leftPx, topPx, rightPx - leftPx, bottomPx - topPx)
     if (working !== source) working.recycle()
     return cropped
   }

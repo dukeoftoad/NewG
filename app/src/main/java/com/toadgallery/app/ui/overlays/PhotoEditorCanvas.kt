@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.toadgallery.app.data.model.AspectRatioPreset
 import com.toadgallery.app.data.model.CropParams
 import com.toadgallery.app.data.model.EditorToolTab
 import com.toadgallery.app.data.model.MarkupStroke
@@ -76,6 +77,7 @@ fun PhotoEditorCanvas(
   onCropChange: (CropParams) -> Unit,
   onBokehFocusTap: (Float, Float) -> Unit,
   onAddMarkupStroke: (MarkupStroke) -> Unit,
+  onCompareHoldChange: (Boolean) -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val density = LocalDensity.current
@@ -180,6 +182,29 @@ fun PhotoEditorCanvas(
                     liveStrokePoints = emptyList()
                   },
                   onDragCancel = { liveStrokePoints = emptyList() },
+                )
+              }
+            } else {
+              Modifier
+            }
+          )
+          // Press-and-hold on the photo itself previews the original — the
+          // gesture the user expects (Instagram/Photos style), replacing the
+          // fixed compare button as the primary way to check changes. Active
+          // on the tabs whose gestures don't own the canvas (Adjust, Filters);
+          // Crop, Bokeh and Markup keep their own touch semantics.
+          .then(
+            if (
+              (activeTab == EditorToolTab.ADJUST || activeTab == EditorToolTab.FILTERS) &&
+                !isSplitCompare
+            ) {
+              Modifier.pointerInput(activeTab) {
+                detectTapGestures(
+                  onPress = {
+                    onCompareHoldChange(true)
+                    tryAwaitRelease()
+                    onCompareHoldChange(false)
+                  }
                 )
               }
             } else {
@@ -340,6 +365,14 @@ fun PhotoEditorCanvas(
       if (activeTab == EditorToolTab.CROP && !isComparingOriginal) {
         InteractiveCropOverlay(
           crop = recipe.crop,
+          displayAspect = bmpAspect,
+          lockedRatio =
+            when (val preset = recipe.crop.aspectPreset) {
+              AspectRatioPreset.FREE -> null
+              // "Original" locks to the displayed frame's own aspect.
+              AspectRatioPreset.ORIGINAL -> bmpAspect
+              else -> preset.ratio
+            },
           onCropChange = onCropChange,
         )
       }
@@ -422,6 +455,8 @@ fun PhotoEditorCanvas(
 @Composable
 private fun InteractiveCropOverlay(
   crop: CropParams,
+  displayAspect: Float,
+  lockedRatio: Float?,
   onCropChange: (CropParams) -> Unit,
 ) {
   var dragTarget by remember { mutableStateOf(CropDragTarget.NONE) }
@@ -429,7 +464,7 @@ private fun InteractiveCropOverlay(
 
   Canvas(
     modifier =
-      Modifier.fillMaxSize().pointerInput(crop) {
+      Modifier.fillMaxSize().pointerInput(crop, lockedRatio, displayAspect) {
         detectDragGestures(
           onDragStart = { start ->
             val nx = start.x / size.width.coerceAtLeast(1)
@@ -460,8 +495,8 @@ private fun InteractiveCropOverlay(
             change.consume()
             val dx = dragAmount.x / size.width.coerceAtLeast(1)
             val dy = dragAmount.y / size.height.coerceAtLeast(1)
-            val minSpan = 0.16f
-            currentCrop =
+            val minSpan = 0.12f
+            val tentative =
               when (dragTarget) {
                 CropDragTarget.LEFT ->
                   currentCrop.copy(left = (currentCrop.left + dx).coerceIn(0f, currentCrop.right - minSpan))
@@ -499,6 +534,24 @@ private fun InteractiveCropOverlay(
                   currentCrop.copy(left = newL, top = newT, right = newL + wSpan, bottom = newT + hSpan)
                 }
                 CropDragTarget.NONE -> currentCrop
+              }
+            // Aspect presets (1:1, 4:3, ...) stay LOCKED while dragging: the
+            // previous overlay silently broke the chosen ratio on any edge or
+            // corner drag, so a "square" crop drifted into a free rect.
+            currentCrop =
+              if (lockedRatio == null || dragTarget == CropDragTarget.MOVE || dragTarget == CropDragTarget.NONE) {
+                tentative
+              } else {
+                enforceLockedAspect(
+                  prev = currentCrop,
+                  tentative = tentative,
+                  target = dragTarget,
+                  dx = dx,
+                  dy = dy,
+                  lockedRatio = lockedRatio,
+                  displayAspect = displayAspect,
+                  minSpan = minSpan,
+                )
               }
           },
           onDragEnd = {
@@ -551,6 +604,108 @@ private fun InteractiveCropOverlay(
     // Bottom-right
     drawLine(accent, Offset(r, b), Offset(r - hLen, b), sw)
     drawLine(accent, Offset(r, b), Offset(r, b - hLen), sw)
+  }
+}
+
+/**
+ * Re-derives the crop rect from the drag's dominant axis so the on-screen
+ * rectangle keeps the requested physical ratio. With normalized rect coords
+ * over a displayed bitmap of physical aspect A, the ratio constraint is
+ * h_norm = w_norm * k where k = A / lockedRatio.
+ *
+ * Edge drags anchor the opposite edge and re-center the perpendicular axis;
+ * corner drags anchor the opposite corner. The driving span is clamped so
+ * the derived span can never leave the 0..1 frame.
+ */
+private fun enforceLockedAspect(
+  prev: CropParams,
+  tentative: CropParams,
+  target: CropDragTarget,
+  dx: Float,
+  dy: Float,
+  lockedRatio: Float,
+  displayAspect: Float,
+  minSpan: Float,
+): CropParams {
+  val k = displayAspect / lockedRatio.coerceAtLeast(0.05f)
+  val horizontalDominant =
+    when (target) {
+      CropDragTarget.LEFT, CropDragTarget.RIGHT -> true
+      CropDragTarget.TOP, CropDragTarget.BOTTOM -> false
+      else -> abs(dx) * displayAspect >= abs(dy)
+    }
+  val anchoredRight =
+    target == CropDragTarget.LEFT ||
+      target == CropDragTarget.TOP_LEFT ||
+      target == CropDragTarget.BOTTOM_LEFT
+  val anchoredBottom =
+    target == CropDragTarget.TOP ||
+      target == CropDragTarget.TOP_LEFT ||
+      target == CropDragTarget.TOP_RIGHT
+  val isCorner =
+    target == CropDragTarget.TOP_LEFT ||
+      target == CropDragTarget.TOP_RIGHT ||
+      target == CropDragTarget.BOTTOM_LEFT ||
+      target == CropDragTarget.BOTTOM_RIGHT
+
+  return if (horizontalDominant) {
+    val w = (tentative.right - tentative.left).coerceIn(minSpan, min(1f, 1f / k))
+    val h = (w * k).coerceAtMost(1f)
+    val finalW = h / k
+    val l: Float
+    val r: Float
+    if (anchoredRight) {
+      r = prev.right
+      l = (r - finalW).coerceIn(0f, 1f - finalW)
+    } else {
+      l = prev.left
+      r = (l + finalW).coerceIn(finalW, 1f)
+    }
+    val t: Float
+    val b: Float
+    if (isCorner) {
+      if (anchoredBottom) {
+        b = prev.bottom
+        t = (b - h).coerceIn(0f, 1f - h)
+      } else {
+        t = prev.top
+        b = (t + h).coerceIn(h, 1f)
+      }
+    } else {
+      val cy = (prev.top + prev.bottom) / 2f
+      t = (cy - h / 2f).coerceIn(0f, 1f - h)
+      b = t + h
+    }
+    tentative.copy(left = l, top = t, right = r, bottom = b)
+  } else {
+    val h = (tentative.bottom - tentative.top).coerceIn(minSpan, min(1f, k))
+    val w = (h / k).coerceAtMost(1f)
+    val finalH = w * k
+    val t: Float
+    val b: Float
+    if (anchoredBottom) {
+      b = prev.bottom
+      t = (b - finalH).coerceIn(0f, 1f - finalH)
+    } else {
+      t = prev.top
+      b = (t + finalH).coerceIn(finalH, 1f)
+    }
+    val l: Float
+    val r: Float
+    if (isCorner) {
+      if (anchoredRight) {
+        r = prev.right
+        l = (r - w).coerceIn(0f, 1f - w)
+      } else {
+        l = prev.left
+        r = (l + w).coerceIn(w, 1f)
+      }
+    } else {
+      val cx = (prev.left + prev.right) / 2f
+      l = (cx - w / 2f).coerceIn(0f, 1f - w)
+      r = l + w
+    }
+    tentative.copy(left = l, top = t, right = r, bottom = b)
   }
 }
 

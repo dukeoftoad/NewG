@@ -13,7 +13,12 @@ class ToadGalleryApplication : Application(), ImageLoaderFactory {
     ImageLoader.Builder(this)
       .memoryCache {
         MemoryCache.Builder(this)
-          .maxSizePercent(0.25)
+          // App-wide cache layering: Room holds metadata, Coil holds pixels.
+          // 30% of app memory with strong references keeps grid fling, the
+          // vault grid and editor re-opens on decoded bitmaps without
+          // re-decoding from MediaStore on every swipe back.
+          .maxSizePercent(0.30)
+          .strongReferencesEnabled(true)
           .build()
       }
       .diskCache {
