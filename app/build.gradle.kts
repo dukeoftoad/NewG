@@ -15,7 +15,10 @@ android {
     minSdk = 24
     targetSdk = 36
     versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
-    versionName = providers.gradleProperty("versionName").orElse("1.0").get()
+    // Fallback only: release builds override from the tag (-PversionName).
+    // Kept at the current release so the in-app updater never offers a
+    // downgrade to debug/CI builds.
+    versionName = providers.gradleProperty("versionName").orElse("2.0.0").get()
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
