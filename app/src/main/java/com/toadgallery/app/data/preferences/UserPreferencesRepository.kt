@@ -65,6 +65,8 @@ class UserPreferencesRepository(context: Context) {
     val LAST_MEDIA_SYNC_COUNT = intPreferencesKey("last_media_sync_count")
     val CACHE_SIZE_MB = floatPreferencesKey("cache_size_mb")
     val ML_INDEX_SIZE_MB = floatPreferencesKey("ml_index_size_mb")
+    val SYSTEM_MEDIA_SYNC = booleanPreferencesKey("system_media_sync")
+    val MEDIA_MGMT_PROMPT_SEEN = booleanPreferencesKey("media_mgmt_prompt_seen")
   }
 
   val preferences: Flow<UserPreferences> =
@@ -106,6 +108,8 @@ class UserPreferencesRepository(context: Context) {
         lastMediaSyncCount = prefs[Keys.LAST_MEDIA_SYNC_COUNT] ?: 0,
         cacheSizeMb = prefs[Keys.CACHE_SIZE_MB] ?: 42.8f,
         mlIndexSizeMb = prefs[Keys.ML_INDEX_SIZE_MB] ?: 18.4f,
+        systemMediaSync = prefs[Keys.SYSTEM_MEDIA_SYNC] ?: false,
+        mediaManagementPromptSeen = prefs[Keys.MEDIA_MGMT_PROMPT_SEEN] ?: false,
       )
     }
 
@@ -146,6 +150,15 @@ class UserPreferencesRepository(context: Context) {
 
   suspend fun setLastMediaSyncCount(count: Int) {
     dataStore.edit { it[Keys.LAST_MEDIA_SYNC_COUNT] = count }
+  }
+
+  /** Opt-in: batch trash/favorite operations also sync to the system MediaStore. */
+  suspend fun setSystemMediaSync(enabled: Boolean) {
+    dataStore.edit { it[Keys.SYSTEM_MEDIA_SYNC] = enabled }
+  }
+
+  suspend fun setMediaManagementPromptSeen() {
+    dataStore.edit { it[Keys.MEDIA_MGMT_PROMPT_SEEN] = true }
   }
 
   suspend fun updatePalette(palette: ThemePalette) {

@@ -18,6 +18,7 @@ import com.toadgallery.app.data.local.FaceCorrectionHistoryEntity
 import com.toadgallery.app.data.local.FaceExclusionEntity
 import com.toadgallery.app.data.local.MediaItemEntity
 import com.toadgallery.app.data.local.SampleMediaCatalog
+import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.data.media.MediaStoreScanner
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.MediaCategory
@@ -308,6 +309,46 @@ class GalleryRepository(
     if (ids.isEmpty()) return
     dao.setTrashedBatch(ids, trashed)
   }
+
+  /**
+   * System-wide Recycle Bin sync: trashes (or restores) the underlying
+   * MediaStore entries so deletions made in the gallery are reflected in
+   * other apps. Requires the "Media management" permission (MANAGE_MEDIA) —
+   * with it granted the PendingIntents execute silently; without it the
+   * system would prompt per item, so this gates on the permission.
+   * Returns the number of entries synced.
+   */
+  suspend fun syncSystemTrash(items: List<GalleryMediaItem>, trashed: Boolean): Int =
+    withContext(Dispatchers.IO) {
+      if (!MediaPermissionHelper.hasMediaManagementPermission(context)) return@withContext 0
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext 0
+      val resolver = context.contentResolver
+      var synced = 0
+      items.forEach { item ->
+        val uri = item.uriString?.takeIf { it.isNotBlank() } ?: return@forEach
+        runCatching {
+          val pi = MediaStore.createTrashRequest(resolver, listOf(Uri.parse(uri)), trashed)
+          pi.send()
+          synced++
+        }
+      }
+      synced
+    }
+
+  /** Same silent system sync for favorites; returns the synced entry count. */
+  suspend fun syncSystemFavorites(items: List<GalleryMediaItem>, favorite: Boolean): Int =
+    withContext(Dispatchers.IO) {
+      if (!MediaPermissionHelper.hasMediaManagementPermission(context)) return@withContext 0
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext 0
+      val uris =
+        items.mapNotNull { it.uriString?.takeIf { u -> u.isNotBlank() } }.map { Uri.parse(it) }
+      if (uris.isEmpty()) return@withContext 0
+      runCatching {
+        val pi = MediaStore.createFavoriteRequest(context.contentResolver, uris, favorite)
+        pi.send()
+        uris.size
+      }.getOrDefault(0)
+    }
 
   suspend fun assignToAlbumBatch(ids: List<Long>, albumId: Long?) {
     if (ids.isEmpty()) return

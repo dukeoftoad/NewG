@@ -64,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -82,13 +83,23 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem as ExoMediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.toadgallery.app.data.media.VideoPlaybackPolicy
 import com.toadgallery.app.data.model.GalleryMediaItem
+import com.toadgallery.app.data.model.MediaType
 import com.toadgallery.app.data.model.TonePreset
 import com.toadgallery.app.ui.components.GalleryMediaImage
 import com.toadgallery.app.ui.theme.LocalToadColors
@@ -230,18 +241,27 @@ fun LightboxOverlay(
           },
       contentAlignment = Alignment.Center,
     ) {
-      GalleryMediaImage(
-        item = item,
-        contentScale = ContentScale.Fit,
-        thumbnailSizePx = null,
-        modifier =
-          Modifier.fillMaxSize().graphicsLayer {
-            scaleX = animatedScale
-            scaleY = animatedScale
-            translationX = animatedPan.x
-            translationY = animatedPan.y
-          },
-      )
+      if (VideoPlaybackPolicy.isDirectlyPlayable(item)) {
+        // Direct video playback: Media3 ExoPlayer with its own seek/controls.
+        // Pinch-zoom stays photo-only; swipes still navigate between items.
+        LightboxVideoPlayer(
+          uriString = VideoPlaybackPolicy.playbackUri(item).orEmpty(),
+          modifier = Modifier.fillMaxSize(),
+        )
+      } else {
+        GalleryMediaImage(
+          item = item,
+          contentScale = ContentScale.Fit,
+          thumbnailSizePx = null,
+          modifier =
+            Modifier.fillMaxSize().graphicsLayer {
+              scaleX = animatedScale
+              scaleY = animatedScale
+              translationX = animatedPan.x
+              translationY = animatedPan.y
+            },
+        )
+      }
     }
 
     // Overlaid Compact Top Bar with Gradient Scrim
@@ -313,8 +333,14 @@ fun LightboxOverlay(
                 if (scale > 1.05f) String.format(Locale.US, " • %.1fx (Tap to reset)", scale)
                 else if (item.hasNonDestructiveEdits) " • Edited"
                 else ""
+              val videoLabel =
+                if (item.mediaType == MediaType.VIDEO && !item.durationLabel.isNullOrBlank()) {
+                  " • ${item.durationLabel}"
+                } else {
+                  ""
+                }
               Text(
-                text = "${item.dateLabel}$zoomLabel",
+                text = "${item.dateLabel}$videoLabel$zoomLabel",
                 style = MaterialTheme.typography.bodySmall,
                 color =
                   if (scale > 1.05f || item.hasNonDestructiveEdits) Color(0xFF6EE7B7)
@@ -889,3 +915,46 @@ private fun aspectRatioLabel(aspectRatio: Float): String =
     aspectRatio in 0.92f..1.08f -> "1:1 Square"
     else -> "3:4 Portrait"
   }
+
+/**
+ * Full-bleed video playback inside the lightbox: Media3 ExoPlayer wired to a
+ * PlayerView with native seek/controls. Audio focus is handled so music
+ * pauses during playback, and the player is released when the item changes
+ * or the lightbox closes.
+ */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun LightboxVideoPlayer(uriString: String, modifier: Modifier = Modifier) {
+  val context = LocalContext.current
+  val player =
+    remember(uriString) {
+      ExoPlayer.Builder(context)
+        .setAudioAttributes(
+          AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build(),
+          /* handleAudioFocus = */ true,
+        )
+        .build()
+        .apply {
+          setMediaItem(ExoMediaItem.fromUri(uriString))
+          prepare()
+          playWhenReady = true
+        }
+    }
+  DisposableEffect(uriString) { onDispose { player.release() } }
+
+  AndroidView(
+    factory = { ctx ->
+      PlayerView(ctx).apply {
+        this.player = player
+        useController = true
+        setShowPreviousButton(false)
+        setShowNextButton(false)
+      }
+    },
+    update = { view -> if (view.player !== player) view.player = player },
+    modifier = modifier,
+  )
+}

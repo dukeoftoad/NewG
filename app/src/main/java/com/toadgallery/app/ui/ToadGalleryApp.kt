@@ -121,10 +121,14 @@ fun ToadGalleryApp(
 
   fun triggerSyncOrPermissions() {
     val level = MediaPermissionHelper.checkAccessLevel(context)
-    if (level == MediaAccessLevel.FULL) {
-      galleryViewModel.refreshMediaPermissionsAndSync(silent = false)
-    } else {
-      mediaPermissionLauncher.launch(MediaPermissionHelper.requiredMediaPermissions())
+    when (level) {
+      MediaAccessLevel.FULL -> galleryViewModel.refreshMediaPermissionsAndSync(silent = false)
+      // Android 14+ partial grants ("Selected photos only") must not be
+      // re-prompted on every launch — the system would only re-offer the
+      // full/partial chooser and nag the user. The gallery banner handles
+      // the upgrade path instead.
+      MediaAccessLevel.PARTIAL -> galleryViewModel.refreshMediaPermissionsAndSync(silent = true)
+      else -> mediaPermissionLauncher.launch(MediaPermissionHelper.requiredMediaPermissions())
     }
   }
 
@@ -284,6 +288,7 @@ fun ToadGalleryApp(
                   onOpenVault = galleryViewModel::openVaultDialog,
                   onSyncOrRequestMediaPermissions = ::triggerSyncOrPermissions,
                   onDismissPermissionBanner = galleryViewModel::dismissPermissionBanner,
+                  onDismissMediaManagementPrompt = galleryViewModel::dismissMediaManagementPrompt,
                   onResetFilters = galleryViewModel::resetPhotoFilters,
                   onOpenStory = galleryViewModel::openStory,
                   onOpenLightbox = galleryViewModel::openLightbox,
