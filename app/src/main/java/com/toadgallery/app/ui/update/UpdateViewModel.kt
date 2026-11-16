@@ -303,9 +303,7 @@ class UpdateViewModel(
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
                     UpdateViewModel(context.applicationContext) as T
             }
-    }
 
-    private companion object {
         const val DEFAULT_APK_NAME = "toadgallery-update.apk"
         const val DOWNLOAD_FAILED = "The APK download failed — you can retry."
         const val GENERIC_CHECK_FAILED = "The update check failed — try again in a moment."
