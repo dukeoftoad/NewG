@@ -6,6 +6,7 @@ import com.toadgallery.app.ui.update.UpdatePanel
 import com.toadgallery.app.domain.AppIcon
 import com.toadgallery.app.BuildConfig
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.Image
