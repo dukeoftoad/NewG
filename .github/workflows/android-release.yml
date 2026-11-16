@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version_name:
+        description: Release version name (for example, 1.0.5)
+        required: true
+        type: string
+        default: '1.0.5'
 
 permissions:
   contents: write
@@ -62,13 +68,46 @@ jobs:
             echo "KEY_PASSWORD=${ANDROID_KEY_PASSWORD}"
           } >> "${GITHUB_ENV}"
 
+      - name: Derive release version from tag
+        id: version
+        shell: bash
+        env:
+          VERSION_INPUT: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version_name="${VERSION_INPUT}"
+          else
+            version_name="${GITHUB_REF_NAME#v}"
+          fi
+
+          if [[ ! "${version_name}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release version must be X.Y.Z (tag v${version_name})."
+            exit 1
+          fi
+
+          # Release versionCodes start at 20000 (alpha uses 10000+run), and
+          # stay monotonic across re-runs since GITHUB_RUN_NUMBER only grows.
+          version_code=$((20000 + GITHUB_RUN_NUMBER))
+
+          echo "version_name=${version_name}" >> "${GITHUB_OUTPUT}"
+          echo "version_code=${version_code}" >> "${GITHUB_OUTPUT}"
+
       - name: Build signed release APK and app bundle
-        run: gradle --no-daemon assembleRelease bundleRelease
+        run: |
+          gradle --no-daemon \
+            -PversionName="${{ steps.version.outputs.version_name }}" \
+            -PversionCode="${{ steps.version.outputs.version_code }}" \
+            assembleRelease bundleRelease
+          cp app/build/outputs/apk/release/app-release.apk \
+            "app/build/outputs/apk/release/toadGALLERY-${{ steps.version.outputs.version_name }}.apk"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: toadGALLERY ${{ steps.version.outputs.version_name }}
           generate_release_notes: true
           files: |
-            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/toadGALLERY-*.apk
             app/build/outputs/bundle/release/*.aab
