@@ -457,6 +457,7 @@ fun MediaThumbnailCard(
   forceSquare: Boolean,
   onClick: () -> Unit,
   onLongClick: (() -> Unit)? = null,
+  onDoubleClick: (() -> Unit)? = null,
   isSelectionMode: Boolean = false,
   isSelected: Boolean = false,
   compactMode: Boolean = false,
@@ -486,6 +487,7 @@ fun MediaThumbnailCard(
         .combinedClickable(
           onClick = onClick,
           onLongClick = onLongClick,
+          onDoubleClick = onDoubleClick,
         ),
     shape = RoundedCornerShape(cornerRadius),
     color = MaterialTheme.colorScheme.surface,

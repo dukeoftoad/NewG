@@ -1,5 +1,15 @@
 package com.toadgallery.app.ui.screens
 
+import com.toadgallery.app.ui.update.VersionRow
+import com.toadgallery.app.ui.update.UpdateViewModel
+import com.toadgallery.app.ui.update.UpdatePanel
+import com.toadgallery.app.domain.AppIcon
+import com.toadgallery.app.BuildConfig
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.Image
+import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -1099,13 +1109,16 @@ private fun StorageLegendRow(dotColor: Color, label: String, value: String) {
 internal fun SettingsSubAboutPage(
   uiState: SettingsUiState,
   viewModel: SettingsViewModel,
+  updateViewModel: UpdateViewModel =
+    viewModel(factory = UpdateViewModel.factory(LocalContext.current.applicationContext)),
 ) {
   val extended = LocalToadColors.current
+  val context = LocalContext.current
 
   Column(modifier = Modifier.fillMaxSize()) {
     SettingsSubPageHeader(
       title = "About toadGALLERY",
-      badge = "Build 52",
+      badge = "v${BuildConfig.VERSION_NAME}",
       onBack = viewModel::backToHub,
     )
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -1137,7 +1150,7 @@ internal fun SettingsSubAboutPage(
               Spacer(modifier = Modifier.height(4.dp))
               Text("toadGALLERY", style = MaterialTheme.typography.titleLarge)
               Text(
-                text = "Version 0.5.0-beta (build 52)",
+                text = "Version ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
               )
@@ -1147,6 +1160,33 @@ internal fun SettingsSubAboutPage(
                 style = MaterialTheme.typography.bodySmall,
                 color = extended.textMuted,
                 textAlign = TextAlign.Center,
+              )
+            }
+          }
+        }
+
+        item {
+          SettingsGroupCard {
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              Text("Updates", style = MaterialTheme.typography.titleMedium)
+              Text(
+                "toadGALLERY contacts GitHub Releases once per app open (silently, in the " +
+                  "background) and whenever you tap the button below. Nothing about this " +
+                  "device is sent, and nothing downloads without a tap.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = extended.textMuted,
+              )
+              Spacer(modifier = Modifier.height(6.dp))
+              VersionRow("Installed", BuildConfig.VERSION_NAME)
+              val updateState by updateViewModel.state.collectAsStateWithLifecycle()
+              UpdatePanel(
+                update = updateState,
+                onCheck = updateViewModel::checkForUpdates,
+                onDownloadInstall = { updateViewModel.downloadAndInstall(context) },
+                onDismiss = updateViewModel::clearUpdateState,
               )
             }
           }
@@ -1206,6 +1246,127 @@ internal fun SettingsSubAboutPage(
           }
         }
       }
+    }
+  }
+}
+
+
+@Composable
+internal fun SettingsSubAppIconPage(
+  uiState: SettingsUiState,
+  viewModel: SettingsViewModel,
+) {
+  val extended = LocalToadColors.current
+  val context = LocalContext.current
+  val selected = uiState.preferences.appIcon
+
+  Column(modifier = Modifier.fillMaxSize()) {
+    SettingsSubPageHeader(
+      title = "App Icon",
+      badge = "Launcher",
+      onBack = viewModel::backToHub,
+    )
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+      LazyColumn(
+        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp).testTag("settings_app_icon_list"),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        item {
+          SettingsGroupCard {
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              Text("Launcher icon", style = MaterialTheme.typography.titleMedium)
+              Text(
+                "Pick the icon for your home screen. The choice applies immediately and " +
+                  "survives restarts — pinned shortcuts keep working. Some launchers take " +
+                  "a moment to refresh the icon.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = extended.textMuted,
+              )
+            }
+          }
+        }
+        item {
+          SettingsGroupCard {
+            Column(
+              modifier = Modifier.fillMaxWidth().padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+              AppIcon.entries.chunked(4).forEach { rowIcons ->
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                  rowIcons.forEach { icon ->
+                    AppIconTile(
+                      icon = icon,
+                      resId = appIconRes(context, icon),
+                      selected = icon == selected,
+                      onClick = { viewModel.setAppIcon(icon) },
+                      modifier = Modifier.weight(1f),
+                    )
+                  }
+                  repeat(4 - rowIcons.size) { Spacer(modifier = Modifier.weight(1f)) }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/** mipmap res id for a launcher-icon variant; 0 when the build doesn't ship it. */
+private fun appIconRes(context: Context, icon: AppIcon): Int =
+  context.resources.getIdentifier(icon.mipmapName, "mipmap", context.packageName)
+
+@Composable
+private fun AppIconTile(
+  icon: AppIcon,
+  resId: Int,
+  selected: Boolean,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  val extended = LocalToadColors.current
+  Column(
+    modifier =
+      modifier
+        .clip(RoundedCornerShape(16.dp))
+        .background(
+          if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+        )
+        .clickable(onClick = onClick)
+        .testTag("app_icon_tile_${icon.name}")
+        .padding(vertical = 10.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    if (resId != 0) {
+      Image(
+        painter = painterResource(resId),
+        contentDescription = "App icon ${icon.label}",
+        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)),
+      )
+    }
+    Spacer(modifier = Modifier.height(6.dp))
+    Text(
+      text = icon.label,
+      style = MaterialTheme.typography.labelSmall,
+      color =
+        if (selected) MaterialTheme.colorScheme.onPrimaryContainer else extended.textDim,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    if (selected) {
+      Text(
+        text = "Selected",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+      )
     }
   }
 }
