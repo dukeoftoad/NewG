@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 
 /**
@@ -89,36 +90,55 @@ object Intents {
     }
 
     private fun canRequestPackageInstalls(context: Context): Boolean = try {
-        context.packageManager.canRequestPackageInstalls()
+        // API 26+: per-app "Install unknown apps" grant. Pre-O the decision is the
+        // global "Unknown sources" toggle the system itself enforces at install
+        // time, so hand off directly and let the installer gate it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
     } catch (_: Exception) {
         false
     }
 
-    /** Opens the "Install unknown apps" screen for this app; false when both attempts fail. */
-    private fun openInstallPermissionSettings(context: Context): Boolean = try {
-        context.startActivity(
-            Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}"),
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-        true
-    } catch (_: Exception) {
-        try {
+    /**
+     * Opens the "Install unknown apps" screen for this app; false when both attempts
+     * fail. The per-app screen exists only on API 26+ — pre-O callers never reach
+     * here (canRequestPackageInstalls reports true and the system gates the install).
+     */
+    private fun openInstallPermissionSettings(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        return try {
             context.startActivity(
-                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             true
         } catch (_: Exception) {
-            false
+            try {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                true
+            } catch (_: Exception) {
+                false
+            }
         }
     }
 
     /** True when the app currently holds the "Install unknown apps" grant. Exposed for the UI. */
     fun hasInstallPermission(context: Context): Boolean =
-        try {
-            context.packageManager.canRequestPackageInstalls()
-        } catch (_: Exception) {
-            false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                context.packageManager.canRequestPackageInstalls()
+            } catch (_: Exception) {
+                false
+            }
+        } else {
+            true
         }
 }
