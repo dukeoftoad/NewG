@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -225,18 +226,37 @@ fun PhotosScreen(
   val listState = rememberLazyListState()
   var isDraggingScrubber by remember { mutableStateOf(false) }
   var scrubFraction by remember { mutableFloatStateOf(0f) }
+  var lastScrubSection by remember { mutableIntStateOf(-1) }
   val isScrolling by remember { derivedStateOf { listState.isScrollInProgress || isDraggingScrubber } }
+
+  // Smooth scroller: fraction ↔ lazy item index over ALL rows (headers +
+  // grid rows), so the thumb, the content and the date bubble follow the
+  // finger continuously — no section quantization, no thumb/content desync.
+  val totalLazyItems by remember { derivedStateOf { listState.layoutInfo.totalItemsCount } }
+  val scrubTargetIndex by remember {
+    derivedStateOf {
+      if (totalLazyItems <= 0) 0
+      else (scrubFraction * (totalLazyItems - 1)).roundToInt().coerceIn(0, totalLazyItems - 1)
+    }
+  }
+
+  val sectionIndexForIndex: (Int) -> Int =
+    remember(preparedSections) {
+      { idx ->
+        var matched = 0
+        for (i in preparedSections.indices) {
+          if (preparedSections[i].startLazyIndex <= idx) matched = i else break
+        }
+        matched
+      }
+    }
 
   val activeScrubberLabel by
     remember(preparedSections) {
       derivedStateOf {
         if (preparedSections.isEmpty()) return@derivedStateOf ""
-        val idx = listState.firstVisibleItemIndex
-        var matched = 0
-        for (i in preparedSections.indices) {
-          if (preparedSections[i].startLazyIndex <= idx) matched = i else break
-        }
-        preparedSections.getOrNull(matched)?.title.orEmpty()
+        val idx = if (isDraggingScrubber) scrubTargetIndex else listState.firstVisibleItemIndex
+        preparedSections.getOrNull(sectionIndexForIndex(idx))?.title.orEmpty()
       }
     }
 
@@ -926,12 +946,14 @@ fun PhotosScreen(
       }
     }
 
-    // Interactive Pro Date Fast-Scrubber Track
+    // Smooth Fast-Scroll Track: drag or tap anywhere on the right edge rail.
+    // Content follows the finger continuously (no section quantization), the
+    // thumb never desyncs from the list, and section haptics fire on crossings.
     if (preparedSections.isNotEmpty() && !uiState.isSelectionMode) {
       BoxWithConstraints(
         modifier =
           Modifier.align(Alignment.CenterEnd)
-            .padding(end = 4.dp, top = 88.dp, bottom = 104.dp)
+            .padding(end = 2.dp, top = 88.dp, bottom = 104.dp)
             .fillMaxHeight()
       ) {
         val trackHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
@@ -939,37 +961,54 @@ fun PhotosScreen(
         val maxTravelPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(1f)
         val thumbOffsetY = (scrollProgressFraction * maxTravelPx).roundToInt()
 
-        Row(
+        // Invisible wide touch rail: drags AND taps land proportionally.
+        Box(
           modifier =
-            Modifier.offset { IntOffset(0, thumbOffsetY) }
-              .pointerInput(preparedSections) {
-                var lastSectionIdx = -1
+            Modifier.width(34.dp)
+              .fillMaxHeight()
+              .pointerInput(preparedSections, totalLazyItems) {
                 detectVerticalDragGestures(
-                  onDragStart = {
+                  onDragStart = { offset ->
                     isDraggingScrubber = true
-                    scrubFraction = scrollProgressFraction
+                    lastScrubSection = -1
+                    scrubFraction = (offset.y / trackHeightPx).coerceIn(0f, 1f)
+                    coroutineScope.launch { listState.scrollToItem(scrubTargetIndex) }
                   },
                   onVerticalDrag = { change, dragAmount ->
                     change.consume()
-                    val nextFrac = (scrubFraction + dragAmount / maxTravelPx).coerceIn(0f, 1f)
-                    scrubFraction = nextFrac
-                    val secIdx =
-                      ((nextFrac * preparedSections.size).toInt()).coerceIn(
-                        0,
-                        preparedSections.lastIndex,
-                      )
-                    if (secIdx != lastSectionIdx) {
-                      lastSectionIdx = secIdx
+                    scrubFraction =
+                      (scrubFraction + dragAmount / maxTravelPx).coerceIn(0f, 1f)
+                    coroutineScope.launch { listState.scrollToItem(scrubTargetIndex) }
+                    val section = sectionIndexForIndex(scrubTargetIndex)
+                    if (section != lastScrubSection) {
+                      lastScrubSection = section
                       haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                      coroutineScope.launch {
-                        listState.scrollToItem(preparedSections[secIdx].startLazyIndex)
-                      }
                     }
                   },
                   onDragEnd = { isDraggingScrubber = false },
                   onDragCancel = { isDraggingScrubber = false },
                 )
+              }
+              .pointerInput(preparedSections, totalLazyItems) {
+                detectTapGestures { offset ->
+                  val target =
+                    ((offset.y / trackHeightPx).coerceIn(0f, 1f) *
+                        (totalLazyItems - 1).coerceAtLeast(0))
+                      .roundToInt()
+                      .coerceIn(0, (totalLazyItems - 1).coerceAtLeast(0))
+                  coroutineScope.launch { listState.scrollToItem(target) }
+                }
               },
+        )
+
+        // Visual thumb + date bubble — driven by the same fraction as the
+        // list, so thumb and content stay locked in sync. Passes touches
+        // through to the rail behind it.
+        Row(
+          modifier =
+            Modifier.align(Alignment.CenterEnd)
+              .offset { IntOffset(0, thumbOffsetY) }
+              .padding(end = 13.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -999,7 +1038,7 @@ fun PhotosScreen(
                 .clip(CircleShape)
                 .background(
                   MaterialTheme.colorScheme.primary.copy(
-                    alpha = if (isScrolling) 0.95f else 0.42f
+                    alpha = if (isDraggingScrubber) 0.98f else if (isScrolling) 0.72f else 0.42f
                   )
                 )
           )

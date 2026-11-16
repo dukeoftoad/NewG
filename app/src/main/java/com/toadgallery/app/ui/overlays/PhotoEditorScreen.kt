@@ -72,6 +72,9 @@ import androidx.compose.ui.unit.dp
 import com.toadgallery.app.data.ai.DepthMapResult
 import com.toadgallery.app.data.ai.DepthModelPackState
 import com.toadgallery.app.data.editor.PhotoEditorRenderer
+import com.toadgallery.app.data.editor.withHorizontalFlipApplied
+import com.toadgallery.app.data.editor.withQuarterTurnDelta
+import com.toadgallery.app.data.editor.withVerticalFlipApplied
 import com.toadgallery.app.data.model.AdjustParam
 import com.toadgallery.app.data.model.AspectRatioPreset
 import com.toadgallery.app.data.model.CropParams
@@ -411,6 +414,7 @@ fun PhotoEditorScreen(
             onAddMarkupStroke = { stroke ->
               commitChange(recipe.copy(strokes = recipe.strokes + stroke))
             },
+            onCompareHoldChange = { isComparingOriginal = it },
             modifier = Modifier.weight(1f).fillMaxHeight(),
           )
 
@@ -492,6 +496,7 @@ fun PhotoEditorScreen(
           onAddMarkupStroke = { stroke ->
             commitChange(recipe.copy(strokes = recipe.strokes + stroke))
           },
+          onCompareHoldChange = { isComparingOriginal = it },
           modifier = Modifier.weight(1f).fillMaxWidth(),
         )
 
@@ -777,21 +782,31 @@ private fun EditorActiveToolTray(
         onStraightenCommit = onCommit,
         onRotateLeft = {
           onUpdateCrop(
-            recipe.crop.copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 3) % 4),
+            remappedCropForRotation(recipe.crop, delta = -1, aspectBefore = sourceAspect)
+              .copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 3) % 4),
             true,
           )
         },
         onRotateRight = {
           onUpdateCrop(
-            recipe.crop.copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 1) % 4),
+            remappedCropForRotation(recipe.crop, delta = 1, aspectBefore = sourceAspect)
+              .copy(rotationQuarterTurns = (recipe.crop.rotationQuarterTurns + 1) % 4),
             true,
           )
         },
         onFlipH = {
-          onUpdateCrop(recipe.crop.copy(flipHorizontal = !recipe.crop.flipHorizontal), true)
+          onUpdateCrop(
+            recipe.crop
+              .withHorizontalFlipApplied()
+              .copy(flipHorizontal = !recipe.crop.flipHorizontal),
+            true,
+          )
         },
         onFlipV = {
-          onUpdateCrop(recipe.crop.copy(flipVertical = !recipe.crop.flipVertical), true)
+          onUpdateCrop(
+            recipe.crop.withVerticalFlipApplied().copy(flipVertical = !recipe.crop.flipVertical),
+            true,
+          )
         },
         onResetCrop = { onUpdateCrop(CropParams(), true) },
       )
@@ -888,5 +903,27 @@ private fun applyAspectPresetToCrop(
   } else {
     val halfH = ((1f / relRatio) / 2f).coerceIn(0.15f, 0.5f)
     crop.copy(left = 0f, right = 1f, top = 0.5f - halfH, bottom = 0.5f + halfH, aspectPreset = preset)
+  }
+}
+
+/**
+ * Rotating the image rotates the frame the crop rect is normalized against;
+ * without remapping, the rect silently selects different pixels. Remap the
+ * rect with the inverse transform, then re-fit the rect to the preset so a
+ * locked OUTPUT ratio (4:3, 16:9, ...) survives the rotation. Square and
+ * free/original presets survive the inverse transform unchanged.
+ */
+private fun remappedCropForRotation(
+  crop: CropParams,
+  delta: Int,
+  aspectBefore: Float,
+): CropParams {
+  val rotated = crop.withQuarterTurnDelta(delta)
+  val oddTurns = (((delta % 4) + 4) % 4) % 2 == 1
+  val aspectAfter =
+    if (oddTurns) 1f / aspectBefore.coerceAtLeast(0.05f) else aspectBefore.coerceAtLeast(0.05f)
+  return when (rotated.aspectPreset) {
+    AspectRatioPreset.FREE, AspectRatioPreset.ORIGINAL, AspectRatioPreset.SQUARE -> rotated
+    else -> applyAspectPresetToCrop(rotated, rotated.aspectPreset, aspectAfter)
   }
 }
