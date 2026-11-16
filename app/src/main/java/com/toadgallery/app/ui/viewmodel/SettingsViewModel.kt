@@ -13,6 +13,8 @@ import com.toadgallery.app.data.ai.FaceIndexState
 import com.toadgallery.app.data.ai.FaceModelManager
 import com.toadgallery.app.data.ai.FaceModelPackState
 import com.toadgallery.app.data.model.AppearanceMode
+import com.toadgallery.app.domain.AppIcon
+import com.toadgallery.app.domain.PackageManagerAppIconSwitcher
 import com.toadgallery.app.data.model.GroupByMode
 import com.toadgallery.app.data.model.LayoutMode
 import com.toadgallery.app.data.model.SettingsSubPage
@@ -66,8 +68,23 @@ class SettingsViewModel(
   private val showDiagnostics = MutableStateFlow(false)
   private val selfTestOutput = MutableStateFlow<String?>(null)
 
+  private val iconSwitcher = PackageManagerAppIconSwitcher(appContext)
+
   private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
   val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+  /**
+   * Switches the launcher icon: persists the choice (re-applied on every app
+   * start, so restored backups and downgrades behave) and immediately flips the
+   * activity-alias enabled states. The switcher never throws.
+   */
+  fun setAppIcon(icon: AppIcon) {
+    viewModelScope.launch {
+      prefsRepo.setAppIcon(icon)
+      iconSwitcher.apply(icon)
+      _messages.tryEmit("App icon set to \"${icon.label}\" — some launchers refresh after a moment")
+    }
+  }
 
   private var downloadJob: Job? = null
 

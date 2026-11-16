@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
@@ -78,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toadgallery.app.data.media.MediaAccessLevel
 import com.toadgallery.app.data.media.MediaPermissionHelper
+import com.toadgallery.app.BuildConfig
 import com.toadgallery.app.data.model.AppearanceMode
 import com.toadgallery.app.data.model.GroupByMode
 import com.toadgallery.app.data.model.LayoutMode
@@ -139,6 +141,7 @@ fun SettingsScreen(
         )
       SettingsSubPage.STORAGE -> SettingsSubStoragePage(uiState = uiState, viewModel = viewModel)
       SettingsSubPage.ABOUT -> SettingsSubAboutPage(uiState = uiState, viewModel = viewModel)
+      SettingsSubPage.APP_ICON -> SettingsSubAppIconPage(uiState = uiState, viewModel = viewModel)
     }
   }
 }
@@ -161,13 +164,13 @@ private fun SettingsHubView(
     q.isEmpty() || keywords.any { it.lowercase().contains(q) }
 
   val showAppearance =
-    matches("appearance", "theme", "color", "palette", "dark", "light", "material", "layout", "grid", "collage", "stories", "group", "columns")
+    matches("appearance", "theme", "color", "palette", "dark", "light", "material", "layout", "grid", "collage", "stories", "group", "columns", "icon")
   val showAi =
     matches("ai", "people", "faces", "magic search", "things", "models", "onnx", "indexing", "npu", "clip", "clustering", "bokeh", "depth", "dav2")
   val showPrivacy =
     matches("privacy", "permissions", "mediastore", "sync", "location", "exif", "gps", "vault", "pin", "biometric", "security", "hidden", "media management", "batch")
   val showStorage = matches("storage", "cache", "database", "data", "clear", "space", "mb", "index")
-  val showAbout = matches("about", "version", "0.5.0", "diagnostics", "self-test", "changelog")
+  val showAbout = matches("about", "version", "diagnostics", "self-test", "changelog", "update")
   val nothingFound = !showAppearance && !showAi && !showPrivacy && !showStorage && !showAbout
 
   val faceInstalled = uiState.faceModelState.isInstalled || prefs.faceModelInstalled
@@ -392,6 +395,16 @@ private fun SettingsHubView(
                   onClick = { viewModel.openSubPage(SettingsSubPage.LAYOUT) },
                   testTag = "settings_row_layout",
                 )
+                HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
+                SettingsDrillRow(
+                  icon = Icons.Filled.Image,
+                  iconContainer = extended.surfaceHigh,
+                  iconTint = MaterialTheme.colorScheme.primary,
+                  title = "App Icon",
+                  subtitle = "${prefs.appIcon.label} • Tap to change the launcher icon",
+                  onClick = { viewModel.openSubPage(SettingsSubPage.APP_ICON) },
+                  testTag = "settings_row_app_icon",
+                )
               }
             }
           }
@@ -559,7 +572,7 @@ private fun SettingsHubView(
                   iconContainer = extended.surfaceHigh,
                   iconTint = MaterialTheme.colorScheme.primary,
                   title = "About toadGALLERY",
-                  subtitle = "0.5.0-beta (build 52) • Engine self-test & changelog",
+                  subtitle = "${BuildConfig.VERSION_NAME} • Engine self-test & changelog",
                   onClick = { viewModel.openSubPage(SettingsSubPage.ABOUT) },
                   testTag = "settings_row_about",
                 )
