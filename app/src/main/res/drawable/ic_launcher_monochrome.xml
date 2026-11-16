@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  toadGALLERY monochrome launcher layer — same Photo-Toad geometry as
+  ic_launcher_foreground, built for alpha-based tinting. The system renders
+  every opaque pixel in a single theme color, so face details are expressed as
+  TRANSPARENT HOLES (fillType evenOdd) instead of contrasting ink: the
+  filmstrip of thumbnail keys, the smile band and the Magic Search sparkle are
+  punched out of the photo body, and the pupils are punched out of the eye
+  bumps. The back print of the stack is omitted — a second opaque layer would
+  tint into an indistinguishable blob.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Front feet (solid, drawn first; the body covers their overlap). -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42.5,76 m-6.5,0 a6.5,2.4 0 1,0 13,0 a6.5,2.4 0 1,0 -13,0 M65.5,76 m-6.5,0 a6.5,2.4 0 1,0 13,0 a6.5,2.4 0 1,0 -13,0" />
+
+    <!-- Photo body with filmstrip / smile / sparkle punched out (evenOdd). -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M30,44 h48 a7,7 0 0 1 7,7 v16 a7,7 0 0 1 -7,7 h-48 a7,7 0 0 1 -7,-7 v-16 a7,7 0 0 1 7,-7 z
+            M40.3,67 h6.4 a1.6,1.6 0 0 1 1.6,1.6 v1.8 a1.6,1.6 0 0 1 -1.6,1.6 h-6.4 a1.6,1.6 0 0 1 -1.6,-1.6 v-1.8 a1.6,1.6 0 0 1 1.6,-1.6 z
+            M50.8,67 h6.4 a1.6,1.6 0 0 1 1.6,1.6 v1.8 a1.6,1.6 0 0 1 -1.6,1.6 h-6.4 a1.6,1.6 0 0 1 -1.6,-1.6 v-1.8 a1.6,1.6 0 0 1 1.6,-1.6 z
+            M61.3,67 h6.4 a1.6,1.6 0 0 1 1.6,1.6 v1.8 a1.6,1.6 0 0 1 -1.6,1.6 h-6.4 a1.6,1.6 0 0 1 -1.6,-1.6 v-1.8 a1.6,1.6 0 0 1 1.6,-1.6 z
+            M41.5,58.9 Q54,64.9 66.5,58.9 L66.5,62.1 Q54,68.1 41.5,62.1 Z
+            M73,45.6 C73.45,48.1 74.4,49.05 76.9,49.5 C74.4,49.95 73.45,50.9 73,53.4 C72.55,50.9 71.6,49.95 69.1,49.5 C71.6,49.05 72.55,48.1 73,45.6 Z" />
+
+    <!-- Eye bumps with pupil holes (evenOdd donuts), drawn over the body. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M45,40.5 m-7.5,0 a7.5,7.5 0 1,0 15,0 a7.5,7.5 0 1,0 -15,0 M46.8,42.3 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M63,40.5 m-7.5,0 a7.5,7.5 0 1,0 15,0 a7.5,7.5 0 1,0 -15,0 M61.2,42.3 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>

@@ -5,11 +5,13 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.toadgallery.app"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.toadgallery.tg48kx"
+    // toad family convention (toadFILES: com.toadfiles.app, toadLIGHT:
+    // com.toadlight.filter) — replaces the AI Studio scaffold id.
+    applicationId = "com.toadgallery.app"
     minSdk = 24
     targetSdk = 36
     versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
@@ -19,7 +21,7 @@ android {
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
-  // and updating Android apps in AI Studio.
+  // and updating toadGALLERY releases (permanent keystore, see android-release.yml).
   signingConfigs {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
@@ -41,13 +43,13 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
-      // AI Studio.
+      // Do not remove or modify this signingConfig assignment. It is necessary for installing
+      // and updating toadGALLERY releases.
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
-      // AI Studio.
+      // Do not remove or modify this signingConfig assignment. It is necessary for installing
+      // debug builds of toadGALLERY.
       signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
