@@ -183,4 +183,6 @@ data class UserPreferences(
   val lastMediaSyncCount: Int = 0,
   val cacheSizeMb: Float = 42.8f,
   val mlIndexSizeMb: Float = 18.4f,
+  val systemMediaSync: Boolean = false,
+  val mediaManagementPromptSeen: Boolean = false,
 )
