@@ -1,7 +1,7 @@
 package com.toadgallery.app.data.editor
 
 import android.graphics.Bitmap
-import android.graphics.LruCache
+import android.util.LruCache
 
 /**
  * Process-wide LRU for decoded, EXIF-oriented editor source bitmaps.
