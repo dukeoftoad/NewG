@@ -1,5 +1,8 @@
 package com.toadgallery.app.data.model
 
+import com.toadgallery.app.BuildConfig
+import com.toadgallery.app.domain.AppIcon
+
 import androidx.compose.runtime.Immutable
 
 enum class ThemePalette(
@@ -80,7 +83,8 @@ enum class SettingsSubPage(val title: String, val badge: String) {
   AI_ENGINE("AI Engine & Models", "On-Device"),
   VAULT_SECURITY("Hidden Vault & Security", "AES-256"),
   STORAGE("Storage Manager", "Local"),
-  ABOUT("About toadGALLERY", "Build 52"),
+  ABOUT("About toadGALLERY", "v${BuildConfig.VERSION_NAME}"),
+  APP_ICON("App Icon", "Launcher"),
 }
 
 sealed interface TimelineFolderFilter {
@@ -185,4 +189,5 @@ data class UserPreferences(
   val mlIndexSizeMb: Float = 18.4f,
   val systemMediaSync: Boolean = false,
   val mediaManagementPromptSeen: Boolean = false,
+  val appIcon: AppIcon = AppIcon.CLASSIC_TOAD,
 )
