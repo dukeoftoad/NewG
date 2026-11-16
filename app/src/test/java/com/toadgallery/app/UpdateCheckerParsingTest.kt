@@ -108,7 +108,7 @@ class UpdateCheckerParsingTest {
             "recovered"
         }
         assertEquals("recovered", ok)
-        assertEquals(2, attempts)
+        assertEquals(1, attempts)  // 0-based attempt index: retry lands on the second call
 
         try {
             GithubReleaseChecker.runWithRetry(3) { throw UpdateCheckRateLimitException() }

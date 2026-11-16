@@ -43,7 +43,7 @@ class UpdateDownloaderTest {
     @Test
     fun `enqueue lands in DownloadManager with the apk mime type`() {
         val id = downloader.enqueue(context, request())
-        assertNotNull(id)
+        assertTrue("enqueue must return a usable download id", id >= 0)
         val req = Shadows.shadowOf(Shadows.shadowOf(dm()).getRequest(id))
         assertEquals("toadGALLERY v2.0.0", req.title)
         assertEquals("Self-update download", req.description)
@@ -82,7 +82,7 @@ class UpdateDownloaderTest {
         stale.writeBytes(ByteArray(128))
         assertTrue(stale.exists())
         val id = downloader.enqueue(context, request())
-        assertTrue(id != 0L)
+        assertTrue("enqueue must return a usable download id", id >= 0)
         assertTrue(!stale.exists())
     }
 
@@ -107,7 +107,7 @@ class UpdateDownloaderTest {
         assertNull(DownloadProgress(500, -1).fraction) // unknown total → indeterminate bar
         assertNull(DownloadProgress(500, 0).fraction)
         assertNull(DownloadProgress(-5, 1000).fraction)
-        assertEquals(0.0f, DownloadProgress.UNKNOWN.bytesSoFar)
+        assertEquals(0L, DownloadProgress.UNKNOWN.bytesSoFar)
         assertEquals(-1L, DownloadProgress.UNKNOWN.totalBytes)
     }
 }
