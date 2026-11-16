@@ -104,7 +104,8 @@ class UpdateCheckerParsingTest {
         var attempts = 0
         val ok = GithubReleaseChecker.runWithRetry(2) { attempt ->
             attempts = attempt
-            if (attempt == 1) throw UpdateCheckRetryableException(503)
+            // attempt 0 (0-based) fails transiently; attempt 1 recovers.
+            if (attempt == 0) throw UpdateCheckRetryableException(503)
             "recovered"
         }
         assertEquals("recovered", ok)
