@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.SearchOff
@@ -70,11 +71,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toadgallery.app.data.media.MediaAccessLevel
+import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.data.model.AppearanceMode
 import com.toadgallery.app.data.model.GroupByMode
 import com.toadgallery.app.data.model.LayoutMode
@@ -148,6 +151,8 @@ private fun SettingsHubView(
   onSyncMediaPermissions: () -> Unit,
 ) {
   val extended = LocalToadColors.current
+  val context = LocalContext.current
+  val mediaManagementGranted = MediaPermissionHelper.hasMediaManagementPermission(context)
   val prefs = uiState.preferences
   val q = uiState.searchQuery.trim().lowercase()
   val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -160,7 +165,7 @@ private fun SettingsHubView(
   val showAi =
     matches("ai", "people", "faces", "magic search", "things", "models", "onnx", "indexing", "npu", "clip", "clustering", "bokeh", "depth", "dav2")
   val showPrivacy =
-    matches("privacy", "permissions", "mediastore", "sync", "location", "exif", "gps", "vault", "pin", "biometric", "security", "hidden")
+    matches("privacy", "permissions", "mediastore", "sync", "location", "exif", "gps", "vault", "pin", "biometric", "security", "hidden", "media management", "batch")
   val showStorage = matches("storage", "cache", "database", "data", "clear", "space", "mb", "index")
   val showAbout = matches("about", "version", "0.5.0", "diagnostics", "self-test", "changelog")
   val nothingFound = !showAppearance && !showAi && !showPrivacy && !showStorage && !showAbout
@@ -457,6 +462,26 @@ private fun SettingsHubView(
                     if (mediaAccessLevel == MediaAccessLevel.FULL) "Full" else "Sync",
                   onClick = onSyncMediaPermissions,
                   testTag = "settings_row_media_permissions",
+                )
+                HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
+                SettingsDrillRow(
+                  icon = Icons.Filled.Tune,
+                  iconContainer = extended.surfaceHigh,
+                  iconTint = MaterialTheme.colorScheme.primary,
+                  title = "Media Management",
+                  subtitle =
+                    if (mediaManagementGranted) {
+                      "Granted • batch deletes & favorites skip system dialogs"
+                    } else {
+                      "Tap to grant • smoother batch deletes and favorites"
+                    },
+                  trailingPill = if (mediaManagementGranted) "On" else "Grant",
+                  onClick = {
+                    MediaPermissionHelper.mediaManagementRequestIntent(context)?.let {
+                      context.startActivity(it)
+                    }
+                  },
+                  testTag = "settings_row_media_management",
                 )
                 HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
                 SettingsToggleRow(

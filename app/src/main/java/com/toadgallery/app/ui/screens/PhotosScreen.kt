@@ -99,6 +99,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -116,6 +118,7 @@ import com.toadgallery.app.data.model.MediaCategory
 import com.toadgallery.app.data.model.StorySlide
 import com.toadgallery.app.ui.components.MediaThumbnailCard
 import com.toadgallery.app.ui.components.ToadBrandIcon
+import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.ui.components.pinchToZoomGridColumns
 import com.toadgallery.app.ui.theme.LocalToadColors
 import com.toadgallery.app.ui.viewmodel.GalleryUiState
@@ -145,6 +148,7 @@ fun PhotosScreen(
   onOpenVault: () -> Unit,
   onSyncOrRequestMediaPermissions: () -> Unit,
   onDismissPermissionBanner: () -> Unit,
+  onDismissMediaManagementPrompt: () -> Unit,
   onResetFilters: () -> Unit,
   onOpenStory: (Int) -> Unit,
   onOpenLightbox: (Long) -> Unit,
@@ -161,6 +165,34 @@ fun PhotosScreen(
   modifier: Modifier = Modifier,
 ) {
   BackHandler(enabled = uiState.isSelectionMode) { onClearSelection() }
+
+  // "Media management" offer: shown once after a multi-item batch op when
+  // the special permission would make batch deletes/favorites smoother.
+  val promptContext = LocalContext.current
+  if (uiState.mediaManagementPrompt) {
+    AlertDialog(
+      onDismissRequest = onDismissMediaManagementPrompt,
+      title = { Text("Grant Media management?") },
+      text = {
+        Text(
+          "With Media management, batch deletes and favorites apply without the "
+            + "system confirm-each-item dialog and can sync system-wide. "
+            + "You can change this anytime in Settings.",
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            MediaPermissionHelper.mediaManagementRequestIntent(promptContext)?.let(promptContext::startActivity)
+            onDismissMediaManagementPrompt()
+          }
+        ) { Text("Grant") }
+      },
+      dismissButton = {
+        TextButton(onClick = onDismissMediaManagementPrompt) { Text("Not now") }
+      },
+    )
+  }
 
   val extended = LocalToadColors.current
   val prefs = uiState.preferences
