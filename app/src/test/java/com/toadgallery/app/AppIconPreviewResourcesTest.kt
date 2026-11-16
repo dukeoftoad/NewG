@@ -13,7 +13,6 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
 import com.toadgallery.app.domain.AppIcon
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -46,13 +45,13 @@ class AppIconPreviewResourcesTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     AppIcon.entries.forEach { icon ->
       val resId = context.resources.getIdentifier(icon.mipmapName, "mipmap", context.packageName)
-      val drawable = ContextCompat.getDrawable(context, resId)
-      assertNotNull("no drawable for ${icon.name}", drawable)
       // v2.0.0 crashed because painterResource rejects the resource type that
       // resolution lands on here (adaptive-icon XML on API 26+); ContextCompat
       // must hand back a drawable that draws. Robolectric may map the adaptive
       // XML to its own drawable type, so only the load+draw path is asserted,
       // not the concrete class.
+      val drawable =
+        checkNotNull(ContextCompat.getDrawable(context, resId)) { "no drawable for ${icon.name}" }
       drawable.setBounds(0, 0, 128, 128)
       drawable.draw(Canvas(Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)))
     }
