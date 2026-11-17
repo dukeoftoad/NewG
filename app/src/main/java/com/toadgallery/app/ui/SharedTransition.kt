@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalSharedTransitionApi::class)
+
 package com.toadgallery.app.ui
 
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -27,7 +29,6 @@ val LocalOverlayAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityS
  * are available; a no-op otherwise, so call sites stay hero-agnostic and the
  * caller never needs the experimental API itself.
  */
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun Modifier.heroSharedElement(key: String?): Modifier {
   if (key.isNullOrBlank()) return this
