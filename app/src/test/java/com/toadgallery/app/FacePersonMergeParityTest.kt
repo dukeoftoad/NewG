@@ -3,6 +3,7 @@ package com.toadgallery.app
 import androidx.room.Room
 import com.toadgallery.app.data.ai.FacePersonClusterer
 import com.toadgallery.app.data.ai.FacePersonFeedbackManager
+import com.toadgallery.app.data.ai.FacePersonGroup
 import com.toadgallery.app.data.ai.FaceCropBounds
 import com.toadgallery.app.data.ai.FaceReference
 import com.toadgallery.app.data.local.GalleryDao
@@ -226,7 +227,7 @@ class FacePersonMergeDaoSafetyTest {
         ),
       ),
     )
-    return dao.observeVisibleMedia().first().firstOrNull { it.title == title }
+    return dao.observeVisibleMedia().first().firstOrNull { it.title == title }?.id
       ?: error("insert failed: $title")
   }
 
