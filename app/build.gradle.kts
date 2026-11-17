@@ -18,7 +18,7 @@ android {
     // Fallback only: release builds override from the tag (-PversionName).
     // Kept at the current release so the in-app updater never offers a
     // downgrade to debug/CI builds.
-    versionName = providers.gradleProperty("versionName").orElse("2.0.2").get()
+    versionName = providers.gradleProperty("versionName").orElse("2.0.3").get()
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
