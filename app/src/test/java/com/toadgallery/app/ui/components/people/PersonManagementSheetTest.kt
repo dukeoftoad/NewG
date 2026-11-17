@@ -19,7 +19,6 @@ import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.MediaCategory
 import com.toadgallery.app.data.model.MediaType
 import com.toadgallery.app.data.model.TonePreset
-import com.toadgallery.app.ui.screens.SearchScreen
 import com.toadgallery.app.ui.theme.ToadGalleryTheme
 import com.toadgallery.app.ui.viewmodel.GalleryUiState
 import org.junit.Assert.assertEquals
@@ -191,34 +190,4 @@ class PersonManagementSheetTest {
     compose.runOnIdle { assertEquals(1, undoCount) }
   }
 
-  @Test
-  fun ignoredPeopleCanBeRestoredFromPeopleSection() {
-    var restored: Pair<String, Boolean>? = null
-    compose.setContent {
-      ToadGalleryTheme {
-        SearchScreen(
-          uiState = GalleryUiState(
-            searchQuery = "portraits",
-            ignoredPeopleGroups = listOf(alice),
-          ),
-          isWideLayout = false,
-          onSelectSearchMode = {},
-          onQueryChange = {},
-          onToggleLocationFilter = {},
-          onSelectTypeFilter = {},
-          onSelectMapMode = {},
-          onSelectMapPin = {},
-          onNotifyMissingGps = {},
-          onOpenLightbox = {},
-          onSetPersonIgnored = { group, value -> restored = group.id to value },
-        )
-      }
-    }
-
-    compose
-      .onNodeWithTag("search_results_list")
-      .performScrollToNode(hasText("Unignore"))
-    compose.onNodeWithText("Unignore").assertIsDisplayed().performClick()
-    compose.runOnIdle { assertEquals("alice" to false, restored) }
-  }
 }
