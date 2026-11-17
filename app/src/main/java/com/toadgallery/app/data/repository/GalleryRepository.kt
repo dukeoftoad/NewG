@@ -302,12 +302,12 @@ class GalleryRepository(
     }
 
   suspend fun setTrashed(id: Long, trashed: Boolean) {
-    dao.setTrashed(id, trashed)
+    dao.setTrashed(id, trashed, trashedAt = if (trashed) System.currentTimeMillis() else null)
   }
 
   suspend fun setTrashedBatch(ids: List<Long>, trashed: Boolean) {
     if (ids.isEmpty()) return
-    dao.setTrashedBatch(ids, trashed)
+    dao.setTrashedBatch(ids, trashed, trashedAt = if (trashed) System.currentTimeMillis() else null)
   }
 
   /**
@@ -495,6 +495,20 @@ class GalleryRepository(
   suspend fun emptyRecycleBin() {
     dao.emptyRecycleBin()
   }
+
+  /**
+   * Auto-purge pass: deletes trashed rows whose [trashedAt] is at or before
+   * [cutoffMillis]. Enforces the Recycle Bin's 30-day promise (the dialog copy
+   * says "Auto-deletes in 30 days"). Rows with NULL trashedAt are intentionally
+   * skipped — see [GalleryDao.purgeTrashedOlderThan]. Returns the row count
+   * purged so the worker can log it.
+   */
+  suspend fun purgeTrashedOlderThan(cutoffMillis: Long): Int =
+    dao.purgeTrashedOlderThan(cutoffMillis)
+
+  /** Count of trashed rows that will be auto-purged on/after [cutoffMillis]. */
+  suspend fun countTrashedOlderThan(cutoffMillis: Long): Int =
+    dao.countTrashedOlderThan(cutoffMillis)
 
   suspend fun createAlbum(name: String): Long =
     dao.insertAlbum(

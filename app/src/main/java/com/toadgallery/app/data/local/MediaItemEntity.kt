@@ -31,6 +31,14 @@ data class MediaItemEntity(
   val isFavorite: Boolean = false,
   val isHidden: Boolean = false,
   val isTrashed: Boolean = false,
+  /**
+   * Epoch millis when the row was moved to the Recycle Bin (isTrashed=true). Null
+   * when not trashed. Backed by MIGRATION_9_10: pre-existing trashed rows are
+   * seeded with the migration timestamp so they get a full 30-day window instead
+   * of being purged on the first [TrashPurgeWorker] run. The 30-day auto-purge
+   * rule (Recycle Bin dialog copy) is enforced against this column.
+   */
+  val trashedAt: Long? = null,
   val tagsCsv: String,
   val ocrText: String,
   val exifSummary: String,
