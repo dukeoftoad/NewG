@@ -48,6 +48,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.video.TrimTimelineState
 import com.toadgallery.app.data.video.VideoEditPlan
+import com.toadgallery.app.ui.MotionPolicy
 import com.toadgallery.app.ui.theme.LocalToadColors
 
 /**
@@ -114,7 +115,10 @@ fun VideoEditSheet(
   // v2.4.0: dialog windows snap open with no animation; fade+scale the
   // surface in ourselves for the entrance.
   val entrance = remember { Animatable(0f) }
-  LaunchedEffect(Unit) { entrance.animateTo(1f, tween(200)) }
+  LaunchedEffect(Unit) {
+    if (MotionPolicy.isRobolectric) entrance.snapTo(1f)
+    else entrance.animateTo(1f, tween(200))
+  }
 
   Dialog(
     onDismissRequest = onDismiss,

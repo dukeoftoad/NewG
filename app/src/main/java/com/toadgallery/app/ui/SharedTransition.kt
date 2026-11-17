@@ -32,6 +32,9 @@ val LocalOverlayAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityS
 @Composable
 fun Modifier.heroSharedElement(key: String?): Modifier {
   if (key.isNullOrBlank()) return this
+  // Robolectric: the frozen frame clock makes any shared transition keep the
+  // app permanently busy during Espresso's idle sync — skip the hero there.
+  if (MotionPolicy.isRobolectric) return this
   val shared = LocalSharedTransitionScope.current ?: return this
   val animated =
     LocalOverlayAnimatedVisibilityScope.current

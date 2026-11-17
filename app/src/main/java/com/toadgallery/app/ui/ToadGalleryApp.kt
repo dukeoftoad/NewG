@@ -327,29 +327,29 @@ fun ToadGalleryApp(
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideInHorizontally(tween(280)) { it / 4 } + fadeIn(tween(280))
-                  else slideInHorizontally(tween(280)) { -it / 4 } + fadeIn(tween(280))
+                  if (rightward) slideInHorizontally(MotionPolicy.uiSpec()) { it / 4 } + fadeIn(MotionPolicy.uiSpec())
+                  else slideInHorizontally(MotionPolicy.uiSpec()) { -it / 4 } + fadeIn(MotionPolicy.uiSpec())
                 },
                 exitTransition = {
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideOutHorizontally(tween(280)) { -it / 6 } + fadeOut(tween(280))
-                  else slideOutHorizontally(tween(280)) { it / 6 } + fadeOut(tween(280))
+                  if (rightward) slideOutHorizontally(MotionPolicy.uiSpec()) { -it / 6 } + fadeOut(MotionPolicy.uiSpec())
+                  else slideOutHorizontally(MotionPolicy.uiSpec()) { it / 6 } + fadeOut(MotionPolicy.uiSpec())
                 },
                 popEnterTransition = {
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideInHorizontally(tween(280)) { it / 4 } + fadeIn(tween(280))
-                  else slideInHorizontally(tween(280)) { -it / 4 } + fadeIn(tween(280))
+                  if (rightward) slideInHorizontally(MotionPolicy.uiSpec()) { it / 4 } + fadeIn(MotionPolicy.uiSpec())
+                  else slideInHorizontally(MotionPolicy.uiSpec()) { -it / 4 } + fadeIn(MotionPolicy.uiSpec())
                 },
                 popExitTransition = {
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideOutHorizontally(tween(280)) { -it / 6 } + fadeOut(tween(280))
-                  else slideOutHorizontally(tween(280)) { it / 6 } + fadeOut(tween(280))
+                  if (rightward) slideOutHorizontally(MotionPolicy.uiSpec()) { -it / 6 } + fadeOut(MotionPolicy.uiSpec())
+                  else slideOutHorizontally(MotionPolicy.uiSpec()) { it / 6 } + fadeOut(MotionPolicy.uiSpec())
                 },
               ) {
               composable(TopLevelTab.PHOTOS.route) {
@@ -478,8 +478,8 @@ fun ToadGalleryApp(
       }
       AnimatedVisibility(
         visible = activeLightboxItem != null,
-        enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220)),
-        exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.94f, animationSpec = tween(180)),
+        enter = fadeIn(MotionPolicy.uiSpec(220)) + scaleIn(initialScale = 0.92f, animationSpec = MotionPolicy.uiSpec(220)),
+        exit = fadeOut(MotionPolicy.uiSpec(180)) + scaleOut(targetScale = 0.94f, animationSpec = MotionPolicy.uiSpec(180)),
       ) {
         CompositionLocalProvider(LocalOverlayAnimatedVisibilityScope provides this) {
         val overlayItem = lastLightboxItem
