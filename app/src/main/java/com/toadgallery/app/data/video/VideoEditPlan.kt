@@ -65,5 +65,21 @@ data class VideoEditPlan(
     /** Guard rails: 4x fast-mo, quarter-speed slow-mo. */
     const val MIN_SPEED = 0.25f
     const val MAX_SPEED = 4.0f
+
+    /**
+     * Parses the scanner's "mm:ss" (or "h:mm:ss") duration label into
+     * milliseconds; 0 for blank/invalid labels. Used to recover the source
+     * duration for edited-copy metadata — the label is the only duration the
+     * library row carries.
+     */
+    fun parseDurationLabel(label: String?): Long {
+      if (label.isNullOrBlank()) return 0L
+      val nums = label.trim().split(":").map { it.toLongOrNull() ?: return 0L }
+      return when (nums.size) {
+        2 -> nums[0] * 60_000L + nums[1] * 1000L
+        3 -> nums[0] * 3_600_000L + nums[1] * 60_000L + nums[2] * 1000L
+        else -> 0L
+      }
+    }
   }
 }

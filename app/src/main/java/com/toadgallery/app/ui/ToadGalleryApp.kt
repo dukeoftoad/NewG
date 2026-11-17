@@ -40,7 +40,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -59,6 +61,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.toadgallery.app.data.media.MediaAccessLevel
 import com.toadgallery.app.data.media.MediaPermissionHelper
+import com.toadgallery.app.data.model.GalleryMediaItem
+import com.toadgallery.app.data.model.MediaType
 import com.toadgallery.app.data.model.SettingsSubPage
 import com.toadgallery.app.data.model.TopLevelTab
 import android.app.Activity
@@ -71,6 +75,7 @@ import com.toadgallery.app.ui.overlays.LightboxOverlay
 import com.toadgallery.app.ui.overlays.PhotoEditorScreen
 import com.toadgallery.app.ui.overlays.RecycleBinDialog
 import com.toadgallery.app.ui.overlays.StoryViewerOverlay
+import com.toadgallery.app.ui.overlays.VideoEditSheet
 import com.toadgallery.app.ui.screens.AlbumsScreen
 import com.toadgallery.app.ui.screens.PhotosScreen
 import com.toadgallery.app.ui.screens.SearchScreen
@@ -411,6 +416,7 @@ fun ToadGalleryApp(
           else lightboxList.indexOfFirst { it.id == activeLightboxId }
         }
       val activeLightboxItem = lightboxList.getOrNull(activeLightboxIdx)
+      var videoEditTarget by remember { mutableStateOf<GalleryMediaItem?>(null) }
       if (activeLightboxItem != null) {
         LightboxOverlay(
           item = activeLightboxItem,
@@ -437,9 +443,35 @@ fun ToadGalleryApp(
           onSelectTonePreset = { preset ->
             galleryViewModel.setTonePreset(activeLightboxItem.id, preset)
           },
-          onOpenEditor = { galleryViewModel.openEditor(activeLightboxItem.id) },
+          onOpenEditor = {
+            // v2.2.0 E1: videos open the dedicated edit sheet (trim/mute/
+            // speed/extract) instead of the photo editor.
+            if (activeLightboxItem.mediaType == MediaType.VIDEO) {
+              videoEditTarget = activeLightboxItem
+            } else {
+              galleryViewModel.openEditor(activeLightboxItem.id)
+            }
+          },
           onRevertToOriginal = { galleryViewModel.revertNonDestructiveEdit(activeLightboxItem) },
         )
+
+        // v2.2.0 E1: the video edit sheet, opened via the Edit button for
+        // videos. Apply saves a new "(Edited)" copy; extract saves a frame
+        // as a photo inheriting the source moment.
+        videoEditTarget?.let { videoItem ->
+          VideoEditSheet(
+            item = videoItem,
+            onDismiss = { videoEditTarget = null },
+            onApply = { plan ->
+              galleryViewModel.applyVideoEdit(videoItem, plan)
+              videoEditTarget = null
+            },
+            onExtractFrame = { positionMs ->
+              galleryViewModel.extractVideoFrame(videoItem, positionMs)
+              videoEditTarget = null
+            },
+          )
+        }
       }
 
       // Full-Screen Photo Editor Studio Overlay

@@ -1117,6 +1117,36 @@ class GalleryViewModel(
     }
   }
 
+  /**
+   * Applies a trim/mute/speed plan to a video (v2.2.0 E1). The result is a
+   * new "(Edited)" video copy; the original is untouched. The sheet closes on
+   * attempt; success/failure surface as a snack message either way.
+   */
+  fun applyVideoEdit(item: GalleryMediaItem, plan: com.toadgallery.app.data.video.VideoEditPlan) {
+    if (plan.isNoOp) {
+      emitMessage("Nothing to change")
+      return
+    }
+    viewModelScope.launch {
+      runCatching { galleryRepo.applyVideoEdit(item, plan) }
+        .onSuccess { emitMessage("Saved edited video copy") }
+        .onFailure {
+          emitMessage("Video edit failed: ${it.message?.take(60) ?: "unknown error"}")
+        }
+    }
+  }
+
+  /** Extracts the video frame at [positionMs] and saves it as a new photo. */
+  fun extractVideoFrame(item: GalleryMediaItem, positionMs: Long) {
+    viewModelScope.launch {
+      runCatching { galleryRepo.extractVideoFrame(item, positionMs) }
+        .onSuccess { emitMessage("Frame saved as photo") }
+        .onFailure {
+          emitMessage("Frame extraction failed: ${it.message?.take(60) ?: "unknown error"}")
+        }
+    }
+  }
+
   fun setTonePreset(id: Long, preset: TonePreset) {
     viewModelScope.launch {
       galleryRepo.setTonePreset(id, preset)
