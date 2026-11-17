@@ -57,7 +57,9 @@ class TrashPurgeWorkerTest {
 
   @Test
   fun setTrashedWritesTimestampAndRestoreClearsIt() = runBlocking {
-    val id = dao.insertOne("img-1")
+    // Insert a clean (non-trashed) row, then trash it via the repo — the path
+    // the app actually uses. Verified by re-querying the row.
+    val id = dao.insertCleanRow("img-1")
     repo.setTrashed(id, trashed = true)
 
     val row = dao.getMediaById(id)!!
@@ -71,9 +73,9 @@ class TrashPurgeWorkerTest {
   @Test
   fun purgeDeletesOnlyRowsOlderThanCutoff() = runBlocking {
     val now = System.currentTimeMillis()
-    val oldId = dao.insertOne("old", trashedAt = now - 31 * DAY_MS)
-    val freshId = dao.insertOne("fresh", trashedAt = now - 1_000L)
-    val noTsId = dao.insertOne("no-ts", trashedAt = null, isTrashed = true)
+    val oldId = dao.insertTrashed("old", trashedAt = now - 31 * DAY_MS)
+    val freshId = dao.insertTrashed("fresh", trashedAt = now - 1_000L)
+    val noTsId = dao.insertTrashed("no-ts", trashedAt = null)
 
     val cutoff = now - 30 * DAY_MS
     val purged = repo.purgeTrashedOlderThan(cutoff)
@@ -91,9 +93,9 @@ class TrashPurgeWorkerTest {
   @Test
   fun countMatchesPurgeEligibleSet() = runBlocking {
     val now = System.currentTimeMillis()
-    dao.insertOne("old-1", trashedAt = now - 40 * DAY_MS)
-    dao.insertOne("old-2", trashedAt = now - 31 * DAY_MS)
-    dao.insertOne("fresh", trashedAt = now - 1_000L)
+    dao.insertTrashed("old-1", trashedAt = now - 40 * DAY_MS)
+    dao.insertTrashed("old-2", trashedAt = now - 31 * DAY_MS)
+    dao.insertTrashed("fresh", trashedAt = now - 1_000L)
 
     val cutoff = now - 30 * DAY_MS
     assertEquals("count matches what the next purge would delete", 2, repo.countTrashedOlderThan(cutoff))
@@ -104,8 +106,8 @@ class TrashPurgeWorkerTest {
   @Test
   fun workerPurgesExpiredRowsAndLeavesFreshOnesAlone() = runBlocking {
     val now = System.currentTimeMillis()
-    dao.insertOne("expired", trashedAt = now - 31 * DAY_MS)
-    dao.insertOne("fresh", trashedAt = now - 1_000L)
+    dao.insertTrashed("expired", trashedAt = now - 31 * DAY_MS)
+    dao.insertTrashed("fresh", trashedAt = now - 1_000L)
 
     val worker = TestListenableWorkerBuilder
       .from<TrashPurgeWorker>(RuntimeEnvironment.getApplication(), TrashPurgeWorker::class.java)
@@ -132,45 +134,46 @@ class TrashPurgeWorkerTest {
     const val DAY_MS = 24L * 60 * 60 * 1000
   }
 
-  /** Minimal MediaItemEntity with only the fields the test cares about set. */
-  private suspend fun GalleryDao.insertOne(
-    title: String,
-    isTrashed: Boolean = false,
-    trashedAt: Long? = null,
-  ): Long {
-    insertMedia(
-      listOf(
-        MediaItemEntity(
-          title = title,
-          category = "CAMERA",
-          mediaType = "PHOTO",
-          dateLabel = "2026-01-01",
-          weekGroup = "2026-W01",
-          monthGroup = "2026-01",
-          timestamp = 0L,
-          locationName = "",
-          hasGps = false,
-          mapX = 0f,
-          mapY = 0f,
-          aspectRatio = 1f,
-          tagsCsv = "",
-          ocrText = "",
-          exifSummary = "",
-          isTrashed = isTrashed,
-          trashedAt = trashedAt,
-        ),
-      ),
-    )
-    // autoGenerate = true; find by rowContent. No general byTitle query exists,
-    // so look it up in the trashed flow (every test inserts trashed rows).
-    return observeTrashedMedia().first().firstOrNull { it.title == title }?.id
-      ?: byIdViaAll(title) ?: error("insert failed for $title")
+  /** A clean (not-trashed) row, used by the trash-via-repo test. */
+  private suspend fun GalleryDao.insertCleanRow(title: String): Long {
+    insertMedia(listOf(baseEntity(title, isTrashed = false, trashedAt = null)))
+    return findByTitle(title)
   }
 
-  /** Insert-without-trash lookup: scan visibleMedia-shaped rows. Used only when
-   *  the row was not trashed at insert time (the "setTrashedWritesTimestamp"
-   *  test inserts a clean row and trashes it later, so the post-trash lookup
-   *  goes through observeTrashedMedia; this branch covers the insert step). */
-  private suspend fun GalleryDao.byIdViaAll(title: String): Long? =
-    observeVisibleMedia().first().firstOrNull { it.title == title }?.id
+  /** A row already in the trashed state at the given timestamp. */
+  private suspend fun GalleryDao.insertTrashed(title: String, trashedAt: Long?): Long {
+    insertMedia(listOf(baseEntity(title, isTrashed = true, trashedAt = trashedAt)))
+    return findByTitle(title)
+  }
+
+  private fun baseEntity(
+    title: String,
+    isTrashed: Boolean,
+    trashedAt: Long?,
+  ) = MediaItemEntity(
+    title = title,
+    category = "CAMERA",
+    mediaType = "PHOTO",
+    dateLabel = "2026-01-01",
+    weekGroup = "2026-W01",
+    monthGroup = "2026-01",
+    timestamp = 0L,
+    locationName = "",
+    hasGps = false,
+    mapX = 0f,
+    mapY = 0f,
+    aspectRatio = 1f,
+    tagsCsv = "",
+    ocrText = "",
+    exifSummary = "",
+    isTrashed = isTrashed,
+    trashedAt = trashedAt,
+  )
+
+  /** Look up a row by title across the trashed + visible flows. */
+  private suspend fun GalleryDao.findByTitle(title: String): Long {
+    observeTrashedMedia().first().firstOrNull { it.title == title }?.let { return it.id }
+    observeVisibleMedia().first().firstOrNull { it.title == title }?.let { return it.id }
+    error("row not found after insert: $title")
+  }
 }
