@@ -4,13 +4,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.topCenter
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,17 +36,16 @@ class PeopleManagerRobolectricTest {
     composeTestRule
       .onNodeWithTag("settings_hub_list")
       .performScrollToNode(hasTestTag("settings_row_people_manager"))
-    composeTestRule.onNodeWithTag("settings_row_people_manager").performClick()
+    // The tiny Robolectric window leaves the row half-clipped at the viewport
+    // edge after scrollToNode, where a center-click lands off-window and gets
+    // swallowed — click its visible top edge instead.
+    composeTestRule
+      .onNodeWithTag("settings_row_people_manager")
+      .performTouchInput { click(topCenter) }
 
     // The sub page swaps in via AnimatedContent — wait for the router to land.
-    try {
-      composeTestRule.waitUntil(timeoutMillis = 10_000) {
-        composeTestRule.onAllNodesWithTag("people_manager_list").fetchSemanticsNodes().isNotEmpty()
-      }
-    } catch (e: Throwable) {
-      println("=== SEMANTICS TREE AFTER CLICK ===")
-      println(composeTestRule.onRoot().printToString(maxDepth = 30))
-      throw e
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      composeTestRule.onAllNodesWithTag("people_manager_list").fetchSemanticsNodes().isNotEmpty()
     }
     composeTestRule.onNodeWithTag("people_manager_list").assertExists()
 
