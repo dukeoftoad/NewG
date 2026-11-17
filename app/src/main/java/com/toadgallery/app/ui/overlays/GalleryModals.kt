@@ -189,13 +189,25 @@ fun RecycleBinDialog(
   BackHandler(onBack = onClose)
   val extended = LocalToadColors.current
 
+  // v2.4.0: fade+scale entrance — dialog windows otherwise snap open.
+  val entrance = remember { Animatable(0f) }
+  LaunchedEffect(Unit) { entrance.animateTo(1f, tween(200)) }
+
   Dialog(
     onDismissRequest = onClose,
     properties = DialogProperties(usePlatformDefaultWidth = false),
   ) {
     Surface(
       modifier =
-        Modifier.fillMaxWidth(0.92f).widthIn(max = 500.dp).padding(vertical = 24.dp),
+        Modifier.fillMaxWidth(0.92f)
+          .widthIn(max = 500.dp)
+          .padding(vertical = 24.dp)
+          .graphicsLayer {
+            alpha = entrance.value
+            val s = 0.94f + 0.06f * entrance.value
+            scaleX = s
+            scaleY = s
+          },
       shape = RoundedCornerShape(28.dp),
       color = MaterialTheme.colorScheme.surface,
       border = BorderStroke(1.dp, extended.borderStrong),

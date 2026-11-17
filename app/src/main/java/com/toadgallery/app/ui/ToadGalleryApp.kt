@@ -2,6 +2,14 @@ package com.toadgallery.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -297,10 +305,44 @@ fun ToadGalleryApp(
                   onDismiss = startupUpdate::dismissBanner,
                 )
               }
+              fun tabIndexFor(route: String?): Int =
+                TOP_LEVEL_TABS.indexOfFirst { it.tab.route == route }.coerceAtLeast(0)
+
               NavHost(
                 navController = navController,
                 startDestination = TopLevelTab.PHOTOS.route,
                 modifier = Modifier.fillMaxSize().weight(1f),
+                // v2.4.0: direction-aware tab slides — tabs to the right of
+                // the current one enter from the right, tabs to the left from
+                // the left, with a gentle fade. Back (pop) keeps the same feel.
+                enterTransition = {
+                  val rightward =
+                    tabIndexFor(targetState.destination.route) >
+                      tabIndexFor(initialState.destination.route)
+                  if (rightward) slideInHorizontally(tween(280)) { it / 4 } + fadeIn(tween(280))
+                  else slideInHorizontally(tween(280)) { -it / 4 } + fadeIn(tween(280))
+                },
+                exitTransition = {
+                  val rightward =
+                    tabIndexFor(targetState.destination.route) >
+                      tabIndexFor(initialState.destination.route)
+                  if (rightward) slideOutHorizontally(tween(280)) { -it / 6 } + fadeOut(tween(280))
+                  else slideOutHorizontally(tween(280)) { it / 6 } + fadeOut(tween(280))
+                },
+                popEnterTransition = {
+                  val rightward =
+                    tabIndexFor(targetState.destination.route) >
+                      tabIndexFor(initialState.destination.route)
+                  if (rightward) slideInHorizontally(tween(280)) { it / 4 } + fadeIn(tween(280))
+                  else slideInHorizontally(tween(280)) { -it / 4 } + fadeIn(tween(280))
+                },
+                popExitTransition = {
+                  val rightward =
+                    tabIndexFor(targetState.destination.route) >
+                      tabIndexFor(initialState.destination.route)
+                  if (rightward) slideOutHorizontally(tween(280)) { -it / 6 } + fadeOut(tween(280))
+                  else slideOutHorizontally(tween(280)) { it / 6 } + fadeOut(tween(280))
+                },
               ) {
               composable(TopLevelTab.PHOTOS.route) {
                 PhotosScreen(
@@ -417,60 +459,74 @@ fun ToadGalleryApp(
         }
       val activeLightboxItem = lightboxList.getOrNull(activeLightboxIdx)
       var videoEditTarget by remember { mutableStateOf<GalleryMediaItem?>(null) }
+      // v2.4.0: the lightbox fades/scales in and out instead of popping. The
+      // item is latched so content survives the exit animation —
+      // activeLightboxItem goes null the moment the lightbox closes.
+      var lastLightboxItem by remember { mutableStateOf<GalleryMediaItem?>(null) }
       if (activeLightboxItem != null) {
-        LightboxOverlay(
-          item = activeLightboxItem,
-          hasPrevious = activeLightboxIdx > 0,
-          hasNext = activeLightboxIdx in 0 until lightboxList.lastIndex,
-          showLocationExif = prefs.showLocationExif,
-          onPrevious = { galleryViewModel.stepLightbox(-1) },
-          onNext = { galleryViewModel.stepLightbox(1) },
-          onClose = galleryViewModel::closeLightbox,
-          onToggleFavorite = { galleryViewModel.toggleFavorite(activeLightboxItem) },
-          onShare = {
-            galleryViewModel.shareMediaItem(activeLightboxItem) { chooserIntent ->
-              if (context !is Activity) {
-                chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-              }
-              runCatching { context.startActivity(chooserIntent) }
-                .onFailure {
-                  galleryViewModel.showMessage("No compatible share app available")
+        lastLightboxItem = activeLightboxItem
+      }
+      AnimatedVisibility(
+        visible = activeLightboxItem != null,
+        enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220)),
+        exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.94f, animationSpec = tween(180)),
+      ) {
+        val overlayItem = lastLightboxItem
+        if (overlayItem != null) {
+          LightboxOverlay(
+            item = overlayItem,
+            hasPrevious = activeLightboxIdx > 0,
+            hasNext = activeLightboxIdx in 0 until lightboxList.lastIndex,
+            showLocationExif = prefs.showLocationExif,
+            onPrevious = { galleryViewModel.stepLightbox(-1) },
+            onNext = { galleryViewModel.stepLightbox(1) },
+            onClose = galleryViewModel::closeLightbox,
+            onToggleFavorite = { galleryViewModel.toggleFavorite(overlayItem) },
+            onShare = {
+              galleryViewModel.shareMediaItem(overlayItem) { chooserIntent ->
+                if (context !is Activity) {
+                  chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-            }
-          },
-          onHideToVault = { galleryViewModel.hideToVault(activeLightboxItem.id) },
-          onMoveToTrash = { galleryViewModel.moveToTrash(activeLightboxItem.id) },
-          onSelectTonePreset = { preset ->
-            galleryViewModel.setTonePreset(activeLightboxItem.id, preset)
-          },
-          onOpenEditor = {
-            // v2.2.0 E1: videos open the dedicated edit sheet (trim/mute/
-            // speed/extract) instead of the photo editor.
-            if (activeLightboxItem.mediaType == MediaType.VIDEO) {
-              videoEditTarget = activeLightboxItem
-            } else {
-              galleryViewModel.openEditor(activeLightboxItem.id)
-            }
-          },
-          onRevertToOriginal = { galleryViewModel.revertNonDestructiveEdit(activeLightboxItem) },
-        )
-
-        // v2.2.0 E1: the video edit sheet, opened via the Edit button for
-        // videos. Apply saves a new "(Edited)" copy; extract saves a frame
-        // as a photo inheriting the source moment.
-        videoEditTarget?.let { videoItem ->
-          VideoEditSheet(
-            item = videoItem,
-            onDismiss = { videoEditTarget = null },
-            onApply = { plan ->
-              galleryViewModel.applyVideoEdit(videoItem, plan)
-              videoEditTarget = null
+                runCatching { context.startActivity(chooserIntent) }
+                  .onFailure {
+                    galleryViewModel.showMessage("No compatible share app available")
+                  }
+              }
             },
-            onExtractFrame = { positionMs ->
-              galleryViewModel.extractVideoFrame(videoItem, positionMs)
-              videoEditTarget = null
+            onHideToVault = { galleryViewModel.hideToVault(overlayItem.id) },
+            onMoveToTrash = { galleryViewModel.moveToTrash(overlayItem.id) },
+            onSelectTonePreset = { preset ->
+              galleryViewModel.setTonePreset(overlayItem.id, preset)
             },
+            onOpenEditor = {
+              // v2.2.0 E1: videos open the dedicated edit sheet (trim/mute/
+              // speed/extract) instead of the photo editor.
+              if (overlayItem.mediaType == MediaType.VIDEO) {
+                videoEditTarget = overlayItem
+              } else {
+                galleryViewModel.openEditor(overlayItem.id)
+              }
+            },
+            onRevertToOriginal = { galleryViewModel.revertNonDestructiveEdit(overlayItem) },
           )
+
+          // v2.2.0 E1: the video edit sheet, opened via the Edit button for
+          // videos. Apply saves a new "(Edited)" copy; extract saves a frame
+          // as a photo inheriting the source moment.
+          videoEditTarget?.let { videoItem ->
+            VideoEditSheet(
+              item = videoItem,
+              onDismiss = { videoEditTarget = null },
+              onApply = { plan ->
+                galleryViewModel.applyVideoEdit(videoItem, plan)
+                videoEditTarget = null
+              },
+              onExtractFrame = { positionMs ->
+                galleryViewModel.extractVideoFrame(videoItem, positionMs)
+                videoEditTarget = null
+              },
+            )
+          }
         }
       }
 
