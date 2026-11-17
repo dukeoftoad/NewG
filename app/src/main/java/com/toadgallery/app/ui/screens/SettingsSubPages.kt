@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +48,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +78,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toadgallery.app.data.ai.FaceModelManager
+import com.toadgallery.app.data.ai.FacePersonGroup
+import com.toadgallery.app.data.ai.orderFaceAssignmentTargets
+import com.toadgallery.app.ui.components.people.FaceThumbnail
+import com.toadgallery.app.ui.components.people.PersonManagementSheet
 import com.toadgallery.app.data.model.AppearanceMode
 import com.toadgallery.app.data.model.ThemePalette
 import com.toadgallery.app.data.model.VaultAutoLock
@@ -83,9 +91,12 @@ import androidx.core.content.ContextCompat
 import com.toadgallery.app.ui.components.DrawablePainter
 import com.toadgallery.app.ui.components.ToadSwitch
 import com.toadgallery.app.ui.theme.LocalToadColors
+import com.toadgallery.app.ui.viewmodel.GalleryUiState
+import com.toadgallery.app.ui.viewmodel.GalleryViewModel
 import com.toadgallery.app.ui.viewmodel.SettingsUiState
 import com.toadgallery.app.ui.viewmodel.SettingsViewModel
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 internal fun SettingsSubPageHeader(
@@ -1488,4 +1499,311 @@ private fun AppIconTile(
       )
     }
   }
+}
+
+@Composable
+internal fun SettingsSubPeopleManagerPage(
+  viewModel: SettingsViewModel,
+  galleryState: GalleryUiState,
+  galleryViewModel: GalleryViewModel,
+) {
+  val extended = LocalToadColors.current
+  var personBeingNamed by remember { mutableStateOf<FacePersonGroup?>(null) }
+  val mediaById =
+    remember(galleryState.visibleMedia) { galleryState.visibleMedia.associateBy { it.id } }
+
+  Column(modifier = Modifier.fillMaxSize()) {
+    SettingsSubPageHeader(
+      title = "People Manager",
+      badge = "Faces",
+      onBack = viewModel::backToHub,
+    )
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+      LazyColumn(
+        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp).testTag("people_manager_list"),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        item {
+          SettingsGroupCard {
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              Text("People management", style = MaterialTheme.typography.titleMedium)
+              Text(
+                "One place to manage detected people: rename, ignore, restore and assign " +
+                  "unassigned faces. Ignored people stay out of the People page but remain " +
+                  "visible and editable here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = extended.textMuted,
+              )
+              Text(
+                "${galleryState.peopleGroups.size} people • " +
+                  "${galleryState.ignoredPeopleGroups.size} hidden • " +
+                  "${galleryState.unassignedFaceGroups.size} unassigned faces",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+              )
+            }
+          }
+        }
+
+        if (
+          galleryState.peopleGroups.isEmpty() &&
+            galleryState.ignoredPeopleGroups.isEmpty() &&
+            galleryState.unassignedFaceGroups.isEmpty()
+        ) {
+          item {
+            SettingsGroupCard {
+              Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+              ) {
+                Text("No people detected yet", style = MaterialTheme.typography.titleSmall)
+                Text(
+                  "Turn on People albums and run library indexing in AI Engine — detected " +
+                    "faces will show up here for naming and assignment.",
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = extended.textMuted,
+                )
+              }
+            }
+          }
+        }
+
+        if (galleryState.peopleGroups.isNotEmpty()) {
+          item(key = "manager_people_header") {
+            Text(
+              "PEOPLE",
+              style = MaterialTheme.typography.labelSmall,
+              color = extended.textMuted,
+            )
+          }
+          itemsIndexed(
+            items = galleryState.peopleGroups,
+            key = { _, group -> "manager_person_${group.id}" },
+            contentType = { _, _ -> "manager_person_row" },
+          ) { index, group ->
+            Row(
+              modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                val coverFace =
+                  group.faces.firstOrNull {
+                    it.photoId == group.coverPhotoId && it.faceIndex == group.coverFaceIndex
+                  } ?: group.faces.firstOrNull()
+                val cover = coverFace?.let { mediaById[it.photoId] }
+                if (coverFace != null && cover != null) {
+                  FaceThumbnail(
+                    item = cover,
+                    bounds = group.faceBounds[coverFace],
+                    sourceRevision = galleryState.faceIndexRevisions[coverFace.photoId] ?: 0L,
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
+                  )
+                }
+                Column {
+                  Text(
+                    group.name?.takeIf { it.isNotBlank() } ?: "Person ${index + 1}",
+                    style = MaterialTheme.typography.bodyMedium,
+                  )
+                  Text(
+                    "${group.photoIds.size} photos • ${group.faceCount} faces",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extended.textMuted,
+                  )
+                }
+              }
+              TextButton(onClick = { personBeingNamed = group }) {
+                Text(if (group.name.isNullOrBlank()) "Name" else "Manage")
+              }
+            }
+          }
+        }
+
+        if (galleryState.ignoredPeopleGroups.isNotEmpty()) {
+          item(key = "manager_ignored_people_header") {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+              Text(
+                "IGNORED PEOPLE",
+                style = MaterialTheme.typography.labelSmall,
+                color = extended.textMuted,
+              )
+              Text(
+                "Hidden from the People page — restore or manage them here",
+                style = MaterialTheme.typography.labelSmall,
+                color = extended.textMuted,
+              )
+            }
+          }
+          itemsIndexed(
+            items = galleryState.ignoredPeopleGroups,
+            key = { _, group -> "manager_ignored_person_${group.id}" },
+            contentType = { _, _ -> "manager_ignored_person_row" },
+          ) { index, group ->
+            Row(
+              modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                val coverFace =
+                  group.faces.firstOrNull {
+                    it.photoId == group.coverPhotoId && it.faceIndex == group.coverFaceIndex
+                  } ?: group.faces.firstOrNull()
+                val cover = coverFace?.let { mediaById[it.photoId] }
+                if (coverFace != null && cover != null) {
+                  FaceThumbnail(
+                    item = cover,
+                    bounds = group.faceBounds[coverFace],
+                    sourceRevision = galleryState.faceIndexRevisions[coverFace.photoId] ?: 0L,
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
+                  )
+                }
+                Column {
+                  Text(
+                    group.name?.takeIf { it.isNotBlank() } ?: "Ignored person ${index + 1}",
+                    style = MaterialTheme.typography.bodyMedium,
+                  )
+                  Text(
+                    "${group.photoIds.size} photos",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extended.textMuted,
+                  )
+                }
+              }
+              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { personBeingNamed = group }) { Text("Manage") }
+                TextButton(onClick = { galleryViewModel.setFacePersonIgnored(group, false) }) {
+                  Text("Unignore")
+                }
+              }
+            }
+          }
+        }
+
+        if (galleryState.unassignedFaceGroups.isNotEmpty()) {
+          item(key = "manager_unassigned_faces_header") {
+            Text(
+              "UNASSIGNED FACES",
+              style = MaterialTheme.typography.labelSmall,
+              color = extended.textMuted,
+            )
+          }
+          items(
+            items = galleryState.unassignedFaceGroups,
+            key = { candidate -> "manager_unassigned_face_${candidate.id}" },
+            contentType = { "manager_unassigned_face_row" },
+          ) { candidate ->
+            val face = candidate.faces.firstOrNull()
+            val photo = face?.let { mediaById[it.photoId] }
+            if (face != null && photo != null) {
+              val suggestionsForFace = galleryState.facePersonSuggestions[candidate.id].orEmpty()
+              val suggestionScoreById =
+                remember(suggestionsForFace) {
+                  suggestionsForFace.associateBy { it.personId }
+                }
+              val orderedTargets =
+                remember(galleryState.peopleGroups, suggestionsForFace) {
+                  orderFaceAssignmentTargets(galleryState.peopleGroups, suggestionsForFace)
+                }
+              Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                FaceThumbnail(
+                  item = photo,
+                  bounds = candidate.faceBounds[face],
+                  sourceRevision = galleryState.faceIndexRevisions[face.photoId] ?: 0L,
+                  modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)),
+                )
+                Column(
+                  modifier = Modifier.weight(1f),
+                  verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                  Text(
+                    photo.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                  )
+                  Text(
+                    text =
+                      if (suggestionsForFace.isNotEmpty()) "Unassigned • Suggested match ready"
+                      else "Unassigned detected face",
+                    style = MaterialTheme.typography.labelSmall,
+                    color =
+                      if (suggestionsForFace.isNotEmpty()) MaterialTheme.colorScheme.primary
+                      else extended.textMuted,
+                  )
+                }
+                TextButton(onClick = { personBeingNamed = candidate }) { Text("Name") }
+                var assignMenuExpanded by
+                  remember(face.photoId, face.faceIndex) { mutableStateOf(false) }
+                Box {
+                  TextButton(onClick = { assignMenuExpanded = true }) { Text("Assign") }
+                  DropdownMenu(
+                    expanded = assignMenuExpanded,
+                    onDismissRequest = { assignMenuExpanded = false },
+                  ) {
+                    if (suggestionScoreById.isNotEmpty()) {
+                      DropdownMenuItem(
+                        text = { Text("SUGGESTED MATCHES") },
+                        enabled = false,
+                        onClick = {},
+                      )
+                    }
+                    orderedTargets.forEach { target ->
+                      val matchInfo = suggestionScoreById[target.id]
+                      val similarityPct =
+                        matchInfo?.let {
+                          ((1f - it.medianDistance.coerceIn(0f, 1f)) * 100f).roundToInt()
+                        }
+                      DropdownMenuItem(
+                        text = {
+                          Text(
+                            (target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") +
+                              if (similarityPct != null) " · Suggested ($similarityPct%)"
+                              else ""
+                          )
+                        },
+                        onClick = {
+                          galleryViewModel.assignFaceToPerson(face.photoId, face.faceIndex, target)
+                          assignMenuExpanded = false
+                        },
+                      )
+                    }
+                  }
+                }
+                TextButton(onClick = { galleryViewModel.setFacePersonIgnored(candidate, true) }) {
+                  Text("Ignore")
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  PersonManagementSheet(
+    group = personBeingNamed,
+    uiState = galleryState,
+    onDismiss = { personBeingNamed = null },
+    onNamePerson = galleryViewModel::setFacePersonName,
+    onExcludeFace = galleryViewModel::excludeFaceFromPerson,
+    onSetPersonCover = galleryViewModel::setFacePersonCover,
+    onSetPersonIgnored = galleryViewModel::setFacePersonIgnored,
+    onAssignFace = galleryViewModel::assignFaceToPerson,
+    onUndoFaceCorrection = galleryViewModel::undoLastFaceCorrection,
+  )
 }

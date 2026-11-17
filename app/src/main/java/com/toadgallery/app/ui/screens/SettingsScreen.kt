@@ -83,6 +83,8 @@ import com.toadgallery.app.BuildConfig
 import com.toadgallery.app.data.model.GroupByMode
 import com.toadgallery.app.data.model.LayoutMode
 import com.toadgallery.app.data.model.SettingsSubPage
+import com.toadgallery.app.ui.viewmodel.GalleryUiState
+import com.toadgallery.app.ui.viewmodel.GalleryViewModel
 import com.toadgallery.app.ui.components.HeroGradientCard
 import com.toadgallery.app.ui.components.SectionHeading
 import com.toadgallery.app.ui.components.StorageBreakdownBar
@@ -97,6 +99,8 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
   uiState: SettingsUiState,
   viewModel: SettingsViewModel,
+  galleryState: GalleryUiState,
+  galleryViewModel: GalleryViewModel,
   mediaAccessLevel: MediaAccessLevel,
   onSyncMediaPermissions: () -> Unit,
   onOpenVaultModal: () -> Unit,
@@ -140,6 +144,12 @@ fun SettingsScreen(
         )
       SettingsSubPage.STORAGE -> SettingsSubStoragePage(uiState = uiState, viewModel = viewModel)
       SettingsSubPage.ABOUT -> SettingsSubAboutPage(uiState = uiState, viewModel = viewModel)
+      SettingsSubPage.PEOPLE_MANAGER ->
+        SettingsSubPeopleManagerPage(
+          viewModel = viewModel,
+          galleryState = galleryState,
+          galleryViewModel = galleryViewModel,
+        )
     }
   }
 }
@@ -442,6 +452,21 @@ private fun SettingsHubView(
                   containerColor = extended.surfaceHigh,
                   onClick = { viewModel.openSubPage(SettingsSubPage.AI_ENGINE) },
                   testTag = "settings_row_ai_engine",
+                )
+                HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
+                SettingsDrillRow(
+                  icon = Icons.Filled.Group,
+                  iconContainer = MaterialTheme.colorScheme.primaryContainer,
+                  iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
+                  title = "People Manager",
+                  subtitle =
+                    "Rename, ignore & assign faces • " +
+                      "${galleryState.peopleGroups.size} people, " +
+                      "${galleryState.ignoredPeopleGroups.size} hidden, " +
+                      "${galleryState.unassignedFaceGroups.size} unassigned",
+                  trailingBadgeColor = MaterialTheme.colorScheme.primary,
+                  onClick = { viewModel.openSubPage(SettingsSubPage.PEOPLE_MANAGER) },
+                  testTag = "settings_row_people_manager",
                 )
               }
             }
