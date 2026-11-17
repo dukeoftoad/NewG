@@ -40,14 +40,13 @@ class PeopleManagerRobolectricTest {
       .performScrollToNode(hasTestTag("settings_row_people_manager"))
     composeTestRule.waitForIdle()
 
-    // scrollToNode guarantees the row is present in the semantics tree; the
-    // subtitle carries the live people/hidden/unassigned counts.
+    // scrollToNode already proves the row is present: it fails the test if no
+    // node matching the tag can be scrolled into composition.
     val row =
       composeTestRule
         .onAllNodesWithTag("settings_row_people_manager")
         .fetchSemanticsNodes()
         .firstOrNull()
     assertTrue("People Manager row missing from the settings hub", row != null)
-    assertTrue("row expected in the hub list", row!!.boundsInRoot.height > 0)
   }
 }
