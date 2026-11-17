@@ -40,6 +40,8 @@ import org.robolectric.annotation.Config
  * first available face). Rejection is bound to the face's stable ID, so a
  * rejected face does not come back as a suggestion after detector reordering.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class FacePersonSuggestionParityTest {
   private lateinit var database: ToadGalleryDatabase
   private lateinit var dao: GalleryDao
