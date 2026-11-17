@@ -117,6 +117,7 @@ import com.toadgallery.app.data.model.LayoutMode
 import com.toadgallery.app.data.model.MediaCategory
 import com.toadgallery.app.data.model.StorySlide
 import com.toadgallery.app.ui.components.MediaThumbnailCard
+import com.toadgallery.app.ui.components.OnThisDayCard
 import com.toadgallery.app.ui.components.ToadBrandIcon
 import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.ui.components.pinchToZoomGridColumns
@@ -836,6 +837,16 @@ fun PhotosScreen(
               }
             }
           } else {
+            // v2.2.0 E2: "On this day" memories card — media from this
+            // month+day in earlier years. Hidden when there is nothing.
+            if (uiState.onThisDay.isNotEmpty()) {
+              item(key = "on_this_day_card", contentType = "memories_card") {
+                OnThisDayCard(
+                  items = uiState.onThisDay,
+                  onOpenLightbox = onOpenLightbox,
+                )
+              }
+            }
             preparedSections.forEach { section ->
               val sectionTitle = section.title
               val sectionItems = section.items
