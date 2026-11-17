@@ -159,6 +159,7 @@ fun ToadGalleryApp(
     palette = prefs.palette,
     appearanceMode = prefs.appearanceMode,
     useDynamicColors = prefs.useDynamicColors,
+    appFont = prefs.appFont,
   ) {
     val extended = LocalToadColors.current
     val navController = rememberNavController()

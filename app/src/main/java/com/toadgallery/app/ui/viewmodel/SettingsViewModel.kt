@@ -13,6 +13,7 @@ import com.toadgallery.app.data.ai.FaceIndexState
 import com.toadgallery.app.data.ai.FaceModelManager
 import com.toadgallery.app.data.ai.FaceModelPackState
 import com.toadgallery.app.data.model.AppearanceMode
+import com.toadgallery.app.domain.AppFont
 import com.toadgallery.app.domain.AppIcon
 import com.toadgallery.app.domain.PackageManagerAppIconSwitcher
 import com.toadgallery.app.data.model.GroupByMode
@@ -151,6 +152,13 @@ class SettingsViewModel(
 
   fun selectAppearanceMode(mode: AppearanceMode) {
     viewModelScope.launch { prefsRepo.updateAppearanceMode(mode) }
+  }
+
+  fun selectAppFont(font: AppFont) {
+    viewModelScope.launch {
+      prefsRepo.setAppFont(font)
+      _messages.tryEmit("Font set to \"${font.label}\"")
+    }
   }
 
   fun toggleDynamicColors() {

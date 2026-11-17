@@ -227,3 +227,162 @@ val BotanicalLightExtended =
     onDangerContainer = Color(0xFFB91C1C),
     isLight = true,
   )
+
+// 6. Toad Forest Dark — adapted from toadFILES' ToadThemes.DarkForestDark:
+// deep moss over near-black, a lively leaf green does the talking, amber
+// warms up highlights.
+val ToadForestDarkScheme: ColorScheme =
+  darkColorScheme(
+    primary = Color(0xFF9FE06B),
+    onPrimary = Color(0xFF1A3700),
+    primaryContainer = Color(0xFF2E5312),
+    onPrimaryContainer = Color(0xFFB9F18A),
+    secondary = Color(0xFFBACCB3),
+    onSecondary = Color(0xFF253423),
+    secondaryContainer = Color(0xFF3B4B38),
+    onSecondaryContainer = Color(0xFFD5E8CD),
+    tertiary = Color(0xFFFFB855),
+    onTertiary = Color(0xFF4A2B00),
+    tertiaryContainer = Color(0xFF683F00),
+    onTertiaryContainer = Color(0xFFFFDDB5),
+    background = Color(0xFF0D120E),
+    onBackground = Color(0xFFDDE5DA),
+    surface = Color(0xFF0D120E),
+    onSurface = Color(0xFFDDE5DA),
+    surfaceVariant = Color(0xFF3F4A3B),
+    onSurfaceVariant = Color(0xFFBFCAB9),
+    outline = Color(0xFF89957F),
+    outlineVariant = Color(0xFF3F4A3B),
+    scrim = Color.Black,
+    inverseSurface = Color(0xFFDDE5DA),
+    inverseOnSurface = Color(0xFF2A312A),
+    inversePrimary = Color(0xFF3D6509),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    surfaceContainerLowest = Color(0xFF080C08),
+    surfaceContainerLow = Color(0xFF141A14),
+    surfaceContainer = Color(0xFF181F18),
+    surfaceContainerHigh = Color(0xFF232B21),
+    surfaceContainerHighest = Color(0xFF2D362B),
+  )
+
+val ToadForestExtended =
+  ToadExtendedColors(
+    surfaceHigh = Color(0xFF232B21),
+    surfaceHighest = Color(0xFF2D362B),
+    glassSurface = Color(0xD60D120E),
+    borderSubtle = Color(0x249FE06B),
+    borderStrong = Color(0x599FE06B),
+    textMuted = Color(0xFFBFCAB9),
+    textDim = Color(0xFF89957F),
+    dangerContainer = Color(0x2EEF4444),
+    onDangerContainer = Color(0xFFFFB4AB),
+    isLight = false,
+  )
+
+// 7. Slate Neon Dark — adapted from toadFILES' ToadThemes.SlateNeonDark:
+// graphite surfaces, OLED-true blacks, exactly one electric green and a cold
+// cyan for tertiary contrast.
+val SlateNeonDarkScheme: ColorScheme =
+  darkColorScheme(
+    primary = Color(0xFF57F2A0),
+    onPrimary = Color(0xFF00391E),
+    primaryContainer = Color(0xFF005231),
+    onPrimaryContainer = Color(0xFF7CFFBC),
+    secondary = Color(0xFFB6C0BB),
+    onSecondary = Color(0xFF222925),
+    secondaryContainer = Color(0xFF38403C),
+    onSecondaryContainer = Color(0xFFD2DCD6),
+    tertiary = Color(0xFF82E3FF),
+    onTertiary = Color(0xFF003441),
+    tertiaryContainer = Color(0xFF004C5E),
+    onTertiaryContainer = Color(0xFFB4EBFF),
+    background = Color(0xFF0A0C0B),
+    onBackground = Color(0xFFDDE5E0),
+    surface = Color(0xFF0A0C0B),
+    onSurface = Color(0xFFDDE5E0),
+    surfaceVariant = Color(0xFF39423D),
+    onSurfaceVariant = Color(0xFFB7C1BA),
+    outline = Color(0xFF737D77),
+    outlineVariant = Color(0xFF2A322D),
+    inverseSurface = Color(0xFFDDE5E0),
+    inverseOnSurface = Color(0xFF252B28),
+    inversePrimary = Color(0xFF006D43),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    surfaceContainerLowest = Color(0xFF050605),
+    surfaceContainerLow = Color(0xFF101312),
+    surfaceContainer = Color(0xFF151918),
+    surfaceContainerHigh = Color(0xFF1F2422),
+    surfaceContainerHighest = Color(0xFF292F2C),
+  )
+
+val SlateNeonExtended =
+  ToadExtendedColors(
+    surfaceHigh = Color(0xFF1F2422),
+    surfaceHighest = Color(0xFF292F2C),
+    glassSurface = Color(0xD60A0C0B),
+    borderSubtle = Color(0x2457F2A0),
+    borderStrong = Color(0x5957F2A0),
+    textMuted = Color(0xFFB7C1BA),
+    textDim = Color(0xFF737D77),
+    dangerContainer = Color(0x2EEF4444),
+    onDangerContainer = Color(0xFFFFB4AB),
+    isLight = false,
+  )
+
+// 8. Material 3 Baseline Dark — adapted from toadFILES' ToadThemes.Material3Dark:
+// Google's baseline reference palette, from the M3 spec.
+val M3BaselineDarkScheme: ColorScheme =
+  darkColorScheme(
+    primary = Color(0xFFD0BCFF),
+    onPrimary = Color(0xFF381E72),
+    primaryContainer = Color(0xFF4F378B),
+    onPrimaryContainer = Color(0xFFEADDFF),
+    secondary = Color(0xFFCCC2DC),
+    onSecondary = Color(0xFF332D41),
+    secondaryContainer = Color(0xFF4A4458),
+    onSecondaryContainer = Color(0xFFE8DEF8),
+    tertiary = Color(0xFFEFB8C8),
+    onTertiary = Color(0xFF492532),
+    tertiaryContainer = Color(0xFF633B48),
+    onTertiaryContainer = Color(0xFFFFD8E4),
+    background = Color(0xFF141218),
+    onBackground = Color(0xFFE6E0E9),
+    surface = Color(0xFF141218),
+    onSurface = Color(0xFFE6E0E9),
+    surfaceVariant = Color(0xFF49454F),
+    onSurfaceVariant = Color(0xFFCAC4D0),
+    outline = Color(0xFF938F99),
+    outlineVariant = Color(0xFF49454F),
+    inverseSurface = Color(0xFFE6E0E9),
+    inverseOnSurface = Color(0xFF332D41),
+    inversePrimary = Color(0xFF6750A4),
+    error = Color(0xFFF2B8B5),
+    onError = Color(0xFF601410),
+    errorContainer = Color(0xFF8C1D18),
+    onErrorContainer = Color(0xFFF9DEDC),
+    surfaceContainerLowest = Color(0xFF0F0D13),
+    surfaceContainerLow = Color(0xFF1D1B20),
+    surfaceContainer = Color(0xFF211F26),
+    surfaceContainerHigh = Color(0xFF2B2930),
+    surfaceContainerHighest = Color(0xFF36343B),
+  )
+
+val M3BaselineExtended =
+  ToadExtendedColors(
+    surfaceHigh = Color(0xFF2B2930),
+    surfaceHighest = Color(0xFF36343B),
+    glassSurface = Color(0xD6141218),
+    borderSubtle = Color(0x24D0BCFF),
+    borderStrong = Color(0x59D0BCFF),
+    textMuted = Color(0xFFCAC4D0),
+    textDim = Color(0xFF938F99),
+    dangerContainer = Color(0x2EEF4444),
+    onDangerContainer = Color(0xFFFFB4AB),
+    isLight = false,
+  )
