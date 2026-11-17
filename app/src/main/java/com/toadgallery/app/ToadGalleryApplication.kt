@@ -2,6 +2,7 @@ package com.toadgallery.app
 
 import android.app.Application
 import android.graphics.Bitmap
+import androidx.work.Configuration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -16,7 +17,23 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class ToadGalleryApplication : Application(), ImageLoaderFactory {
+/**
+ * Implements [Configuration.Provider] so WorkManager initializes on demand via
+ * the Application rather than the androidx.startup manifest initializer (which
+ * we remove in AndroidManifest). On-demand init is the Robolectric-friendly
+ * path: unit tests that touch WorkManager get a real singleton built from this
+ * Configuration, without needing the manifest startup provider to have run.
+ */
+class ToadGalleryApplication :
+  Application(),
+  ImageLoaderFactory,
+  Configuration.Provider {
+
+  override val workManagerConfiguration: Configuration =
+    Configuration.Builder()
+      .setMinimumLoggingLevel(android.util.Log.INFO)
+      .build()
+
 
   private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
