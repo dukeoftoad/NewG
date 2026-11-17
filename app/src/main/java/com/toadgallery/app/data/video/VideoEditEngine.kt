@@ -2,10 +2,10 @@ package com.toadgallery.app.data.video
 
 import android.content.Context
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.audio.SpeedAdjustingAudioProcessor
+import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.SpeedChangeEffect
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -24,11 +24,12 @@ import kotlinx.coroutines.withContext
  * owns MediaStore export and item insertion; this class only produces the file.
  *
  * Trim uses [MediaItem.ClippingConfiguration]; mute uses
- * [EditedMediaItem.Builder.setRemoveAudio]; speed applies
- * [SpeedChangeEffect] to video and [SpeedAdjustingAudioProcessor] to audio so
- * pitch is preserved. Transformer construction and callbacks run on the
- * application main Looper (the API requires a Looper thread), while the caller
- * suspends — so the export never blocks the UI thread, it just lives on it.
+ * [EditedMediaItem.Builder.setRemoveAudio]; speed uses
+ * [EditedMediaItem.Builder.setSpeed] — media3 re-times video AND audio with
+ * pitch preserved from one call. Transformer construction and callbacks run
+ * on the application main Looper (the API requires a Looper thread), while
+ * the caller suspends — so the export never blocks the UI thread, it just
+ * lives on it.
  *
  * The transform itself needs real device codecs (MediaCodec) and therefore has
  * no JVM unit test; everything about a plan is validated in VideoEditPlan, and
@@ -68,12 +69,7 @@ class VideoEditEngine(private val context: Context) {
           .setRemoveAudio(plan.removeAudio)
           .apply {
             if (plan.changesSpeed) {
-              setEffects(
-                androidx.media3.common.Effects(
-                  listOf(SpeedChangeEffect(plan.speed)),
-                  listOf(SpeedAdjustingAudioProcessor(plan.speed)),
-                ),
-              )
+              setSpeed(constantSpeedProvider(plan.speed))
             }
           }
           .build()
@@ -100,6 +96,12 @@ class VideoEditEngine(private val context: Context) {
         cont.invokeOnCancellation { runCatching { transformer.cancel() } }
         transformer.start(edited, outFile.absolutePath)
       }
+    }
+
+  private fun constantSpeedProvider(speed: Float): SpeedProvider =
+    object : SpeedProvider {
+      override fun getSpeed(timeUs: Long): Float = speed
+      override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
     }
 
   class VideoEditException(message: String, cause: Throwable? = null) :
