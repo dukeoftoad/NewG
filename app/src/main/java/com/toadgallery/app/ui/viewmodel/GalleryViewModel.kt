@@ -1090,8 +1090,15 @@ class GalleryViewModel(
   }
 
   fun restoreFromTrash(id: Long) {
+    // Capture before setTrashed: the Room flow re-emits on restore and the
+    // item would already be gone from trashedMedia by the time we look.
+    val item = uiState.value.trashedMedia.firstOrNull { it.id == id }
     viewModelScope.launch {
       galleryRepo.setTrashed(id, false)
+      // v2.3.0: bring the underlying MediaStore entry out of the OS trash
+      // too — the same two-part semantics restore-all already uses. The
+      // gap was documented in the v2.2.0 release record.
+      item?.let { runCatching { galleryRepo.syncSystemTrash(listOf(it), trashed = false) } }
       emitMessage("Restored item from Recycle Bin")
     }
   }
