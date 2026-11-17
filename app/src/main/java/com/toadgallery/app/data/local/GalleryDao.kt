@@ -6,6 +6,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import org.json.JSONArray
 import org.json.JSONObject
 
 @Dao
@@ -64,70 +66,126 @@ interface GalleryDao {
   @Query("SELECT * FROM face_people WHERE coverPhotoId = :photoId AND coverFaceIndex IS NOT NULL")
   suspend fun getPeopleWithCoverForPhoto(photoId: Long): List<FacePersonEntity>
 
+  /**
+   * E3 recovery policy (ENTE-PEOPLE-PARITY.md row 24): one-time eager backfill
+   * of legacy v8 null-faceId feedback rows against each photo's CURRENT face
+   * payload. The lazy path only backfills when a photo is re-indexed; photos
+   * that are never re-indexed would otherwise rely on the saved-index fallback
+   * forever. Derivation is deterministic from the payload, and the saved
+   * indices were written together with this payload, so backfilling from it is
+   * never worse than the fallback. Rows whose faces cannot be derived (empty
+   * or pre-stable payload, missing embedding) stay untouched and keep the
+   * runtime index fallback. Idempotent; returns the rows backfilled.
+   */
+  @Transaction
+  suspend fun backfillLegacyFaceIds(): Int {
+    var total = 0
+    observeFaceIndexedMedia().first().forEach { row ->
+      val root = row.faceDataJson?.let { runCatching { JSONObject(it) }.getOrNull() }
+        ?: return@forEach
+      val faces = root.optJSONArray("faces") ?: return@forEach
+      if (faces.length() == 0) return@forEach
+      total += migrateLegacyFaceIdentityForPhoto(row.id, root, faces)
+    }
+    return total
+  }
+
+  /**
+   * Shared legacy-identity migration for one photo's face payload:
+   * 1) backfills null-faceId assignment/exclusion/history/cover rows with
+   *    stable IDs derived from the payload;
+   * 2) re-keys automatic v8 `person-<photoId>-<index>` cluster IDs (person
+   *    records, membership, correction history) to the stable face-based ID.
+   * Called by [updateFaceIndexAndReconcile] with the OLD payload before it is
+   * replaced, and by [backfillLegacyFaceIds] with the CURRENT payload.
+   * Returns the number of rows that received a stable face ID.
+   */
+  private suspend fun migrateLegacyFaceIdentityForPhoto(
+    photoId: Long,
+    root: JSONObject,
+    faces: JSONArray,
+  ): Int {
+    var backfilled = 0
+    fun legacyId(index: Int): String? = faces.optJSONObject(index)?.let { face ->
+      stableFaceIdFromLegacyPayload(photoId, root, face)
+    }
+    getFaceAssignmentsForPhoto(photoId).filter { it.faceId == null }.forEach { row ->
+      legacyId(row.faceIndex)?.let {
+        upsertFaceAssignment(row.copy(faceId = it))
+        backfilled++
+      }
+    }
+    getFaceExclusionsForPhoto(photoId).filter { it.faceId == null }.forEach { row ->
+      legacyId(row.faceIndex)?.let {
+        upsertFaceExclusion(row.copy(faceId = it))
+        backfilled++
+      }
+    }
+    getFaceCorrectionHistoryForPhoto(photoId).filter { it.faceId == null }.forEach { row ->
+      legacyId(row.faceIndex)?.let {
+        upsertFaceCorrectionHistory(row.copy(faceId = it))
+        backfilled++
+      }
+    }
+    getPeopleWithCoverForPhoto(photoId).filter { it.coverFaceId == null }.forEach { person ->
+      val coverIndex = person.coverFaceIndex ?: return@forEach
+      legacyId(coverIndex)?.let {
+        upsertFacePerson(person.copy(coverFaceId = it))
+        backfilled++
+      }
+    }
+    // Automatic v8 person IDs ended in the detector index. Re-key saved names,
+    // covers, assignments and history to the stable face-based group ID.
+    for (oldIndex in 0 until faces.length()) {
+      val stableId = legacyId(oldIndex) ?: continue
+      val oldClusterId = "person-$photoId-$oldIndex"
+      val newClusterId = "person-$photoId-$stableId"
+      if (oldClusterId == newClusterId) continue
+      val oldPerson = getFacePerson(oldClusterId)
+      if (oldPerson != null) {
+        val existingPerson = getFacePerson(newClusterId)
+        val oldRecordIsNewer = existingPerson == null || oldPerson.updatedAt > existingPerson.updatedAt
+        val preferred = if (oldRecordIsNewer) oldPerson.copy(clusterId = newClusterId) else existingPerson!!
+        val fallback = if (oldRecordIsNewer) existingPerson else oldPerson
+        val migratedPerson = preferred.copy(
+          name = preferred.name ?: fallback?.name,
+          coverPhotoId = preferred.coverPhotoId ?: fallback?.coverPhotoId,
+          coverFaceIndex = preferred.coverFaceIndex ?: fallback?.coverFaceIndex,
+          coverFaceId = preferred.coverFaceId ?: fallback?.coverFaceId,
+          updatedAt = maxOf(preferred.updatedAt, fallback?.updatedAt ?: preferred.updatedAt),
+        )
+        deleteFacePerson(oldClusterId)
+        upsertFacePerson(migratedPerson)
+      }
+      // Assignments/history can reference an unnamed cluster with no face_people row.
+      getFaceAssignmentsForPersonCluster(oldClusterId).forEach { assignment ->
+        upsertFaceAssignment(assignment.copy(personClusterId = newClusterId))
+      }
+      getFaceCorrectionHistoryForPersonCluster(oldClusterId).forEach { entry ->
+        upsertFaceCorrectionHistory(
+          entry.copy(
+            previousPersonClusterId = entry.previousPersonClusterId?.let {
+              if (it == oldClusterId) newClusterId else it
+            },
+            nextPersonClusterId = entry.nextPersonClusterId?.let {
+              if (it == oldClusterId) newClusterId else it
+            },
+          ),
+        )
+      }
+    }
+    return backfilled
+  }
+
   @Transaction
   suspend fun updateFaceIndexAndReconcile(id: Long, faceDataJson: String, indexedAt: Long) {
-    // Backfill legacy index-only feedback against the OLD face payload before replacing it.
-    // The stable ID is derived with the same model/photo/box/embedding signature as the indexer.
+    // Backfill legacy index-only feedback against the OLD face payload before
+    // replacing it (stable ID derived from that payload).
     val previousJson = getMediaById(id)?.faceDataJson
     val previousRoot = runCatching { previousJson?.let(::JSONObject) }.getOrNull()
     val previousFaces = previousRoot?.optJSONArray("faces")
     if (previousRoot != null && previousFaces != null) {
-      fun legacyId(index: Int): String? = previousFaces.optJSONObject(index)?.let { face ->
-        stableFaceIdFromLegacyPayload(id, previousRoot, face)
-      }
-      getFaceAssignmentsForPhoto(id).filter { it.faceId == null }.forEach { row ->
-        legacyId(row.faceIndex)?.let { upsertFaceAssignment(row.copy(faceId = it)) }
-      }
-      getFaceExclusionsForPhoto(id).filter { it.faceId == null }.forEach { row ->
-        legacyId(row.faceIndex)?.let { upsertFaceExclusion(row.copy(faceId = it)) }
-      }
-      getFaceCorrectionHistoryForPhoto(id).filter { it.faceId == null }.forEach { row ->
-        legacyId(row.faceIndex)?.let { upsertFaceCorrectionHistory(row.copy(faceId = it)) }
-      }
-      getPeopleWithCoverForPhoto(id).filter { it.coverFaceId == null }.forEach { person ->
-        val coverIndex = person.coverFaceIndex ?: return@forEach
-        legacyId(coverIndex)?.let { upsertFacePerson(person.copy(coverFaceId = it)) }
-      }
-      // Automatic v8 person IDs ended in the detector index. Re-key saved names,
-      // covers, assignments and history to the stable face-based group ID.
-      for (oldIndex in 0 until previousFaces.length()) {
-        val stableId = legacyId(oldIndex) ?: continue
-        val oldClusterId = "person-$id-$oldIndex"
-        val newClusterId = "person-$id-$stableId"
-        if (oldClusterId == newClusterId) continue
-        val oldPerson = getFacePerson(oldClusterId)
-        if (oldPerson != null) {
-          val existingPerson = getFacePerson(newClusterId)
-          val oldRecordIsNewer = existingPerson == null || oldPerson.updatedAt > existingPerson.updatedAt
-          val preferred = if (oldRecordIsNewer) oldPerson.copy(clusterId = newClusterId) else existingPerson!!
-          val fallback = if (oldRecordIsNewer) existingPerson else oldPerson
-          val migratedPerson = preferred.copy(
-            name = preferred.name ?: fallback?.name,
-            coverPhotoId = preferred.coverPhotoId ?: fallback?.coverPhotoId,
-            coverFaceIndex = preferred.coverFaceIndex ?: fallback?.coverFaceIndex,
-            coverFaceId = preferred.coverFaceId ?: fallback?.coverFaceId,
-            updatedAt = maxOf(preferred.updatedAt, fallback?.updatedAt ?: preferred.updatedAt),
-          )
-          deleteFacePerson(oldClusterId)
-          upsertFacePerson(migratedPerson)
-        }
-        // Assignments/history can reference an unnamed cluster with no face_people row.
-        getFaceAssignmentsForPersonCluster(oldClusterId).forEach { assignment ->
-          upsertFaceAssignment(assignment.copy(personClusterId = newClusterId))
-        }
-        getFaceCorrectionHistoryForPersonCluster(oldClusterId).forEach { entry ->
-          upsertFaceCorrectionHistory(
-            entry.copy(
-              previousPersonClusterId = entry.previousPersonClusterId?.let {
-                if (it == oldClusterId) newClusterId else it
-              },
-              nextPersonClusterId = entry.nextPersonClusterId?.let {
-                if (it == oldClusterId) newClusterId else it
-              },
-            )
-          )
-        }
-      }
+      migrateLegacyFaceIdentityForPhoto(id, previousRoot, previousFaces)
     }
     updateFaceIndex(id, faceDataJson, indexedAt)
     val faces = runCatching { JSONObject(faceDataJson).optJSONArray("faces") }.getOrNull()
