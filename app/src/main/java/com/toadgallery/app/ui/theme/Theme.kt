@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.toadgallery.app.data.model.AppearanceMode
 import com.toadgallery.app.data.model.ThemePalette
+import com.toadgallery.app.domain.AppFont
 
 val ToadShapes =
   Shapes(
@@ -28,6 +29,7 @@ fun ToadGalleryTheme(
   palette: ThemePalette = ThemePalette.TOAD_GREEN,
   appearanceMode: AppearanceMode = AppearanceMode.DARK,
   useDynamicColors: Boolean = false,
+  appFont: AppFont = AppFont.DEFAULT,
   content: @Composable () -> Unit,
 ) {
   val systemDark = isSystemInDarkTheme()
@@ -53,6 +55,9 @@ fun ToadGalleryTheme(
       ThemePalette.DYNAMIC_AMBER -> DynamicAmberDarkScheme
       ThemePalette.OCEAN_SLATE -> OceanSlateDarkScheme
       ThemePalette.OLED_BLACK -> OledBlackDarkScheme
+      ThemePalette.TOAD_FOREST -> ToadForestDarkScheme
+      ThemePalette.SLATE_NEON -> SlateNeonDarkScheme
+      ThemePalette.M3_BASELINE -> M3BaselineDarkScheme
       ThemePalette.BOTANICAL_LIGHT -> BotanicalLightScheme
     }
 
@@ -70,13 +75,16 @@ fun ToadGalleryTheme(
       ThemePalette.DYNAMIC_AMBER -> DynamicAmberExtended
       ThemePalette.OCEAN_SLATE -> OceanSlateExtended
       ThemePalette.OLED_BLACK -> OledBlackExtended
+      ThemePalette.TOAD_FOREST -> ToadForestExtended
+      ThemePalette.SLATE_NEON -> SlateNeonExtended
+      ThemePalette.M3_BASELINE -> M3BaselineExtended
       ThemePalette.BOTANICAL_LIGHT -> BotanicalLightExtended
     }
 
   CompositionLocalProvider(LocalToadColors provides extended) {
     MaterialTheme(
       colorScheme = colorScheme,
-      typography = ToadTypography,
+      typography = toadTypographyFor(appFont),
       shapes = ToadShapes,
       content = content,
     )

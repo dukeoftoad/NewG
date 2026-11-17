@@ -85,6 +85,7 @@ import com.toadgallery.app.ui.components.people.PersonManagementSheet
 import com.toadgallery.app.data.model.AppearanceMode
 import com.toadgallery.app.data.model.ThemePalette
 import com.toadgallery.app.data.model.VaultAutoLock
+import com.toadgallery.app.domain.AppFont
 import com.toadgallery.app.ui.components.restartApp
 import com.toadgallery.app.ui.components.StorageBreakdownBar
 import androidx.core.content.ContextCompat
@@ -1366,6 +1367,60 @@ internal fun SettingsSubAppearancePage(
                         Spacer(modifier = Modifier.weight(1f))
                       }
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        item {
+          SettingsGroupCard {
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              Text("App Font", style = MaterialTheme.typography.titleSmall)
+              Text(
+                "Swap the letterforms across the whole app — sizes, weights and spacing " +
+                  "keep their tuning.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = extended.textMuted,
+              )
+              AppFont.entries.forEach { font ->
+                val selected = prefs.appFont == font
+                Surface(
+                  onClick = { viewModel.selectAppFont(font) },
+                  modifier =
+                    Modifier.fillMaxWidth()
+                      .minimumInteractiveComponentSize()
+                      .testTag("font_option_${font.name.lowercase()}"),
+                  shape = RoundedCornerShape(14.dp),
+                  color =
+                    if (selected) MaterialTheme.colorScheme.primaryContainer
+                    else Color.Transparent,
+                  border =
+                    BorderStroke(
+                      width = if (selected) 2.dp else 1.dp,
+                      color =
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else extended.borderSubtle,
+                    ),
+                ) {
+                  Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                  ) {
+                    Text(
+                      text = font.label,
+                      style = MaterialTheme.typography.labelLarge,
+                      color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                      text = font.description,
+                      style = MaterialTheme.typography.bodySmall,
+                      color = extended.textMuted,
+                    )
                   }
                 }
               }

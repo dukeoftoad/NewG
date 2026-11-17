@@ -15,6 +15,9 @@ enum class ThemePalette(
   DYNAMIC_AMBER("Dynamic Amber", "Warm Material You gold", 0xFFFBBF24, 0xFF14100B),
   OCEAN_SLATE("Ocean Slate", "Deep twilight blue", 0xFF38BDF8, 0xFF08111A),
   OLED_BLACK("OLED Pure Black", "Zero-nit battery saver", 0xFF6EE7B7, 0xFF000000),
+  TOAD_FOREST("Toad Forest", "Dark forest look — from toadFILES", 0xFF9FE06B, 0xFF0D120E),
+  SLATE_NEON("Slate Neon", "Graphite + electric green — from toadFILES", 0xFF57F2A0, 0xFF0A0C0B),
+  M3_BASELINE("Material 3", "Google's M3 baseline — from toadFILES", 0xFFD0BCFF, 0xFF141218),
   BOTANICAL_LIGHT("Botanical Light", "High-clarity daylight", 0xFF0F7654, 0xFFF4F9F6),
 }
 
@@ -190,4 +193,5 @@ data class UserPreferences(
   val systemMediaSync: Boolean = false,
   val mediaManagementPromptSeen: Boolean = false,
   val appIcon: AppIcon = AppIcon.CLASSIC_TOAD,
+  val appFont: AppFont = AppFont.DEFAULT,
 )
