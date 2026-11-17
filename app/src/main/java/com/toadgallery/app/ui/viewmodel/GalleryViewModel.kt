@@ -1119,6 +1119,23 @@ class GalleryViewModel(
     }
   }
 
+  /**
+   * Manually triggers the 30-day purge pass — the same pass [TrashPurgeWorker]
+   * runs daily. Exposed so the Recycle Bin can offer "Purge expired now"
+   * without waiting for the next WorkManager window. Reports the count
+   * purged back to the user; a 0-count is a no-op, not an error.
+   */
+  fun purgeExpiredTrashedNow() {
+    viewModelScope.launch {
+      val cutoff = System.currentTimeMillis() - com.toadgallery.app.data.trash.TrashPurgeWorker.RETENTION_MILLIS
+      val n = galleryRepo.purgeTrashedOlderThan(cutoff)
+      emitMessage(
+        if (n == 0) "No items past the 30-day window yet"
+        else "Purged $n item${if (n == 1) "" else "s"} past 30 days",
+      )
+    }
+  }
+
   fun setTonePreset(id: Long, preset: TonePreset) {
     viewModelScope.launch {
       galleryRepo.setTonePreset(id, preset)

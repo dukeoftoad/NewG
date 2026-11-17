@@ -179,6 +179,7 @@ fun RecycleBinDialog(
   trashedItems: List<GalleryMediaItem>,
   onRestoreItem: (Long) -> Unit,
   onEmptyBin: () -> Unit,
+  onPurgeExpired: () -> Unit,
   onClose: () -> Unit,
 ) {
   BackHandler(onBack = onClose)
@@ -290,6 +291,17 @@ fun RecycleBinDialog(
               ),
           ) {
             Text("Empty Recycle Bin")
+          }
+          // Manual trigger for the 30-day auto-purge (TrashPurgeWorker runs it
+          // daily; this lets the user force a pass without waiting). Kept as a
+          // quiet secondary action — it does NOT touch fresh items, so it's safe
+          // to surface next to the destructive Empty button.
+          TextButton(
+            onClick = onPurgeExpired,
+            modifier =
+              Modifier.fillMaxWidth().testTag("purge_expired_btn"),
+          ) {
+            Text("Purge expired (30+ days)")
           }
         }
       }

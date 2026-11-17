@@ -7,6 +7,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.toadgallery.app.data.preferences.UserPreferencesRepository
+import com.toadgallery.app.data.trash.TrashPurgeScheduler
 import com.toadgallery.app.domain.PackageManagerAppIconSwitcher
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +31,11 @@ class ToadGalleryApplication : Application(), ImageLoaderFactory {
         UserPreferencesRepository(this@ToadGalleryApplication).preferences.first().appIcon
       PackageManagerAppIconSwitcher(this@ToadGalleryApplication).apply(icon)
     }
+    // Schedule the 30-day Recycle Bin auto-purge (v2.1.0). KEEP policy means
+    // re-scheduling on every Application start is a no-op once WorkManager has
+    // the unique-named periodic request; reboot / reinstall survive. The worker
+    // itself only deletes trashed rows older than 30 days.
+    TrashPurgeScheduler.schedule(this)
   }
 
   override fun newImageLoader(): ImageLoader =
