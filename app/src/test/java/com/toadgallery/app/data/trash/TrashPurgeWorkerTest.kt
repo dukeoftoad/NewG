@@ -3,9 +3,9 @@ package com.toadgallery.app.data.trash
 import android.content.Context
 import androidx.room.Room
 import androidx.work.ListenableWorker
+import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
-import androidx.work.workDataOf
 import com.toadgallery.app.data.local.GalleryDao
 import com.toadgallery.app.data.local.MediaItemEntity
 import com.toadgallery.app.data.local.ToadGalleryDatabase
@@ -107,12 +107,18 @@ class TrashPurgeWorkerTest {
     dao.insertOne("expired", trashedAt = now - 31 * DAY_MS)
     dao.insertOne("fresh", trashedAt = now - 1_000L)
 
-    val worker = TestListenableWorkerBuilder<TrashPurgeWorker>(
-      context = RuntimeEnvironment.getApplication(),
-      input = workDataOf(),
-    ).setWorkerFactory { appContext, params ->
-      TrashPurgeWorker(appContext, params) { _ -> repo }
-    }.build()
+    val worker = TestListenableWorkerBuilder
+      .from<TrashPurgeWorker>(RuntimeEnvironment.getApplication(), TrashPurgeWorker::class.java)
+      .setWorkerFactory(
+        object : WorkerFactory() {
+          override fun createWorker(
+            appContext: Context,
+            workerClassName: String,
+            params: WorkerParameters,
+          ): ListenableWorker = TrashPurgeWorker(appContext, params) { _ -> repo }
+        },
+      )
+      .build()
 
     val result = worker.doWork()
     assertTrue("worker succeeds", result is ListenableWorker.Result.Success)
