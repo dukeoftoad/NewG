@@ -227,6 +227,24 @@ interface GalleryDao {
   @Query("SELECT COUNT(*) FROM media_items WHERE isTrashed = 1 AND trashedAt IS NOT NULL AND trashedAt <= :cutoffMillis")
   suspend fun countTrashedOlderThan(cutoffMillis: Long): Int
 
+  /**
+   * Live count of trashed rows whose [trashedAt] falls in the window
+   * (now-ish - [graceMillis] .. cutoffMillis] — i.e. items that are within
+   * [graceMillis] of being auto-purged. Drives the "about to delete" notice
+   * in the Recycle Bin. NULL trashedAt rows are excluded (same reason as
+   * [purgeTrashedOlderThan]). Flow re-emits whenever media_items changes.
+   */
+  @Query(
+    """
+    SELECT COUNT(*) FROM media_items
+    WHERE isTrashed = 1
+      AND trashedAt IS NOT NULL
+      AND trashedAt > :cutoffMillis
+      AND trashedAt <= :cutoffMillis + :graceMillis
+    """,
+  )
+  fun observeTrashedExpiringSoonCount(cutoffMillis: Long, graceMillis: Long): Flow<Int>
+
   @Query("DELETE FROM media_items WHERE id = :id")
   suspend fun deletePermanently(id: Long)
 

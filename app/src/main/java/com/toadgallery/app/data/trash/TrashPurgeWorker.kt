@@ -65,6 +65,13 @@ class TrashPurgeWorker(
     private const val TAG = "TrashPurge"
     const val RETENTION_DAYS = 30L
     val RETENTION_MILLIS = TimeUnit.DAYS.toMillis(RETENTION_DAYS)
+    /**
+     * The "about to delete" notice window — items within this many days of
+     * the 30-day purge get a heads-up banner in the Recycle Bin so the user
+     * can restore them before they're gone.
+     */
+    const val GRACE_DAYS = 7L
+    val GRACE_MILLIS = TimeUnit.DAYS.toMillis(GRACE_DAYS)
 
     /** Unique name under which the periodic worker is enqueued. */
     const val WORK_NAME = "toadgallery_trash_purge"
