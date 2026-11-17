@@ -321,6 +321,46 @@ object FacePersonClusterer {
   fun faceIndexForId(row: MediaItemEntity, faceId: String): Int? =
     parsePhotoFaces(row)?.indexByFaceId?.get(faceId)
 
+  /**
+   * Ente-parity merge/detach projection (ENTE-PEOPLE-PARITY.md row
+   * `merge_clusters_to_person_sheet`): groups carrying the same non-blank
+   * name are projected as one synthetic person (id `person:<lowercased name>`),
+   * with membership migrated — photoIds deduped and sorted descending,
+   * faceCount summed, clusterIds/faces/faceBounds flat-mapped and deduped.
+   * Unnamed clusters keep their own `cluster:<id>` key, so clearing a name
+   * detaches the cluster from the merged person without touching its data.
+   * Pure presentation: the underlying assignment/exclusion rows are untouched
+   * (merge is reversible by renaming — the "undo-safe" property).
+   *
+   * Extracted verbatim from GalleryViewModel so the merge/detach semantics
+   * are unit-testable in isolation (FacePersonMergeParityTest).
+   */
+  fun mergeSameNameGroups(groups: List<FacePersonGroup>): List<FacePersonGroup> =
+    groups
+      .groupBy { group ->
+        group.name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "cluster:${group.id}"
+      }
+      .values
+      .map { samePerson ->
+        if (samePerson.size == 1) samePerson.single()
+        else {
+          val first = samePerson.first()
+          first.copy(
+            id = "person:${first.name.orEmpty().trim().lowercase()}",
+            photoIds = samePerson.flatMap { it.photoIds }.distinct().sortedDescending(),
+            faceCount = samePerson.sumOf { it.faceCount },
+            clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
+            faces = samePerson.flatMap { it.faces }.distinct(),
+            faceBounds =
+              samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
+          )
+        }
+      }
+      .sortedWith(
+        compareByDescending<FacePersonGroup> { it.photoIds.size }
+          .thenBy { it.name ?: it.id }
+      )
+
   private const val EMBEDDING_SIZE = 192
   private const val MIN_PHOTOS = 2
 }
