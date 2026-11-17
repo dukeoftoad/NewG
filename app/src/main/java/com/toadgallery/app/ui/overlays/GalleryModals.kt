@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -211,6 +212,7 @@ fun RecycleBinDialog(
         Modifier.fillMaxWidth(0.92f)
           .widthIn(max = 500.dp)
           .padding(vertical = 24.dp)
+          .windowInsetsPadding(WindowInsets.systemBars)
           .graphicsLayer {
             alpha = entrance.value
             val s = 0.94f + 0.06f * entrance.value
