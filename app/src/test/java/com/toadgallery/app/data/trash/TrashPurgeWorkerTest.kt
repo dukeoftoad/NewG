@@ -173,3 +173,4 @@ class TrashPurgeWorkerTest {
    *  goes through observeTrashedMedia; this branch covers the insert step). */
   private suspend fun GalleryDao.byIdViaAll(title: String): Long? =
     observeVisibleMedia().first().firstOrNull { it.title == title }?.id
+}
