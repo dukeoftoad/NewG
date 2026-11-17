@@ -188,4 +188,17 @@ class VideoEditRepositoryTest {
     assertEquals("02:00", com.toadgallery.app.data.video.VideoFrameExtractor.frameLabel(120_000L))
     assertEquals("00:00", com.toadgallery.app.data.video.VideoFrameExtractor.frameLabel(-1L))
   }
+
+  @Test
+  fun `parseDurationLabel recovers the source duration for edits`() {
+    val p = com.toadgallery.app.data.video.VideoEditPlan.Companion
+    assertEquals(60_000L, p.parseDurationLabel("01:00"))
+    assertEquals(5_000L, p.parseDurationLabel("00:05"))
+    assertEquals(3_660_000L, p.parseDurationLabel("1:01:00"))
+    assertEquals("mm can exceed 59 (scanner uses %02d of total minutes)", 6_060_000L, p.parseDurationLabel("101:00"))
+    assertEquals(0L, p.parseDurationLabel(null))
+    assertEquals(0L, p.parseDurationLabel(""))
+    assertEquals(0L, p.parseDurationLabel("not a time"))
+    assertEquals(0L, p.parseDurationLabel("12:99:99:99"))
+  }
 }

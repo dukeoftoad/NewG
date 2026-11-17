@@ -21,6 +21,7 @@ import com.toadgallery.app.data.local.MediaItemEntity
 import com.toadgallery.app.data.local.SampleMediaCatalog
 import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.data.trash.TrashPurgeWorker
+import com.toadgallery.app.data.video.VideoEditEngine
 import com.toadgallery.app.data.video.VideoEditPlan
 import com.toadgallery.app.data.video.VideoFrameExtractor
 import com.toadgallery.app.data.media.MediaStoreScanner
@@ -644,6 +645,39 @@ class GalleryRepository(
         )
       dao.insertSingleMedia(entity)
     }
+
+  /**
+   * End-to-end video edit (v2.2.0 E1): executes [plan] with the Transformer
+   * and saves the result as a new "(Edited)" video row. The engine needs the
+   * main Looper for construction/callbacks; the heavy encode runs on
+   * Transformer's own threads, so calling from any dispatcher is fine.
+   *
+   * @throws IllegalArgumentException for no-op plans or missing source files.
+   * @throws VideoEditEngine.VideoEditException when the transform fails.
+   */
+  suspend fun applyVideoEdit(sourceItem: GalleryMediaItem, plan: VideoEditPlan): Long {
+    require(!plan.isNoOp) { "plan is a no-op" }
+    val uri =
+      sourceItem.uriString?.takeIf { it.isNotBlank() }
+        ?: error("video has no backing file to edit")
+    val engine = VideoEditEngine(context)
+    val outName = "toad_vedit_${sourceItem.id}_${System.currentTimeMillis()}.mp4"
+    val editedFile = engine.execute(plan, uri, outName)
+    val sourceDurationMs = VideoEditPlan.parseDurationLabel(sourceItem.durationLabel)
+    return saveEditedVideoCopy(sourceItem, editedFile, sourceDurationMs, plan)
+  }
+
+  /**
+   * End-to-end frame extraction (v2.2.0 E1): decodes the frame at
+   * [positionMs] and saves it as a new photo row inheriting the source moment.
+   */
+  suspend fun extractVideoFrame(sourceItem: GalleryMediaItem, positionMs: Long): Long {
+    val uri =
+      sourceItem.uriString?.takeIf { it.isNotBlank() }
+        ?: error("video has no backing file to extract from")
+    val bitmap = VideoFrameExtractor(context).extractFrame(uri, positionMs)
+    return saveVideoFrameAsPhoto(sourceItem, bitmap, positionMs)
+  }
 
   suspend fun applyNonDestructiveEdit(
     sourceItem: GalleryMediaItem,
