@@ -7,6 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.toadgallery.app.R
+import com.toadgallery.app.domain.AppFont
 
 val PlusJakartaSansFamily =
   FontFamily(
@@ -106,4 +107,32 @@ val ToadTypography =
         lineHeight = 14.sp,
         letterSpacing = 0.4.sp,
       ),
+  )
+
+/** The Appearance page's font picker entry point: the tuned scale above with the
+ *  chosen family swapped into every role (weights keep their per-role tuning —
+ *  the family only changes the letterforms; see [fontFamilyFor] in BundledFonts.kt).
+ *  [AppFont.DEFAULT] reproduces the shipped look exactly.
+ */
+fun toadTypographyFor(font: AppFont): Typography =
+  withFamily(ToadTypography, fontFamilyFor(font))
+
+/** Swaps [family] into every M3 role of [t], keeping sizes, weights and tracking. */
+private fun withFamily(t: Typography, family: FontFamily): Typography =
+  Typography(
+    displayLarge = t.displayLarge.copy(fontFamily = family),
+    displayMedium = t.displayMedium.copy(fontFamily = family),
+    displaySmall = t.displaySmall.copy(fontFamily = family),
+    headlineLarge = t.headlineLarge.copy(fontFamily = family),
+    headlineMedium = t.headlineMedium.copy(fontFamily = family),
+    headlineSmall = t.headlineSmall.copy(fontFamily = family),
+    titleLarge = t.titleLarge.copy(fontFamily = family),
+    titleMedium = t.titleMedium.copy(fontFamily = family),
+    titleSmall = t.titleSmall.copy(fontFamily = family),
+    bodyLarge = t.bodyLarge.copy(fontFamily = family),
+    bodyMedium = t.bodyMedium.copy(fontFamily = family),
+    bodySmall = t.bodySmall.copy(fontFamily = family),
+    labelLarge = t.labelLarge.copy(fontFamily = family),
+    labelMedium = t.labelMedium.copy(fontFamily = family),
+    labelSmall = t.labelSmall.copy(fontFamily = family),
   )

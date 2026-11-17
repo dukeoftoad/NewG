@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.toadgallery.app.data.model.AppearanceMode
+import com.toadgallery.app.domain.AppFont
 import com.toadgallery.app.domain.AppIcon
 import com.toadgallery.app.data.model.GroupByMode
 import com.toadgallery.app.data.model.LayoutMode
@@ -69,6 +70,7 @@ class UserPreferencesRepository(context: Context) {
     val SYSTEM_MEDIA_SYNC = booleanPreferencesKey("system_media_sync")
     val MEDIA_MGMT_PROMPT_SEEN = booleanPreferencesKey("media_mgmt_prompt_seen")
     val APP_ICON = stringPreferencesKey("app_icon")
+    val APP_FONT = stringPreferencesKey("app_font")
   }
 
   val preferences: Flow<UserPreferences> =
@@ -115,6 +117,9 @@ class UserPreferencesRepository(context: Context) {
         appIcon =
           prefs[Keys.APP_ICON]?.let { runCatching { AppIcon.valueOf(it) }.getOrNull() }
             ?: AppIcon.CLASSIC_TOAD,
+        appFont =
+          prefs[Keys.APP_FONT]?.let { runCatching { AppFont.valueOf(it) }.getOrNull() }
+            ?: AppFont.DEFAULT,
       )
     }
 
@@ -168,6 +173,10 @@ class UserPreferencesRepository(context: Context) {
 
   suspend fun setAppIcon(icon: AppIcon) {
     dataStore.edit { it[Keys.APP_ICON] = icon.name }
+  }
+
+  suspend fun setAppFont(font: AppFont) {
+    dataStore.edit { it[Keys.APP_FONT] = font.name }
   }
 
   suspend fun updatePalette(palette: ThemePalette) {
