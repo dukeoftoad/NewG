@@ -30,6 +30,22 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.MyApplication" />
 
+        <!-- WorkManager: disable the default androidx.startup initializer so
+             WorkManager initializes on demand via ToadGalleryApplication's
+             Configuration.Provider. This is the Robolectric-friendly path —
+             unit tests that touch WorkManager get a real singleton built from
+             the app's Configuration without needing the startup provider. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
         <!-- Launcher icon variants (Settings → Appearance & Timeline → App Icon):
              exactly one alias is enabled at a time via PackageManager; the default
              (Classic) keeps the icon shipped since v1.0 so upgrades never change

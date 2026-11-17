@@ -2,11 +2,13 @@ package com.toadgallery.app
 
 import android.app.Application
 import android.graphics.Bitmap
+import androidx.work.Configuration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.toadgallery.app.data.preferences.UserPreferencesRepository
+import com.toadgallery.app.data.trash.TrashPurgeScheduler
 import com.toadgallery.app.domain.PackageManagerAppIconSwitcher
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -15,7 +17,23 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class ToadGalleryApplication : Application(), ImageLoaderFactory {
+/**
+ * Implements [Configuration.Provider] so WorkManager initializes on demand via
+ * the Application rather than the androidx.startup manifest initializer (which
+ * we remove in AndroidManifest). On-demand init is the Robolectric-friendly
+ * path: unit tests that touch WorkManager get a real singleton built from this
+ * Configuration, without needing the manifest startup provider to have run.
+ */
+class ToadGalleryApplication :
+  Application(),
+  ImageLoaderFactory,
+  Configuration.Provider {
+
+  override val workManagerConfiguration: Configuration =
+    Configuration.Builder()
+      .setMinimumLoggingLevel(android.util.Log.INFO)
+      .build()
+
 
   private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -30,6 +48,11 @@ class ToadGalleryApplication : Application(), ImageLoaderFactory {
         UserPreferencesRepository(this@ToadGalleryApplication).preferences.first().appIcon
       PackageManagerAppIconSwitcher(this@ToadGalleryApplication).apply(icon)
     }
+    // Schedule the 30-day Recycle Bin auto-purge (v2.1.0). KEEP policy means
+    // re-scheduling on every Application start is a no-op once WorkManager has
+    // the unique-named periodic request; reboot / reinstall survive. The worker
+    // itself only deletes trashed rows older than 30 days.
+    TrashPurgeScheduler.schedule(this)
   }
 
   override fun newImageLoader(): ImageLoader =
