@@ -70,6 +70,12 @@ class AppIconPreviewResourcesTest {
     composeTestRule.waitForIdle()
 
     composeTestRule.onNodeWithTag("settings_appearance_list").assertExists()
+    // Tiles sit below the mode + palette cards; LazyColumn composes lazily, so
+    // scroll to the last tile row before asserting every tile exists.
+    composeTestRule
+      .onNodeWithTag("settings_appearance_list")
+      .performScrollToNode(hasTestTag("app_icon_tile_${AppIcon.CAMERA.name}"))
+    composeTestRule.waitForIdle()
     // One preview tile per selectable icon.
     composeTestRule
       .onAllNodesWithTag("app_icon_tile_${AppIcon.CLASSIC_TOAD.name}", useUnmergedTree = true)
