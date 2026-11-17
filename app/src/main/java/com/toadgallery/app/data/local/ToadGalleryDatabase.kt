@@ -10,7 +10,7 @@ import java.lang.ref.WeakReference
 
 @Database(
   entities = [MediaItemEntity::class, AlbumEntity::class, FacePersonEntity::class, FaceExclusionEntity::class, FaceAssignmentEntity::class, FaceCorrectionHistoryEntity::class],
-  version = 9,
+  version = 10,
   exportSchema = false,
 )
 abstract class ToadGalleryDatabase : RoomDatabase() {
@@ -83,6 +83,21 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
         }
       }
 
+    /**
+     * Adds `trashedAt` to `media_items` so the Recycle Bin's 30-day auto-purge
+     * promise (TrashPurgeWorker, v2.1.0) can be enforced. Pre-existing trashed
+     * rows are seeded with the migration timestamp — they get a full 30-day
+     * window from upgrade day, not an immediate purge on the first worker run.
+     * Un-trashed rows stay NULL.
+     */
+    internal val MIGRATION_9_10 =
+      object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+          db.execSQL("ALTER TABLE media_items ADD COLUMN trashedAt INTEGER")
+          db.execSQL("UPDATE media_items SET trashedAt = ${System.currentTimeMillis()} WHERE isTrashed = 1 AND trashedAt IS NULL")
+        }
+      }
+
     fun getInstance(context: Context): ToadGalleryDatabase {
       val appContext = context.applicationContext
       val current = instance
@@ -100,7 +115,7 @@ abstract class ToadGalleryDatabase : RoomDatabase() {
               ToadGalleryDatabase::class.java,
               "toad_gallery_db",
             )
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
             .also {

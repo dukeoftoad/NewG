@@ -192,11 +192,11 @@ interface GalleryDao {
   @Query("UPDATE media_items SET isHidden = 0, encryptedVaultFile = NULL WHERE id IN (:ids)")
   suspend fun unhideBatch(ids: List<Long>)
 
-  @Query("UPDATE media_items SET isTrashed = :trashed WHERE id = :id")
-  suspend fun setTrashed(id: Long, trashed: Boolean)
+  @Query("UPDATE media_items SET isTrashed = :trashed, trashedAt = :trashedAt WHERE id = :id")
+  suspend fun setTrashed(id: Long, trashed: Boolean, trashedAt: Long?)
 
-  @Query("UPDATE media_items SET isTrashed = :trashed WHERE id IN (:ids)")
-  suspend fun setTrashedBatch(ids: List<Long>, trashed: Boolean)
+  @Query("UPDATE media_items SET isTrashed = :trashed, trashedAt = :trashedAt WHERE id IN (:ids)")
+  suspend fun setTrashedBatch(ids: List<Long>, trashed: Boolean, trashedAt: Long?)
 
   @Query("UPDATE media_items SET tonePreset = :preset WHERE id = :id")
   suspend fun setTonePreset(id: Long, preset: String)
@@ -212,6 +212,20 @@ interface GalleryDao {
 
   @Query("DELETE FROM media_items WHERE isTrashed = 1")
   suspend fun emptyRecycleBin()
+
+  /**
+   * Purges trashed rows whose [trashedAt] is at or before [cutoffMillis] — the
+   * 30-day auto-delete rule. Rows with NULL trashedAt are never matched: a
+   * trashed row without a timestamp is a data-integrity artefact (pre-migration
+   * or a missed write) and the [TrashPurgeWorker] leaves those for the user to
+   * resolve via "Empty bin", rather than silently deleting them.
+   */
+  @Query("DELETE FROM media_items WHERE isTrashed = 1 AND trashedAt IS NOT NULL AND trashedAt <= :cutoffMillis")
+  suspend fun purgeTrashedOlderThan(cutoffMillis: Long): Int
+
+  /** Count of trashed rows that will be auto-purged on/after [cutoffMillis]. */
+  @Query("SELECT COUNT(*) FROM media_items WHERE isTrashed = 1 AND trashedAt IS NOT NULL AND trashedAt <= :cutoffMillis")
+  suspend fun countTrashedOlderThan(cutoffMillis: Long): Int
 
   @Query("DELETE FROM media_items WHERE id = :id")
   suspend fun deletePermanently(id: Long)
