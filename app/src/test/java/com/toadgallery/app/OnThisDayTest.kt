@@ -58,6 +58,8 @@ class OnThisDayTest {
       tags = emptyList(),
       ocrText = "",
       exifSummary = "",
+      tonePreset = com.toadgallery.app.data.model.TonePreset.NATURAL,
+      albumId = null,
     )
 
   @Test
