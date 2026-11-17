@@ -3,7 +3,10 @@ package com.toadgallery.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -111,6 +114,7 @@ private val TOP_LEVEL_TABS =
     NavTabSpec(TopLevelTab.SETTINGS, Icons.Filled.Settings, Icons.Outlined.Settings),
   )
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ToadGalleryApp(
   galleryViewModel: GalleryViewModel,
@@ -198,7 +202,11 @@ fun ToadGalleryApp(
       }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    // v2.4.0: one SharedTransitionLayout around the whole shell so the
+    // photos grid and the lightbox overlay can hero-morph between scenes.
+    SharedTransitionLayout {
+      CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+      BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
       val useNavigationRail = maxWidth >= 600.dp
 
       Scaffold(
@@ -345,6 +353,7 @@ fun ToadGalleryApp(
                 },
               ) {
               composable(TopLevelTab.PHOTOS.route) {
+                CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                 PhotosScreen(
                   uiState = galleryState,
                   isWideLayout = useNavigationRail,
@@ -386,6 +395,7 @@ fun ToadGalleryApp(
                   onBatchHideToVault = galleryViewModel::batchHideToVault,
                   onBatchDelete = galleryViewModel::openBatchDeleteConfirmDialog,
                 )
+                }
               }
               composable(TopLevelTab.ALBUMS.route) {
                 AlbumsScreen(
@@ -471,6 +481,7 @@ fun ToadGalleryApp(
         enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220)),
         exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.94f, animationSpec = tween(180)),
       ) {
+        CompositionLocalProvider(LocalOverlayAnimatedVisibilityScope provides this) {
         val overlayItem = lastLightboxItem
         if (overlayItem != null) {
           LightboxOverlay(
@@ -527,6 +538,7 @@ fun ToadGalleryApp(
               },
             )
           }
+        }
         }
       }
 
@@ -630,6 +642,7 @@ fun ToadGalleryApp(
           onPurgeExpired = galleryViewModel::purgeExpiredTrashedNow,
           onClose = galleryViewModel::closeRecycleBin,
         )
+      }
       }
     }
   }
