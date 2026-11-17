@@ -15,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -152,5 +153,39 @@ class VideoEditRepositoryTest {
     assertTrue("points at the app-owned file", saved.uriString!!.contains(editedFile.name))
     assertTrue("edited file exists on disk", editedFile.exists())
     assertTrue("inherits the edited tag", saved.toDomain().tags.contains("edited"))
+  }
+
+  @Test
+  fun saveVideoFrameAsPhotoInsertsPhotoRowInheritingSourceMoment() = runBlocking {
+    val source = insertSourceVideo()
+
+    val frame = android.graphics.Bitmap.createBitmap(320, 180, android.graphics.Bitmap.Config.ARGB_8888)
+    val positionMs = 5_000L
+    val newId = repo.saveVideoFrameAsPhoto(source, frame, positionMs)
+
+    val saved = dao.getMediaById(newId)
+    assertNotNull("new row exists", saved)
+    assertEquals("is a PHOTO row", MediaType.PHOTO.name, saved!!.mediaType)
+    assertEquals(
+      "title carries the frame provenance",
+      "holiday.mp4 (Frame at 00:05)",
+      saved.title,
+    )
+    assertEquals(
+      "frame inherits the source moment (timeline grouping)",
+      source.timestamp,
+      saved.timestamp,
+    )
+    assertEquals("source date fields inherited", source.dateLabel, saved.dateLabel)
+    assertNull("photos carry no duration label", saved.durationLabel)
+    assertTrue("frame tag set", saved.toDomain().tags.contains("frame"))
+    assertTrue("frame file name is app-owned", saved.uriString!!.contains("toad_frame_"))
+  }
+
+  @Test
+  fun `frame label mirrors the duration format`() {
+    assertEquals("00:05", com.toadgallery.app.data.video.VideoFrameExtractor.frameLabel(5_000L))
+    assertEquals("02:00", com.toadgallery.app.data.video.VideoFrameExtractor.frameLabel(120_000L))
+    assertEquals("00:00", com.toadgallery.app.data.video.VideoFrameExtractor.frameLabel(-1L))
   }
 }

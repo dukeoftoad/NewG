@@ -22,6 +22,7 @@ import com.toadgallery.app.data.local.SampleMediaCatalog
 import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.data.trash.TrashPurgeWorker
 import com.toadgallery.app.data.video.VideoEditPlan
+import com.toadgallery.app.data.video.VideoFrameExtractor
 import com.toadgallery.app.data.media.MediaStoreScanner
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.MediaCategory
@@ -565,6 +566,84 @@ class GalleryRepository(
         retriever.release()
       }
     }.getOrDefault(16f / 9f)
+
+  /**
+   * Saves a still frame extracted from a video as a new PHOTO item — the
+   * "extract frame" action (v2.2.0 E1). Founder product decision: the frame
+   * INHERITS the source's timestamp and date fields, because it is a snapshot
+   * of that moment — it groups with the video's content in the timeline and
+   * surfaces correctly in "On This Day". Title carries "Frame at mm:ss" so
+   * provenance stays explicit.
+   */
+  suspend fun saveVideoFrameAsPhoto(
+    sourceItem: GalleryMediaItem,
+    frameBitmap: Bitmap,
+    positionMs: Long,
+  ): Long =
+    withContext(Dispatchers.IO) {
+      val outDir = File(context.filesDir, "edited_media").apply { mkdirs() }
+      val fileName = "toad_frame_${sourceItem.id}_${System.currentTimeMillis()}.jpg"
+      val outFile = File(outDir, fileName)
+      FileOutputStream(outFile).use { fos ->
+        frameBitmap.compress(Bitmap.CompressFormat.JPEG, 94, fos)
+      }
+
+      // Best-effort export to scoped Pictures/toadGALLERY on Android 10+ (zero broad storage permissions)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        runCatching {
+          val values =
+            ContentValues().apply {
+              put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+              put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+              put(
+                MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/toadGALLERY",
+              )
+              put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+          val uri =
+            context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+          if (uri != null) {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+              frameBitmap.compress(Bitmap.CompressFormat.JPEG, 94, out)
+            }
+            val done = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+            context.contentResolver.update(uri, done, null, null)
+          }
+        }
+      }
+
+      val aspect =
+        (frameBitmap.width.toFloat() / frameBitmap.height.coerceAtLeast(1).toFloat())
+          .coerceIn(0.45f, 2.2f)
+      val cleanBaseTitle = sourceItem.title.removeSuffix(" (Edited)").take(40)
+      val entity =
+        MediaItemEntity(
+          title = "$cleanBaseTitle (Frame at ${VideoFrameExtractor.frameLabel(positionMs)})",
+          uriString = Uri.fromFile(outFile).toString(),
+          drawableResName = sourceItem.drawableResName,
+          bucketName = sourceItem.bucketName,
+          category = sourceItem.category.name,
+          mediaType = MediaType.PHOTO.name,
+          durationLabel = null,
+          dateLabel = sourceItem.dateLabel,
+          weekGroup = sourceItem.weekGroup,
+          monthGroup = sourceItem.monthGroup,
+          timestamp = sourceItem.timestamp,
+          locationName = sourceItem.locationName,
+          hasGps = sourceItem.hasGps,
+          mapX = sourceItem.mapX,
+          mapY = sourceItem.mapY,
+          aspectRatio = aspect,
+          isFavorite = false,
+          tagsCsv = (sourceItem.tags + "frame").distinct().joinToString(", "),
+          ocrText = sourceItem.ocrText,
+          exifSummary = "${sourceItem.exifSummary} • Frame from video",
+          tonePreset = TonePreset.NATURAL.name,
+          albumId = sourceItem.albumId,
+        )
+      dao.insertSingleMedia(entity)
+    }
 
   suspend fun applyNonDestructiveEdit(
     sourceItem: GalleryMediaItem,
