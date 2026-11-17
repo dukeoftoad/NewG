@@ -1,5 +1,7 @@
 package com.toadgallery.app.data.video
 
+import java.util.Locale
+
 /**
  * Pure math for the visual trim timeline (v2.3.0): a clamped start/end
  * range with a minimum window, plus evenly-spaced frame-probe positions
@@ -79,5 +81,11 @@ data class TrimTimelineState(
   companion object {
     /** One second — the smallest trim window the engine accepts usefully. */
     const val DEFAULT_MIN_WINDOW_MS = 1_000L
+
+    /** Compact "0:04" / "1:02" clock label for the timeline readout. */
+    fun formatClock(ms: Long): String {
+      val totalSec = (ms / 1000L).coerceAtLeast(0L)
+      return String.format(Locale.US, "%d:%02d", totalSec / 60L, totalSec % 60L)
+    }
   }
 }

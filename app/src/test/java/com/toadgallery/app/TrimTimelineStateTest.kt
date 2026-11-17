@@ -96,4 +96,13 @@ class TrimTimelineStateTest {
     assertFalse(trimmed.isFullRange)
     assertEquals(10_000L, trimmed.windowMs)
   }
+
+  @Test
+  fun `formatClock renders compact readout labels`() {
+    assertEquals("0:00", TrimTimelineState.formatClock(0L))
+    assertEquals("0:04", TrimTimelineState.formatClock(4_000L))
+    assertEquals("1:02", TrimTimelineState.formatClock(62_000L))
+    assertEquals("10:00", TrimTimelineState.formatClock(600_000L))
+    assertEquals("0:00", TrimTimelineState.formatClock(-500L))
+  }
 }
