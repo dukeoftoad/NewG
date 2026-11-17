@@ -1476,7 +1476,11 @@ internal fun SettingsSubAppearancePage(
       text = {
         Text(
           "The launcher icon is now \"${selectedIcon.label}\". Restart toadGALLERY so the " +
-            "change applies everywhere immediately — pinned shortcuts keep working."
+            "change applies everywhere immediately — pinned shortcuts keep working.\n\n" +
+            "Still seeing the old icon afterwards? That is the launcher's shortcut cache, " +
+            "not a failed switch: the new icon always shows in the app drawer, while some " +
+            "home screens (Xiaomi/HyperOS, Huawei, Oppo and friends) keep the old one " +
+            "until you remove and re-add the shortcut or reboot."
         )
       },
       confirmButton = {
