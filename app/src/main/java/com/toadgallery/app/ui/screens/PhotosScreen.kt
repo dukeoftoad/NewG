@@ -922,7 +922,10 @@ fun PhotosScreen(
                 ) { rowItems ->
                   Row(
                     modifier =
-                      Modifier.fillMaxWidth()
+                      Modifier
+                        // v2.4.0: rows glide when filters/columns reshuffle the timeline.
+                        .animateItem()
+                        .fillMaxWidth()
                         .padding(horizontal = 4.dp)
                         .padding(bottom = spacing),
                     horizontalArrangement = Arrangement.spacedBy(spacing),

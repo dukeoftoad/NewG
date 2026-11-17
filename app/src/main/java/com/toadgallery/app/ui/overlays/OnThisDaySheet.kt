@@ -8,10 +8,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -69,6 +72,7 @@ fun OnThisDaySheet(
         Modifier.fillMaxWidth(0.94f)
           .widthIn(max = 560.dp)
           .padding(vertical = 28.dp)
+          .windowInsetsPadding(WindowInsets.systemBars)
           .graphicsLayer {
             alpha = entrance.value
             val s = 0.94f + 0.06f * entrance.value

@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -129,6 +132,7 @@ fun VideoEditSheet(
         Modifier.fillMaxWidth(0.92f)
           .widthIn(max = 500.dp)
           .padding(vertical = 24.dp)
+          .windowInsetsPadding(WindowInsets.systemBars)
           .graphicsLayer {
             alpha = entrance.value
             val s = 0.94f + 0.06f * entrance.value
