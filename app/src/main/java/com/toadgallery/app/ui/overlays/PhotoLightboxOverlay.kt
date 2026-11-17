@@ -253,6 +253,7 @@ fun LightboxOverlay(
           item = item,
           contentScale = ContentScale.Fit,
           thumbnailSizePx = null,
+          heroKey = "hero-media-${item.id}",
           modifier =
             Modifier.fillMaxSize().graphicsLayer {
               scaleX = animatedScale

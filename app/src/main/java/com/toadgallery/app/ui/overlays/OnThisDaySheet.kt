@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.toadgallery.app.data.memories.OnThisDay
 import com.toadgallery.app.data.model.GalleryMediaItem
+import com.toadgallery.app.ui.MotionPolicy
 import com.toadgallery.app.ui.components.MediaThumbnailCard
 import com.toadgallery.app.ui.theme.LocalToadColors
 
@@ -54,7 +55,10 @@ fun OnThisDaySheet(
 
   // v2.4.0: fade+scale entrance — dialog windows otherwise snap open.
   val entrance = remember { Animatable(0f) }
-  LaunchedEffect(Unit) { entrance.animateTo(1f, tween(200)) }
+  LaunchedEffect(Unit) {
+    if (MotionPolicy.isRobolectric) entrance.snapTo(1f)
+    else entrance.animateTo(1f, tween(200))
+  }
 
   Dialog(
     onDismissRequest = onDismiss,

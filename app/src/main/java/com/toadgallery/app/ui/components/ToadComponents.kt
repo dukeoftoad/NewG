@@ -85,6 +85,7 @@ import com.toadgallery.app.data.local.SampleMediaCatalog
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.MediaType
 import com.toadgallery.app.data.model.TonePreset
+import com.toadgallery.app.ui.heroSharedElement
 import com.toadgallery.app.ui.theme.LocalToadColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -338,6 +339,7 @@ fun GalleryMediaImage(
   contentScale: ContentScale = ContentScale.Crop,
   thumbnailSizePx: Int? = 384,
   modifier: Modifier = Modifier,
+  heroKey: String? = null,
 ) {
   val context = LocalContext.current
   val hasNonDestructiveBitmap = !item.editedUriString.isNullOrBlank()
@@ -365,7 +367,7 @@ fun GalleryMediaImage(
       contentDescription = item.title,
       contentScale = contentScale,
       colorFilter = filter,
-      modifier = modifier,
+      modifier = modifier.heroSharedElement(heroKey),
     )
   } else {
     Image(
@@ -373,7 +375,7 @@ fun GalleryMediaImage(
       contentDescription = item.title,
       contentScale = contentScale,
       colorFilter = filter,
-      modifier = modifier,
+      modifier = modifier.heroSharedElement(heroKey),
     )
   }
 }
@@ -461,6 +463,7 @@ fun MediaThumbnailCard(
   isSelectionMode: Boolean = false,
   isSelected: Boolean = false,
   compactMode: Boolean = false,
+  heroKey: String? = null,
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
@@ -503,6 +506,7 @@ fun MediaThumbnailCard(
       GalleryMediaImage(
         item = item,
         thumbnailSizePx = if (compactMode) 220 else 384,
+        heroKey = heroKey,
         modifier = Modifier.fillMaxSize(),
       )
 

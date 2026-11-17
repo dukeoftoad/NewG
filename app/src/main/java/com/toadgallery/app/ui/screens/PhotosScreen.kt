@@ -931,6 +931,7 @@ fun PhotosScreen(
                       MediaThumbnailCard(
                         item = item,
                         forceSquare = true,
+                        heroKey = "hero-media-${item.id}",
                         isSelectionMode = uiState.isSelectionMode,
                         isSelected = item.id in uiState.selectedMediaIds,
                         compactMode = compactThumbnails,
@@ -1416,6 +1417,7 @@ private fun StaggeredCollageColumns(
           MediaThumbnailCard(
             item = item,
             forceSquare = false,
+            heroKey = "hero-media-${item.id}",
             isSelectionMode = isSelectionMode,
             isSelected = item.id in selectedIds,
             compactMode = compactMode,
