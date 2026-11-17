@@ -734,6 +734,20 @@ class GalleryRepository(
   suspend fun countTrashedOlderThan(cutoffMillis: Long): Int =
     dao.countTrashedOlderThan(cutoffMillis)
 
+  /**
+   * Restores every currently-trashed item (v2.2.0 E3 "restore all"): clears
+   * the Room trash flags in one batch, then best-effort syncs the underlying
+   * MediaStore entries out of the OS trash — the same two-part semantics the
+   * batch move-to-trash path uses. Returns the restored count.
+   */
+  suspend fun restoreAllFromTrash(items: List<GalleryMediaItem>): Int =
+    withContext(Dispatchers.IO) {
+      if (items.isEmpty()) return@withContext 0
+      dao.setTrashedBatch(items.map { it.id }, false, trashedAt = null)
+      runCatching { syncSystemTrash(items, trashed = false) }
+      items.size
+    }
+
   suspend fun createAlbum(name: String): Long =
     dao.insertAlbum(
       AlbumEntity(
