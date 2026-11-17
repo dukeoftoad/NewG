@@ -3,7 +3,10 @@ package com.toadgallery.app.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -111,6 +114,7 @@ private val TOP_LEVEL_TABS =
     NavTabSpec(TopLevelTab.SETTINGS, Icons.Filled.Settings, Icons.Outlined.Settings),
   )
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ToadGalleryApp(
   galleryViewModel: GalleryViewModel,
@@ -198,7 +202,11 @@ fun ToadGalleryApp(
       }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    // v2.4.0: one SharedTransitionLayout around the whole shell so the
+    // photos grid and the lightbox overlay can hero-morph between scenes.
+    SharedTransitionLayout {
+      CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+      BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
       val useNavigationRail = maxWidth >= 600.dp
 
       Scaffold(
@@ -319,32 +327,33 @@ fun ToadGalleryApp(
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideInHorizontally(tween(280)) { it / 4 } + fadeIn(tween(280))
-                  else slideInHorizontally(tween(280)) { -it / 4 } + fadeIn(tween(280))
+                  if (rightward) slideInHorizontally(MotionPolicy.uiSpec()) { it / 4 } + fadeIn(MotionPolicy.uiSpec())
+                  else slideInHorizontally(MotionPolicy.uiSpec()) { -it / 4 } + fadeIn(MotionPolicy.uiSpec())
                 },
                 exitTransition = {
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideOutHorizontally(tween(280)) { -it / 6 } + fadeOut(tween(280))
-                  else slideOutHorizontally(tween(280)) { it / 6 } + fadeOut(tween(280))
+                  if (rightward) slideOutHorizontally(MotionPolicy.uiSpec()) { -it / 6 } + fadeOut(MotionPolicy.uiSpec())
+                  else slideOutHorizontally(MotionPolicy.uiSpec()) { it / 6 } + fadeOut(MotionPolicy.uiSpec())
                 },
                 popEnterTransition = {
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideInHorizontally(tween(280)) { it / 4 } + fadeIn(tween(280))
-                  else slideInHorizontally(tween(280)) { -it / 4 } + fadeIn(tween(280))
+                  if (rightward) slideInHorizontally(MotionPolicy.uiSpec()) { it / 4 } + fadeIn(MotionPolicy.uiSpec())
+                  else slideInHorizontally(MotionPolicy.uiSpec()) { -it / 4 } + fadeIn(MotionPolicy.uiSpec())
                 },
                 popExitTransition = {
                   val rightward =
                     tabIndexFor(targetState.destination.route) >
                       tabIndexFor(initialState.destination.route)
-                  if (rightward) slideOutHorizontally(tween(280)) { -it / 6 } + fadeOut(tween(280))
-                  else slideOutHorizontally(tween(280)) { it / 6 } + fadeOut(tween(280))
+                  if (rightward) slideOutHorizontally(MotionPolicy.uiSpec()) { -it / 6 } + fadeOut(MotionPolicy.uiSpec())
+                  else slideOutHorizontally(MotionPolicy.uiSpec()) { it / 6 } + fadeOut(MotionPolicy.uiSpec())
                 },
               ) {
               composable(TopLevelTab.PHOTOS.route) {
+                CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
                 PhotosScreen(
                   uiState = galleryState,
                   isWideLayout = useNavigationRail,
@@ -386,6 +395,7 @@ fun ToadGalleryApp(
                   onBatchHideToVault = galleryViewModel::batchHideToVault,
                   onBatchDelete = galleryViewModel::openBatchDeleteConfirmDialog,
                 )
+                }
               }
               composable(TopLevelTab.ALBUMS.route) {
                 AlbumsScreen(
@@ -468,9 +478,10 @@ fun ToadGalleryApp(
       }
       AnimatedVisibility(
         visible = activeLightboxItem != null,
-        enter = fadeIn(tween(220)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220)),
-        exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.94f, animationSpec = tween(180)),
+        enter = fadeIn(MotionPolicy.uiSpec(220)) + scaleIn(initialScale = 0.92f, animationSpec = MotionPolicy.uiSpec(220)),
+        exit = fadeOut(MotionPolicy.uiSpec(180)) + scaleOut(targetScale = 0.94f, animationSpec = MotionPolicy.uiSpec(180)),
       ) {
+        CompositionLocalProvider(LocalOverlayAnimatedVisibilityScope provides this) {
         val overlayItem = lastLightboxItem
         if (overlayItem != null) {
           LightboxOverlay(
@@ -527,6 +538,7 @@ fun ToadGalleryApp(
               },
             )
           }
+        }
         }
       }
 
@@ -631,6 +643,8 @@ fun ToadGalleryApp(
           onClose = galleryViewModel::closeRecycleBin,
         )
       }
+      }
     }
   }
+}
 }
