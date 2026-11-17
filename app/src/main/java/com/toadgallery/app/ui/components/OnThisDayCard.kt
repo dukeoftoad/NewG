@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,7 @@ import com.toadgallery.app.ui.theme.LocalToadColors
 fun OnThisDayCard(
   items: List<GalleryMediaItem>,
   onOpenLightbox: (Long) -> Unit,
+  onSeeAll: () -> Unit = {},
 ) {
   if (items.isEmpty()) return
   val extended = LocalToadColors.current
@@ -52,14 +54,17 @@ fun OnThisDayCard(
       modifier = Modifier.padding(14.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
         Icon(
           imageVector = Icons.Filled.CalendarMonth,
           contentDescription = null,
           tint = MaterialTheme.colorScheme.primary,
           modifier = Modifier.size(18.dp),
         )
-        Column(modifier = Modifier.padding(start = 8.dp)) {
+        Column(modifier = Modifier.padding(start = 8.dp).weight(1f)) {
           Text("On this day", style = MaterialTheme.typography.titleSmall)
           Text(
             text =
@@ -68,6 +73,9 @@ fun OnThisDayCard(
             style = MaterialTheme.typography.bodySmall,
             color = extended.textMuted,
           )
+        }
+        TextButton(onClick = onSeeAll) {
+          Text("See all")
         }
       }
 
