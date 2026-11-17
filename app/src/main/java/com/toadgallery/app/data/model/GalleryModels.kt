@@ -84,6 +84,7 @@ enum class SettingsSubPage(val title: String, val badge: String) {
   VAULT_SECURITY("Hidden Vault & Security", "AES-256"),
   STORAGE("Storage Manager", "Local"),
   ABOUT("About toadGALLERY", "v${BuildConfig.VERSION_NAME}"),
+  PEOPLE_MANAGER("People Manager", "Faces"),
 }
 
 sealed interface TimelineFolderFilter {
