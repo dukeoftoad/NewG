@@ -306,29 +306,7 @@ class GalleryViewModel(
           val peopleGroups =
             detectedGroups
               .filter { personRecords[it.id]?.isIgnored != true }
-              .groupBy { group ->
-                group.name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "cluster:${group.id}"
-              }
-              .values
-              .map { samePerson ->
-                if (samePerson.size == 1) samePerson.single()
-                else {
-                  val first = samePerson.first()
-                  first.copy(
-                    id = "person:${first.name.orEmpty().trim().lowercase()}",
-                    photoIds = samePerson.flatMap { it.photoIds }.distinct().sortedDescending(),
-                    faceCount = samePerson.sumOf { it.faceCount },
-                    clusterIds = samePerson.flatMap { it.clusterIds }.distinct(),
-                    faces = samePerson.flatMap { it.faces }.distinct(),
-                    faceBounds =
-                      samePerson.flatMap { it.faceBounds.entries }.associate { it.toPair() },
-                  )
-                }
-              }
-              .sortedWith(
-                compareByDescending<FacePersonGroup> { it.photoIds.size }
-                  .thenBy { it.name ?: it.id }
-              )
+              .let(FacePersonClusterer::mergeSameNameGroups)
 
           val suggestions =
             if (unassignedFaceGroups.isNotEmpty() && peopleGroups.isNotEmpty()) {
