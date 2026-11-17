@@ -65,6 +65,22 @@ class TrashPurgeWorker(
     private const val TAG = "TrashPurge"
     const val RETENTION_DAYS = 30L
     val RETENTION_MILLIS = TimeUnit.DAYS.toMillis(RETENTION_DAYS)
+
+    /**
+     * "N days left" label for a trashed row, or null when the row has no
+     * timestamp (legacy artifact — the user resolves it via Empty bin).
+     * Rounds the remaining window UP, so an item trashed just now reads
+     * "30 days left" and the final day reads "1 day left", then "Deletes
+     * today" once the window has passed.
+     */
+    fun daysLeftLabel(trashedAt: Long?, now: Long = System.currentTimeMillis()): String? {
+      if (trashedAt == null) return null
+      val elapsed = (now - trashedAt).coerceAtLeast(0L)
+      val remaining = RETENTION_MILLIS - elapsed
+      if (remaining <= 0L) return "Deletes today"
+      val days = (remaining + TimeUnit.DAYS.toMillis(1) - 1) / TimeUnit.DAYS.toMillis(1)
+      return if (days == 1L) "1 day left" else "$days days left"
+    }
     /**
      * The "about to delete" notice window — items within this many days of
      * the 30-day purge get a heads-up banner in the Recycle Bin so the user

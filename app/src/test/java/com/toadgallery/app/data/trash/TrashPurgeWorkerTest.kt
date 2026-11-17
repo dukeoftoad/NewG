@@ -104,6 +104,26 @@ class TrashPurgeWorkerTest {
   }
 
   @Test
+  fun `days-left label rounds up and resolves to deletes-today`() {
+    val now = System.currentTimeMillis()
+    // Freshly trashed: 30d window minus epsilon -> ceil keeps "30 days left".
+    assertEquals(
+      "30 days left",
+      TrashPurgeWorker.daysLeftLabel(now - 1_000L, now),
+    )
+    // 29.5 days elapsed -> 0.5d remaining -> rounds up to 1.
+    assertEquals(
+      "1 day left",
+      TrashPurgeWorker.daysLeftLabel(now - (29 * DAY_MS + 12 * 60 * 60_000L), now),
+    )
+    // Exactly at the window, and long past it (legacy backfilled rows).
+    assertEquals("Deletes today", TrashPurgeWorker.daysLeftLabel(now - 30 * DAY_MS, now))
+    assertEquals("Deletes today", TrashPurgeWorker.daysLeftLabel(now - 45 * DAY_MS, now))
+    // No timestamp (pre-migration artifact): the dialog shows no countdown.
+    assertNull(TrashPurgeWorker.daysLeftLabel(null, now))
+  }
+
+  @Test
   fun workerPurgesExpiredRowsAndLeavesFreshOnesAlone() = runBlocking {
     val now = System.currentTimeMillis()
     dao.insertTrashed("expired", trashedAt = now - 31 * DAY_MS)

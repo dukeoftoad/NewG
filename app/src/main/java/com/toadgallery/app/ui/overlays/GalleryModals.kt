@@ -33,6 +33,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +55,7 @@ import com.toadgallery.app.data.local.SampleMediaCatalog
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.StorySlide
 import com.toadgallery.app.ui.components.GalleryMediaImage
+import com.toadgallery.app.data.trash.TrashPurgeWorker
 import com.toadgallery.app.ui.theme.LocalToadColors
 
 @Composable
@@ -179,6 +181,7 @@ fun RecycleBinDialog(
   trashedItems: List<GalleryMediaItem>,
   expiringSoonCount: Int = 0,
   onRestoreItem: (Long) -> Unit,
+  onRestoreAll: () -> Unit,
   onEmptyBin: () -> Unit,
   onPurgeExpired: () -> Unit,
   onClose: () -> Unit,
@@ -276,7 +279,12 @@ fun RecycleBinDialog(
                       overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                      item.dateLabel,
+                      buildString {
+                        append(item.dateLabel)
+                        TrashPurgeWorker.daysLeftLabel(item.trashedAt)?.let {
+                          append(" • ").append(it)
+                        }
+                      },
                       style = MaterialTheme.typography.bodySmall,
                       color = extended.textMuted,
                     )
@@ -296,6 +304,18 @@ fun RecycleBinDialog(
                 }
               }
             }
+          }
+
+          // Safe bulk action above the destructive one: everything comes
+          // back (Room flag cleared + OS trash synced) in one tap.
+          OutlinedButton(
+            onClick = onRestoreAll,
+            modifier =
+              Modifier.fillMaxWidth()
+                .minimumInteractiveComponentSize()
+                .testTag("restore_all_btn"),
+          ) {
+            Text("Restore all items")
           }
 
           Button(
