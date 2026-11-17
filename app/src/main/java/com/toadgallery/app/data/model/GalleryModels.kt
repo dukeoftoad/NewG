@@ -131,6 +131,8 @@ data class GalleryMediaItem(
   val isFavorite: Boolean,
   val isHidden: Boolean,
   val isTrashed: Boolean,
+  /** Epoch millis when the item entered the Recycle Bin; null when not trashed. */
+  val trashedAt: Long? = null,
   val tags: List<String>,
   val ocrText: String,
   val exifSummary: String,

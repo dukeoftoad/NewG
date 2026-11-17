@@ -1096,6 +1096,16 @@ class GalleryViewModel(
     }
   }
 
+  /** Restores every trashed item at once (v2.2.0 E3), syncing the OS trash. */
+  fun restoreAllFromTrash() {
+    val items = uiState.value.trashedMedia
+    if (items.isEmpty()) return
+    viewModelScope.launch {
+      val n = galleryRepo.restoreAllFromTrash(items)
+      emitMessage("Restored $n item${if (n == 1) "" else "s"} from Recycle Bin")
+    }
+  }
+
   fun emptyRecycleBin() {
     viewModelScope.launch {
       galleryRepo.emptyRecycleBin()

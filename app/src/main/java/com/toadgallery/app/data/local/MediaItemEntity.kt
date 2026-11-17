@@ -74,6 +74,7 @@ data class MediaItemEntity(
       isFavorite = isFavorite,
       isHidden = isHidden,
       isTrashed = isTrashed,
+      trashedAt = trashedAt,
       tags = tagsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() },
       ocrText = ocrText,
       exifSummary = exifSummary,

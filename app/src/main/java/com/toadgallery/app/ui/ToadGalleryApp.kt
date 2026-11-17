@@ -569,6 +569,7 @@ fun ToadGalleryApp(
           trashedItems = galleryState.trashedMedia,
           expiringSoonCount = galleryState.trashedExpiringSoonCount,
           onRestoreItem = galleryViewModel::restoreFromTrash,
+          onRestoreAll = galleryViewModel::restoreAllFromTrash,
           onEmptyBin = galleryViewModel::emptyRecycleBin,
           onPurgeExpired = galleryViewModel::purgeExpiredTrashedNow,
           onClose = galleryViewModel::closeRecycleBin,
