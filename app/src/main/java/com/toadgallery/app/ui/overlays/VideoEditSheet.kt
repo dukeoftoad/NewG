@@ -29,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.toadgallery.app.data.model.GalleryMediaItem
+import com.toadgallery.app.data.video.TrimTimelineState
 import com.toadgallery.app.data.video.VideoEditPlan
 import com.toadgallery.app.ui.theme.LocalToadColors
 
@@ -70,16 +72,36 @@ fun VideoEditSheet(
   var frameSec by remember { mutableStateOf("0") }
   var errorText by remember { mutableStateOf<String?>(null) }
 
+  // v2.3.0: visual trim timeline when the source duration is known and the
+  // video has a backing file; the seconds fields remain the fallback for
+  // rows with missing metadata. All range math lives in TrimTimelineState.
+  val hasTimeline = sourceDurationMs > 0L && !item.uriString.isNullOrBlank()
+  val baseTimeline =
+    remember(sourceDurationMs) {
+      runCatching { TrimTimelineState(sourceDurationMs) }.getOrNull()
+    }
+  var startMs by remember(sourceDurationMs) { mutableLongStateOf(0L) }
+  var endMs by remember(sourceDurationMs) { mutableLongStateOf(sourceDurationMs) }
+
   fun buildPlan(): VideoEditPlan? =
     try {
-      val start = startSec.toLongOrNull() ?: 0L
-      val end = endSec.toLongOrNull()?.takeIf { it > 0 }
-      VideoEditPlan(
-        trimStartMs = start * 1000L,
-        trimEndMs = end?.times(1000L),
-        removeAudio = muted,
-        speed = speed,
-      )
+      if (hasTimeline && baseTimeline != null) {
+        VideoEditPlan(
+          trimStartMs = startMs,
+          trimEndMs = endMs.takeIf { it < sourceDurationMs },
+          removeAudio = muted,
+          speed = speed,
+        )
+      } else {
+        val start = startSec.toLongOrNull() ?: 0L
+        val end = endSec.toLongOrNull()?.takeIf { it > 0 }
+        VideoEditPlan(
+          trimStartMs = start * 1000L,
+          trimEndMs = end?.times(1000L),
+          removeAudio = muted,
+          speed = speed,
+        )
+      }
     } catch (t: IllegalArgumentException) {
       errorText = t.message
       null
@@ -119,26 +141,40 @@ fun VideoEditSheet(
           }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-          OutlinedTextField(
-            value = startSec,
-            onValueChange = { startSec = it.filter(Char::isDigit).take(6) },
-            label = { Text("Start (s)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.weight(1f),
-          )
-          OutlinedTextField(
-            value = endSec,
-            onValueChange = { endSec = it.filter(Char::isDigit).take(6) },
-            label = { Text("End (s)") },
-            supportingText = {
-              if (sourceDurationMs > 0) Text("source: ${item.durationLabel}")
+        if (hasTimeline && baseTimeline != null) {
+          VideoTrimTimeline(
+            uriString = item.uriString!!,
+            durationMs = sourceDurationMs,
+            startMs = startMs,
+            endMs = endMs,
+            onRangeChange = { s, e ->
+              val next = baseTimeline.withRange(s, e)
+              startMs = next.startMs
+              endMs = next.endMs
             },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.weight(1f),
           )
+        } else {
+          Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(
+              value = startSec,
+              onValueChange = { startSec = it.filter(Char::isDigit).take(6) },
+              label = { Text("Start (s)") },
+              singleLine = true,
+              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+              modifier = Modifier.weight(1f),
+            )
+            OutlinedTextField(
+              value = endSec,
+              onValueChange = { endSec = it.filter(Char::isDigit).take(6) },
+              label = { Text("End (s)") },
+              supportingText = {
+                if (sourceDurationMs > 0) Text("source: ${item.durationLabel}")
+              },
+              singleLine = true,
+              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+              modifier = Modifier.weight(1f),
+            )
+          }
         }
 
         Row(

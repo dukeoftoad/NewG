@@ -37,6 +37,36 @@ class VideoFrameExtractor(private val context: Context) {
       }
     }
 
+  /**
+   * Pulls a thumbnail strip for the trim timeline (v2.3.0): [count] frames
+   * at evenly-spaced positions across [durationMs], decoded through ONE
+   * retriever session (opening MediaMetadataRetriever is the expensive part).
+   * Entries are null when a position fails to decode — the strip renders a
+   * placeholder instead and the timeline stays usable.
+   */
+  suspend fun extractStrip(
+    inputUri: String,
+    count: Int,
+    durationMs: Long,
+  ): List<Bitmap?> =
+    withContext(Dispatchers.IO) {
+      if (durationMs <= 0L || count < 2) return@withContext List(count) { null }
+      val retriever = MediaMetadataRetriever()
+      try {
+        retriever.setDataSource(context, Uri.parse(inputUri))
+        (0 until count).map { i ->
+          val positionUs = durationMs * i / count * 1000L
+          runCatching {
+            retriever.getFrameAtTime(positionUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+          }.getOrNull()
+        }
+      } catch (t: Throwable) {
+        List(count) { null }
+      } finally {
+        retriever.release()
+      }
+    }
+
   companion object {
     /**
      * "Frame at mm:ss" label in the same %02d:%02d shape the scanner and
