@@ -80,11 +80,9 @@ import androidx.compose.ui.unit.sp
 import com.toadgallery.app.data.media.MediaAccessLevel
 import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.BuildConfig
-import com.toadgallery.app.data.model.AppearanceMode
 import com.toadgallery.app.data.model.GroupByMode
 import com.toadgallery.app.data.model.LayoutMode
 import com.toadgallery.app.data.model.SettingsSubPage
-import com.toadgallery.app.data.model.ThemePalette
 import com.toadgallery.app.ui.components.HeroGradientCard
 import com.toadgallery.app.ui.components.SectionHeading
 import com.toadgallery.app.ui.components.StorageBreakdownBar
@@ -130,7 +128,8 @@ fun SettingsScreen(
           mediaAccessLevel = mediaAccessLevel,
           onSyncMediaPermissions = onSyncMediaPermissions,
         )
-      SettingsSubPage.THEME -> SettingsSubThemePage(uiState = uiState, viewModel = viewModel)
+      SettingsSubPage.APPEARANCE ->
+        SettingsSubAppearancePage(uiState = uiState, viewModel = viewModel)
       SettingsSubPage.LAYOUT -> SettingsSubLayoutPage(uiState = uiState, viewModel = viewModel)
       SettingsSubPage.AI_ENGINE -> SettingsSubAiEnginePage(uiState = uiState, viewModel = viewModel)
       SettingsSubPage.VAULT_SECURITY ->
@@ -141,7 +140,6 @@ fun SettingsScreen(
         )
       SettingsSubPage.STORAGE -> SettingsSubStoragePage(uiState = uiState, viewModel = viewModel)
       SettingsSubPage.ABOUT -> SettingsSubAboutPage(uiState = uiState, viewModel = viewModel)
-      SettingsSubPage.APP_ICON -> SettingsSubAppIconPage(uiState = uiState, viewModel = viewModel)
     }
   }
 }
@@ -205,7 +203,7 @@ private fun SettingsHubView(
           color = MaterialTheme.colorScheme.primaryContainer,
         ) {
           Text(
-            text = "0.5.0-beta",
+            text = "v${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -378,11 +376,12 @@ private fun SettingsHubView(
                   icon = Icons.Filled.Palette,
                   iconContainer = MaterialTheme.colorScheme.primaryContainer,
                   iconTint = MaterialTheme.colorScheme.onPrimaryContainer,
-                  title = "Theme & Colors",
-                  subtitle = "${prefs.appearanceMode.label} • ${prefs.palette.displayName}",
+                  title = "Appearance",
+                  subtitle =
+                    "${prefs.appearanceMode.label} • ${prefs.palette.displayName} • ${prefs.appIcon.label}",
                   trailingBadgeColor = MaterialTheme.colorScheme.primary,
-                  onClick = { viewModel.openSubPage(SettingsSubPage.THEME) },
-                  testTag = "settings_row_theme",
+                  onClick = { viewModel.openSubPage(SettingsSubPage.APPEARANCE) },
+                  testTag = "settings_row_appearance",
                 )
                 HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
                 SettingsDrillRow(
@@ -394,16 +393,6 @@ private fun SettingsHubView(
                     "${prefs.layoutMode.label} • ${prefs.columns} per row • Group by ${prefs.groupBy.label}",
                   onClick = { viewModel.openSubPage(SettingsSubPage.LAYOUT) },
                   testTag = "settings_row_layout",
-                )
-                HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
-                SettingsDrillRow(
-                  icon = Icons.Filled.Image,
-                  iconContainer = extended.surfaceHigh,
-                  iconTint = MaterialTheme.colorScheme.primary,
-                  title = "App Icon",
-                  subtitle = "${prefs.appIcon.label} • Tap to change the launcher icon",
-                  onClick = { viewModel.openSubPage(SettingsSubPage.APP_ICON) },
-                  testTag = "settings_row_app_icon",
                 )
               }
             }
@@ -576,236 +565,6 @@ private fun SettingsHubView(
                   onClick = { viewModel.openSubPage(SettingsSubPage.ABOUT) },
                   testTag = "settings_row_about",
                 )
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun SettingsSubThemePage(
-  uiState: SettingsUiState,
-  viewModel: SettingsViewModel,
-) {
-  val extended = LocalToadColors.current
-  val prefs = uiState.preferences
-
-  Column(modifier = Modifier.fillMaxSize()) {
-    SettingsSubPageHeader(
-      title = "Theme & Colors",
-      badge = "Material 3",
-      onBack = viewModel::backToHub,
-    )
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-      LazyColumn(
-        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp).testTag("settings_theme_list"),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-      ) {
-        item {
-          SettingsGroupCard {
-            Column(
-              modifier = Modifier.padding(16.dp),
-              verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-              Text("Appearance mode", style = MaterialTheme.typography.titleSmall)
-              Surface(
-                shape = CircleShape,
-                color = extended.surfaceHigh,
-                border = BorderStroke(1.dp, extended.borderSubtle),
-                modifier = Modifier.fillMaxWidth(),
-              ) {
-                Row(modifier = Modifier.padding(4.dp)) {
-                  AppearanceMode.entries.forEach { mode ->
-                    val selected = prefs.appearanceMode == mode
-                    Surface(
-                      onClick = { viewModel.selectAppearanceMode(mode) },
-                      modifier =
-                        Modifier.weight(1f)
-                          .minimumInteractiveComponentSize()
-                          .testTag("theme_mode_${mode.name.lowercase()}"),
-                      shape = CircleShape,
-                      color =
-                        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    ) {
-                      Row(
-                        modifier = Modifier.padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                      ) {
-                        if (selected) {
-                          Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(14.dp),
-                          )
-                          Spacer(modifier = Modifier.size(4.dp))
-                        }
-                        Text(
-                          text = mode.label,
-                          style = MaterialTheme.typography.labelMedium,
-                          color =
-                            if (selected) MaterialTheme.colorScheme.onPrimary
-                            else extended.textMuted,
-                        )
-                      }
-                    }
-                  }
-                }
-              }
-
-              HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
-
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                  Text(
-                    text = "Use system wallpaper colors",
-                    style = MaterialTheme.typography.labelLarge,
-                  )
-                  Text(
-                    text = "Follow Material You dynamic palette (Android 12+)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = extended.textMuted,
-                  )
-                }
-                ToadSwitch(
-                  checked = prefs.useDynamicColors,
-                  onCheckedChange = viewModel::toggleDynamicColors,
-                  contentDesc = "Use system wallpaper dynamic colors",
-                  modifier = Modifier.testTag("switch_dynamic_colors"),
-                )
-              }
-            }
-          }
-        }
-
-        item {
-          SettingsGroupCard {
-            Column(
-              modifier = Modifier.padding(16.dp),
-              verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Text("Color Palettes", style = MaterialTheme.typography.titleSmall)
-                Text(
-                  text = prefs.palette.displayName,
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.primary,
-                )
-              }
-              BoxWithConstraints(modifier = Modifier.fillMaxWidth().testTag("palette_grid")) {
-                val gridCols = if (maxWidth >= 520.dp) 3 else 2
-                val rows = ThemePalette.entries.chunked(gridCols)
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                  rows.forEach { rowPalettes ->
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                      rowPalettes.forEach { palette ->
-                        val selected = prefs.palette == palette
-                        val surfaceBg = Color(palette.surfaceHex)
-                        val accentBg = Color(palette.accentHex)
-                        Surface(
-                          onClick = { viewModel.selectPalette(palette) },
-                          modifier =
-                            Modifier.weight(1f)
-                              .minimumInteractiveComponentSize()
-                              .testTag("palette_card_${palette.name.lowercase()}"),
-                          shape = RoundedCornerShape(18.dp),
-                          color =
-                            if (selected) MaterialTheme.colorScheme.primaryContainer
-                            else extended.surfaceHigh,
-                          border =
-                            BorderStroke(
-                              width = if (selected) 2.dp else 1.dp,
-                              color =
-                                if (selected) MaterialTheme.colorScheme.primary
-                                else extended.borderSubtle,
-                            ),
-                        ) {
-                          Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                          ) {
-                            // Visual Dual-Tone Swatch Tile Preview
-                            Box(
-                              modifier =
-                                Modifier.fillMaxWidth()
-                                  .height(54.dp)
-                                  .clip(RoundedCornerShape(12.dp))
-                                  .background(surfaceBg)
-                                  .border(
-                                    1.dp,
-                                    accentBg.copy(alpha = 0.45f),
-                                    RoundedCornerShape(12.dp),
-                                  )
-                                  .padding(8.dp)
-                            ) {
-                              Row(
-                                modifier = Modifier.align(Alignment.CenterStart),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                              ) {
-                                Box(
-                                  modifier =
-                                    Modifier.size(20.dp).clip(CircleShape).background(accentBg)
-                                )
-                                Box(
-                                  modifier =
-                                    Modifier.width(26.dp)
-                                      .height(8.dp)
-                                      .clip(CircleShape)
-                                      .background(accentBg.copy(alpha = 0.45f))
-                                )
-                              }
-                              if (selected) {
-                                Icon(
-                                  imageVector = Icons.Filled.CheckCircle,
-                                  contentDescription = "Selected",
-                                  tint = accentBg,
-                                  modifier = Modifier.align(Alignment.TopEnd).size(18.dp),
-                                )
-                              }
-                            }
-
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                              Text(
-                                text = palette.displayName,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                              )
-                              Text(
-                                text = palette.subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = extended.textMuted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                              )
-                            }
-                          }
-                        }
-                      }
-                      repeat((gridCols - rowPalettes.size).coerceAtLeast(0)) {
-                        Spacer(modifier = Modifier.weight(1f))
-                      }
-                    }
-                  }
-                }
               }
             }
           }

@@ -65,11 +65,11 @@ class AppIconPreviewResourcesTest {
 
     composeTestRule
       .onNodeWithTag("settings_hub_list")
-      .performScrollToNode(hasTestTag("settings_row_app_icon"))
-    composeTestRule.onNodeWithTag("settings_row_app_icon").performClick()
+      .performScrollToNode(hasTestTag("settings_row_appearance"))
+    composeTestRule.onNodeWithTag("settings_row_appearance").performClick()
     composeTestRule.waitForIdle()
 
-    composeTestRule.onNodeWithTag("settings_app_icon_list").assertExists()
+    composeTestRule.onNodeWithTag("settings_appearance_list").assertExists()
     // One preview tile per selectable icon.
     composeTestRule
       .onAllNodesWithTag("app_icon_tile_${AppIcon.CLASSIC_TOAD.name}", useUnmergedTree = true)

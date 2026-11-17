@@ -73,16 +73,16 @@ class UnifiedHeaderVaultDensityRobolectricTest {
     assertTrue(composeTestRule.onAllNodesWithText("OCR").fetchSemanticsNodes().isEmpty())
     assertTrue(composeTestRule.onAllNodesWithText("GIF").fetchSemanticsNodes().isEmpty())
 
-    // Check Theme & Colors Palette Grid
+    // Check Appearance Palette Grid
     composeTestRule.onNodeWithTag("nav_tab_settings").performClick()
     composeTestRule.waitForIdle()
     composeTestRule
       .onNodeWithTag("settings_hub_list")
-      .performScrollToNode(hasTestTag("settings_row_theme"))
-    composeTestRule.onNodeWithTag("settings_row_theme").performClick()
+      .performScrollToNode(hasTestTag("settings_row_appearance"))
+    composeTestRule.onNodeWithTag("settings_row_appearance").performClick()
     composeTestRule.waitForIdle()
     composeTestRule
-      .onNodeWithTag("settings_theme_list")
+      .onNodeWithTag("settings_appearance_list")
       .performScrollToNode(hasTestTag("palette_grid"))
     composeTestRule.onNodeWithTag("palette_grid").assertIsDisplayed()
     composeTestRule.onNodeWithTag("palette_card_ocean_slate").performScrollTo().performClick()

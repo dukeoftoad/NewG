@@ -139,9 +139,9 @@ class ToadGalleryRobolectricTest {
 
     composeTestRule
       .onNodeWithTag("settings_hub_list")
-      .performScrollToNode(hasTestTag("settings_row_theme"))
-    composeTestRule.onNodeWithTag("settings_row_theme").performClick()
+      .performScrollToNode(hasTestTag("settings_row_appearance"))
+    composeTestRule.onNodeWithTag("settings_row_appearance").performClick()
     composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithText("Theme & Colors").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Appearance").assertIsDisplayed()
   }
 }

@@ -77,14 +77,13 @@ enum class SearchTabMode(val label: String) {
 }
 
 enum class SettingsSubPage(val title: String, val badge: String) {
-  HUB("Settings", "0.5.0-beta"),
-  THEME("Theme & Colors", "Material 3"),
+  HUB("Settings", "v${BuildConfig.VERSION_NAME}"),
+  APPEARANCE("Appearance", "Theme & Icon"),
   LAYOUT("Timeline Layout", "Display"),
   AI_ENGINE("AI Engine & Models", "On-Device"),
   VAULT_SECURITY("Hidden Vault & Security", "AES-256"),
   STORAGE("Storage Manager", "Local"),
   ABOUT("About toadGALLERY", "v${BuildConfig.VERSION_NAME}"),
-  APP_ICON("App Icon", "Launcher"),
 }
 
 sealed interface TimelineFolderFilter {
