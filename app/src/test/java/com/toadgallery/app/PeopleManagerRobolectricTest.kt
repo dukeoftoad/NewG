@@ -3,6 +3,8 @@ package com.toadgallery.app
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -33,10 +35,17 @@ class PeopleManagerRobolectricTest {
       .onNodeWithTag("settings_hub_list")
       .performScrollToNode(hasTestTag("settings_row_people_manager"))
     composeTestRule.onNodeWithTag("settings_row_people_manager").performClick()
-    composeTestRule.waitForIdle()
 
+    // The sub page swaps in via AnimatedContent — wait for the router to land.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      composeTestRule.onAllNodesWithTag("people_manager_list").fetchSemanticsNodes().isNotEmpty()
+    }
     composeTestRule.onNodeWithTag("people_manager_list").assertExists()
+
     // Fresh install has no face index yet — the empty state must render.
+    composeTestRule.waitUntil(timeoutMillis = 10_000) {
+      composeTestRule.onAllNodesWithText("No people detected yet").fetchSemanticsNodes().isNotEmpty()
+    }
     composeTestRule.onNodeWithText("No people detected yet").assertIsDisplayed()
   }
 }
