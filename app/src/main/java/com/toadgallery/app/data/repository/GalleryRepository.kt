@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -20,6 +21,7 @@ import com.toadgallery.app.data.local.MediaItemEntity
 import com.toadgallery.app.data.local.SampleMediaCatalog
 import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.data.trash.TrashPurgeWorker
+import com.toadgallery.app.data.video.VideoEditPlan
 import com.toadgallery.app.data.media.MediaStoreScanner
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.MediaCategory
@@ -464,10 +466,105 @@ class GalleryRepository(
           exifSummary = "${sourceItem.exifSummary} • Edited Copy",
           tonePreset = TonePreset.NATURAL.name,
           albumId = sourceItem.albumId,
-          editRecipeJson = recipe.toJsonString(),
+        editRecipeJson = recipe.toJsonString(),
+      )
+    dao.insertSingleMedia(entity)
+  }
+
+  /**
+   * Saves an edited video ([VideoEditEngine] output) as a new VIDEO item,
+   * mirroring [saveEditedCopy]'s contract: app-owned file first, best-effort
+   * export to scoped Movies/toadGALLERY on Android 10+, then a new library row
+   * titled "<name> (Edited)". Video edits are baked (trim/mute/speed change
+   * the bytes), so unlike photo edits there is no non-destructive recipe path.
+   */
+  suspend fun saveEditedVideoCopy(
+    sourceItem: GalleryMediaItem,
+    editedFile: File,
+    sourceDurationMs: Long,
+    plan: VideoEditPlan,
+  ): Long =
+    withContext(Dispatchers.IO) {
+      // Best-effort export to scoped Movies/toadGALLERY (zero broad storage permissions)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        runCatching {
+          val values =
+            ContentValues().apply {
+              put(MediaStore.Video.Media.DISPLAY_NAME, editedFile.name)
+              put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+              put(
+                MediaStore.Video.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_MOVIES}/toadGALLERY",
+              )
+              put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+          val uri =
+            context.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+          if (uri != null) {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+              editedFile.inputStream().use { it.copyTo(out) }
+            }
+            val done = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
+            context.contentResolver.update(uri, done, null, null)
+          }
+        }
+      }
+
+      val nowMs = System.currentTimeMillis()
+      val nowDate = Date(nowMs)
+      val dayFmt = SimpleDateFormat("dd MMM yyyy", Locale.US)
+      val monthFmt = SimpleDateFormat("MMMM yyyy", Locale.US)
+      val weekDayFmt = SimpleDateFormat("MMM d", Locale.US)
+      val yearFmt = SimpleDateFormat("yyyy", Locale.US)
+      val cal = Calendar.getInstance().apply { time = nowDate }
+      cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+      val weekStart = weekDayFmt.format(cal.time)
+      cal.add(Calendar.DAY_OF_WEEK, 6)
+      val weekEnd = weekDayFmt.format(cal.time)
+
+      val aspect = probeVideoAspectRatio(editedFile)
+      val cleanBaseTitle = sourceItem.title.removeSuffix(" (Edited)").take(40)
+      val entity =
+        MediaItemEntity(
+          title = "$cleanBaseTitle (Edited)",
+          uriString = Uri.fromFile(editedFile).toString(),
+          drawableResName = sourceItem.drawableResName,
+          bucketName = sourceItem.bucketName,
+          category = MediaCategory.CAMERA.name,
+          mediaType = MediaType.VIDEO.name,
+          durationLabel = plan.outputDurationLabel(sourceDurationMs),
+          dateLabel = dayFmt.format(nowDate),
+          weekGroup = "$weekStart – $weekEnd, ${yearFmt.format(nowDate)}",
+          monthGroup = monthFmt.format(nowDate),
+          timestamp = nowMs,
+          locationName = sourceItem.locationName,
+          hasGps = sourceItem.hasGps,
+          mapX = sourceItem.mapX,
+          mapY = sourceItem.mapY,
+          aspectRatio = aspect,
+          isFavorite = false,
+          tagsCsv = (sourceItem.tags + "edited").distinct().joinToString(", "),
+          ocrText = sourceItem.ocrText,
+          exifSummary = "${sourceItem.exifSummary} • Edited Copy",
+          tonePreset = TonePreset.NATURAL.name,
+          albumId = sourceItem.albumId,
         )
       dao.insertSingleMedia(entity)
     }
+
+  /** Best-effort width/height probe of the exported MP4; 16:9 fallback. */
+  private fun probeVideoAspectRatio(file: File): Float =
+    runCatching {
+      val retriever = MediaMetadataRetriever()
+      try {
+        retriever.setDataSource(file.absolutePath)
+        val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull()
+        val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull()
+        if (w != null && h != null && h > 0f) (w / h).coerceIn(0.45f, 2.2f) else 16f / 9f
+      } finally {
+        retriever.release()
+      }
+    }.getOrDefault(16f / 9f)
 
   suspend fun applyNonDestructiveEdit(
     sourceItem: GalleryMediaItem,
