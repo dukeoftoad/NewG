@@ -143,7 +143,7 @@ class VideoEditRepositoryTest {
     val saved = dao.getMediaById(newId)
     assertNotNull("new row exists", saved)
     assertEquals("is a VIDEO row", MediaType.VIDEO.name, saved!!.mediaType)
-    assertEquals("title carries the Edited suffix", "holiday (Edited)", saved.title)
+    assertEquals("title carries the Edited suffix", "holiday.mp4 (Edited)", saved.title)
     assertEquals(
       "duration label reflects the plan (20s window / 0.5 = 40s)",
       "00:40",
