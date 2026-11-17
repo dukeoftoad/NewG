@@ -10,12 +10,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.Image
 import android.content.Context
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,12 +29,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LockOpen
@@ -65,13 +69,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toadgallery.app.data.ai.FaceModelManager
+import com.toadgallery.app.data.model.AppearanceMode
+import com.toadgallery.app.data.model.ThemePalette
 import com.toadgallery.app.data.model.VaultAutoLock
+import com.toadgallery.app.ui.components.restartApp
 import com.toadgallery.app.ui.components.StorageBreakdownBar
 import androidx.core.content.ContextCompat
 import com.toadgallery.app.ui.components.DrawablePainter
@@ -717,79 +723,6 @@ internal fun SettingsSubAiEnginePage(
                 }
               }
 
-              // Collapsible Developer Diagnostics Accordion
-              Row(
-                modifier =
-                  Modifier.fillMaxWidth()
-                    .minimumInteractiveComponentSize()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClick = viewModel::toggleDiagnostics)
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Text(
-                  text = "Developer Diagnostics & ONNX Logs",
-                  style = MaterialTheme.typography.labelMedium,
-                  color = extended.textMuted,
-                )
-                Icon(
-                  imageVector =
-                    if (uiState.showDiagnostics) Icons.Filled.ExpandLess
-                    else Icons.Filled.ExpandMore,
-                  contentDescription = null,
-                  tint = extended.textMuted,
-                )
-              }
-
-              AnimatedVisibility(visible = uiState.showDiagnostics) {
-                Surface(
-                  shape = RoundedCornerShape(16.dp),
-                  color = MaterialTheme.colorScheme.background,
-                ) {
-                  Column(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                  ) {
-                    val diagStyle =
-                      MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                      )
-                    val faceReady = facePack.isInstalled || prefs.faceModelInstalled
-                    Text(
-                      "• Engine library: present (ONNX Runtime 1.20)",
-                      style = diagStyle,
-                      color = extended.textMuted,
-                    )
-                    Text(
-                      "• ${FaceModelManager.DETECTOR_FILE_NAME} — ${if (faceReady) "installed & SHA-1 verified" else "on-demand"}",
-                      style = diagStyle,
-                      color = extended.textMuted,
-                    )
-                    Text(
-                      "• ${FaceModelManager.EMBEDDER_FILE_NAME} — ${if (faceReady) "installed & SHA-1 verified" else "on-demand"}",
-                      style = diagStyle,
-                      color = extended.textMuted,
-                    )
-                    Text(
-                      "• mobileclip_s2_image.onnx — ${if (prefs.semanticModelInstalled) "installed" else "on-demand"}",
-                      style = diagStyle,
-                      color = extended.textMuted,
-                    )
-                    Text(
-                      "• depth_anything_v2_small_int8.onnx — ${if (depthPack.isInstalled) "installed" else "on-demand"}",
-                      style = diagStyle,
-                      color = extended.textMuted,
-                    )
-                    Text(
-                      "• Worker Guard: Coroutine Semaphore + Thermal Backoff",
-                      style = diagStyle,
-                      color = extended.textMuted,
-                    )
-                  }
-                }
-              }
             }
           }
         }
@@ -1194,59 +1127,6 @@ internal fun SettingsSubAboutPage(
           }
         }
 
-        item {
-          SettingsGroupCard {
-            Column(
-              modifier = Modifier.padding(16.dp),
-              verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
-                  Text("ONNX & NPU Self-Test", style = MaterialTheme.typography.labelLarge)
-                  Text(
-                    "Verify local inference delegate integrity",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = extended.textMuted,
-                  )
-                }
-                Button(
-                  onClick = viewModel::runEngineSelfTest,
-                  modifier =
-                    Modifier.minimumInteractiveComponentSize().testTag("run_self_test_btn"),
-                  colors =
-                    ButtonDefaults.buttonColors(
-                      containerColor = MaterialTheme.colorScheme.primaryContainer,
-                      contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
-                ) {
-                  Text("Run Test", style = MaterialTheme.typography.labelMedium)
-                }
-              }
-
-              if (!uiState.selfTestOutput.isNullOrBlank()) {
-                Surface(
-                  shape = RoundedCornerShape(14.dp),
-                  color = MaterialTheme.colorScheme.background,
-                ) {
-                  Text(
-                    text = uiState.selfTestOutput,
-                    style =
-                      MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                      ),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                  )
-                }
-              }
-            }
-          }
-        }
       }
     }
   }
@@ -1254,23 +1134,25 @@ internal fun SettingsSubAboutPage(
 
 
 @Composable
-internal fun SettingsSubAppIconPage(
+internal fun SettingsSubAppearancePage(
   uiState: SettingsUiState,
   viewModel: SettingsViewModel,
 ) {
   val extended = LocalToadColors.current
   val context = LocalContext.current
-  val selected = uiState.preferences.appIcon
+  val prefs = uiState.preferences
+  val selectedIcon = prefs.appIcon
+  var pendingIconRestart by remember { mutableStateOf(false) }
 
   Column(modifier = Modifier.fillMaxSize()) {
     SettingsSubPageHeader(
-      title = "App Icon",
-      badge = "Launcher",
+      title = "Appearance",
+      badge = "Theme & Icon",
       onBack = viewModel::backToHub,
     )
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
       LazyColumn(
-        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp).testTag("settings_app_icon_list"),
+        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp).testTag("settings_appearance_list"),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
@@ -1278,25 +1160,222 @@ internal fun SettingsSubAppIconPage(
           SettingsGroupCard {
             Column(
               modifier = Modifier.padding(16.dp),
-              verticalArrangement = Arrangement.spacedBy(10.dp),
+              verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-              Text("Launcher icon", style = MaterialTheme.typography.titleMedium)
-              Text(
-                "Pick the icon for your home screen. The choice applies immediately and " +
-                  "survives restarts — pinned shortcuts keep working. Some launchers take " +
-                  "a moment to refresh the icon.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = extended.textMuted,
-              )
+              Text("Appearance mode", style = MaterialTheme.typography.titleSmall)
+              Surface(
+                shape = CircleShape,
+                color = extended.surfaceHigh,
+                border = BorderStroke(1.dp, extended.borderSubtle),
+                modifier = Modifier.fillMaxWidth(),
+              ) {
+                Row(modifier = Modifier.padding(4.dp)) {
+                  AppearanceMode.entries.forEach { mode ->
+                    val selected = prefs.appearanceMode == mode
+                    Surface(
+                      onClick = { viewModel.selectAppearanceMode(mode) },
+                      modifier =
+                        Modifier.weight(1f)
+                          .minimumInteractiveComponentSize()
+                          .testTag("theme_mode_${mode.name.lowercase()}"),
+                      shape = CircleShape,
+                      color =
+                        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    ) {
+                      Row(
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                      ) {
+                        if (selected) {
+                          Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(14.dp),
+                          )
+                          Spacer(modifier = Modifier.size(4.dp))
+                        }
+                        Text(
+                          text = mode.label,
+                          style = MaterialTheme.typography.labelMedium,
+                          color =
+                            if (selected) MaterialTheme.colorScheme.onPrimary
+                            else extended.textMuted,
+                        )
+                      }
+                    }
+                  }
+                }
+              }
+
+              HorizontalDivider(thickness = 1.dp, color = extended.borderSubtle)
+
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                  Text(
+                    text = "Use system wallpaper colors",
+                    style = MaterialTheme.typography.labelLarge,
+                  )
+                  Text(
+                    text = "Follow Material You dynamic palette (Android 12+)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extended.textMuted,
+                  )
+                }
+                ToadSwitch(
+                  checked = prefs.useDynamicColors,
+                  onCheckedChange = viewModel::toggleDynamicColors,
+                  contentDesc = "Use system wallpaper dynamic colors",
+                  modifier = Modifier.testTag("switch_dynamic_colors"),
+                )
+              }
             }
           }
         }
+
+        item {
+          SettingsGroupCard {
+            Column(
+              modifier = Modifier.padding(16.dp),
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Text("Color Palettes", style = MaterialTheme.typography.titleSmall)
+                Text(
+                  text = prefs.palette.displayName,
+                  style = MaterialTheme.typography.labelSmall,
+                  color = MaterialTheme.colorScheme.primary,
+                )
+              }
+              BoxWithConstraints(modifier = Modifier.fillMaxWidth().testTag("palette_grid")) {
+                val gridCols = if (maxWidth >= 520.dp) 3 else 2
+                val rows = ThemePalette.entries.chunked(gridCols)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  rows.forEach { rowPalettes ->
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                      rowPalettes.forEach { palette ->
+                        val selected = prefs.palette == palette
+                        val surfaceBg = Color(palette.surfaceHex)
+                        val accentBg = Color(palette.accentHex)
+                        Surface(
+                          onClick = { viewModel.selectPalette(palette) },
+                          modifier =
+                            Modifier.weight(1f)
+                              .minimumInteractiveComponentSize()
+                              .testTag("palette_card_${palette.name.lowercase()}"),
+                          shape = RoundedCornerShape(18.dp),
+                          color =
+                            if (selected) MaterialTheme.colorScheme.primaryContainer
+                            else extended.surfaceHigh,
+                          border =
+                            BorderStroke(
+                              width = if (selected) 2.dp else 1.dp,
+                              color =
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else extended.borderSubtle,
+                            ),
+                        ) {
+                          Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                          ) {
+                            // Visual Dual-Tone Swatch Tile Preview
+                            Box(
+                              modifier =
+                                Modifier.fillMaxWidth()
+                                  .height(54.dp)
+                                  .clip(RoundedCornerShape(12.dp))
+                                  .background(surfaceBg)
+                                  .border(
+                                    1.dp,
+                                    accentBg.copy(alpha = 0.45f),
+                                    RoundedCornerShape(12.dp),
+                                  )
+                                  .padding(8.dp)
+                            ) {
+                              Row(
+                                modifier = Modifier.align(Alignment.CenterStart),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                              ) {
+                                Box(
+                                  modifier =
+                                    Modifier.size(20.dp).clip(CircleShape).background(accentBg)
+                                )
+                                Box(
+                                  modifier =
+                                    Modifier.width(26.dp)
+                                      .height(8.dp)
+                                      .clip(CircleShape)
+                                      .background(accentBg.copy(alpha = 0.45f))
+                                )
+                              }
+                              if (selected) {
+                                Icon(
+                                  imageVector = Icons.Filled.CheckCircle,
+                                  contentDescription = "Selected",
+                                  tint = accentBg,
+                                  modifier = Modifier.align(Alignment.TopEnd).size(18.dp),
+                                )
+                              }
+                            }
+
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                              Text(
+                                text = palette.displayName,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                              )
+                              Text(
+                                text = palette.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = extended.textMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                              )
+                            }
+                          }
+                        }
+                      }
+                      repeat((gridCols - rowPalettes.size).coerceAtLeast(0)) {
+                        Spacer(modifier = Modifier.weight(1f))
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         item {
           SettingsGroupCard {
             Column(
               modifier = Modifier.fillMaxWidth().padding(16.dp),
               verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+              Text("Launcher icon", style = MaterialTheme.typography.titleMedium)
+              Text(
+                "Pick the icon for your home screen. The choice applies immediately and " +
+                  "survives restarts — restart when asked to refresh it everywhere; some " +
+                  "launchers take a moment on their own.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = extended.textMuted,
+              )
               AppIcon.entries.chunked(4).forEach { rowIcons ->
                 Row(
                   modifier = Modifier.fillMaxWidth(),
@@ -1306,8 +1385,11 @@ internal fun SettingsSubAppIconPage(
                     AppIconTile(
                       icon = icon,
                       resId = appIconRes(context, icon),
-                      selected = icon == selected,
-                      onClick = { viewModel.setAppIcon(icon) },
+                      selected = icon == selectedIcon,
+                      onClick = {
+                        viewModel.setAppIcon(icon)
+                        pendingIconRestart = true
+                      },
                       modifier = Modifier.weight(1f),
                     )
                   }
@@ -1319,6 +1401,32 @@ internal fun SettingsSubAppIconPage(
         }
       }
     }
+  }
+
+  if (pendingIconRestart) {
+    AlertDialog(
+      onDismissRequest = { pendingIconRestart = false },
+      title = { Text("Restart to apply icon") },
+      text = {
+        Text(
+          "The launcher icon is now \"${selectedIcon.label}\". Restart toadGALLERY so the " +
+            "change applies everywhere immediately — pinned shortcuts keep working."
+        )
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            pendingIconRestart = false
+            restartApp(context)
+          }
+        ) {
+          Text("Restart now")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { pendingIconRestart = false }) { Text("Later") }
+      },
+    )
   }
 }
 

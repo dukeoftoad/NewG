@@ -49,8 +49,6 @@ data class SettingsUiState(
   val semanticDownloadProgress: Int = 0,
   val faceModelState: FaceModelPackState = FaceModelPackState(),
   val depthModelState: DepthModelPackState = DepthModelPackState(),
-  val showDiagnostics: Boolean = false,
-  val selfTestOutput: String? = null,
 )
 
 class SettingsViewModel(
@@ -65,8 +63,6 @@ class SettingsViewModel(
   private val searchQuery = MutableStateFlow("")
   private val semanticDownloading = MutableStateFlow(false)
   private val semanticDownloadProgress = MutableStateFlow(0)
-  private val showDiagnostics = MutableStateFlow(false)
-  private val selfTestOutput = MutableStateFlow<String?>(null)
 
   private val iconSwitcher = PackageManagerAppIconSwitcher(appContext)
 
@@ -114,16 +110,7 @@ class SettingsViewModel(
         currentSubPage,
         searchQuery,
         aiMonitorFlow,
-        showDiagnostics,
-        selfTestOutput,
-      ) { arr ->
-        val prefs = arr[0] as UserPreferences
-        val page = arr[1] as SettingsSubPage
-        val query = arr[2] as String
-        val ai = arr[3] as AiMonitorState
-        val diag = arr[4] as Boolean
-        val selfTest = arr[5] as String?
-
+      ) { prefs, page, query, ai ->
         SettingsUiState(
           preferences = prefs,
           currentSubPage = page,
@@ -135,8 +122,6 @@ class SettingsViewModel(
           semanticDownloadProgress = ai.downloadProgress,
           depthModelState = ai.depthState,
           faceModelState = ai.faceState,
-          showDiagnostics = diag,
-          selfTestOutput = selfTest,
         )
       }
       .stateIn(
@@ -276,10 +261,6 @@ class SettingsViewModel(
     depthModelManager.startDownload { _, msg -> _messages.tryEmit(msg) }
   }
 
-  fun toggleDiagnostics() {
-    showDiagnostics.value = !showDiagnostics.value
-  }
-
   fun runOrPauseIndex() {
     if (faceIndexManager.state.value.running) {
       faceIndexManager.pause()
@@ -363,20 +344,6 @@ class SettingsViewModel(
       prefsRepo.setMlIndexSizeMb(0.0f)
       _messages.tryEmit(String.format(Locale.US, "Cleared ML index store (%.1f MB freed)", freed))
     }
-  }
-
-  fun runEngineSelfTest() {
-    val dav2Ready = depthModelManager.state.value.isInstalled
-    val faceReady = faceModelManager.state.value.isInstalled
-    selfTestOutput.value =
-      when {
-        !faceReady -> "Face model pack is not installed; download it before indexing."
-        dav2Ready ->
-          "Model files verified • Face detector, MobileFaceNet and depth model are installed. Run library indexing to execute face inference."
-        else ->
-          "Model files verified • Face detector and MobileFaceNet are installed. Depth model is not downloaded."
-      }
-    _messages.tryEmit("Model availability check completed")
   }
 
   private data class AiMonitorState(
