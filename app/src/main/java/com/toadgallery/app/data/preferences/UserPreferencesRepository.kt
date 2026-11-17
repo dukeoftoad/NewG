@@ -71,6 +71,7 @@ class UserPreferencesRepository(context: Context) {
     val MEDIA_MGMT_PROMPT_SEEN = booleanPreferencesKey("media_mgmt_prompt_seen")
     val APP_ICON = stringPreferencesKey("app_icon")
     val APP_FONT = stringPreferencesKey("app_font")
+    val LEGACY_FACE_ID_BACKFILL_DONE = booleanPreferencesKey("legacy_face_id_backfill_done")
   }
 
   val preferences: Flow<UserPreferences> =
@@ -120,8 +121,14 @@ class UserPreferencesRepository(context: Context) {
         appFont =
           prefs[Keys.APP_FONT]?.let { runCatching { AppFont.valueOf(it) }.getOrNull() }
             ?: AppFont.DEFAULT,
+        legacyFaceIdBackfillDone = prefs[Keys.LEGACY_FACE_ID_BACKFILL_DONE] ?: false,
       )
     }
+
+  /** Marks the one-time legacy face-ID backfill (E3) as complete. */
+  suspend fun setLegacyFaceIdBackfillDone() {
+    dataStore.edit { it[Keys.LEGACY_FACE_ID_BACKFILL_DONE] = true }
+  }
 
   suspend fun ensurePinInitialized() {
     dataStore.edit { prefs ->
