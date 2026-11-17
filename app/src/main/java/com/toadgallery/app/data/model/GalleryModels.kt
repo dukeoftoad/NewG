@@ -1,6 +1,7 @@
 package com.toadgallery.app.data.model
 
 import com.toadgallery.app.BuildConfig
+import com.toadgallery.app.domain.AppFont
 import com.toadgallery.app.domain.AppIcon
 
 import androidx.compose.runtime.Immutable
