@@ -119,6 +119,7 @@ import com.toadgallery.app.data.model.StorySlide
 import com.toadgallery.app.ui.components.MediaThumbnailCard
 import com.toadgallery.app.ui.components.OnThisDayCard
 import com.toadgallery.app.ui.components.ToadBrandIcon
+import com.toadgallery.app.ui.overlays.OnThisDaySheet
 import com.toadgallery.app.data.media.MediaPermissionHelper
 import com.toadgallery.app.ui.components.pinchToZoomGridColumns
 import com.toadgallery.app.ui.theme.LocalToadColors
@@ -167,6 +168,17 @@ fun PhotosScreen(
   modifier: Modifier = Modifier,
 ) {
   BackHandler(enabled = uiState.isSelectionMode) { onClearSelection() }
+
+  // v2.3.0: "See all" memories sheet, hosted here because it only needs the
+  // onThisDay list and the same lightbox path the grid already has.
+  var showMemoriesSheet by remember { mutableStateOf(false) }
+  if (showMemoriesSheet && uiState.onThisDay.isNotEmpty()) {
+    OnThisDaySheet(
+      items = uiState.onThisDay,
+      onOpenLightbox = onOpenLightbox,
+      onDismiss = { showMemoriesSheet = false },
+    )
+  }
 
   // "Media management" offer: shown once after a multi-item batch op when
   // the special permission would make batch deletes/favorites smoother.
@@ -844,6 +856,7 @@ fun PhotosScreen(
                 OnThisDayCard(
                   items = uiState.onThisDay,
                   onOpenLightbox = onOpenLightbox,
+                  onSeeAll = { showMemoriesSheet = true },
                 )
               }
             }
