@@ -177,6 +177,7 @@ fun StoryViewerOverlay(
 @Composable
 fun RecycleBinDialog(
   trashedItems: List<GalleryMediaItem>,
+  expiringSoonCount: Int = 0,
   onRestoreItem: (Long) -> Unit,
   onEmptyBin: () -> Unit,
   onPurgeExpired: () -> Unit,
@@ -232,6 +233,25 @@ fun RecycleBinDialog(
             modifier = Modifier.padding(vertical = 20.dp),
           )
         } else {
+          // "About to delete" notice: items within the 7-day grace window of the
+          // 30-day auto-purge. Hidden when there are none expiring soon — the
+          // banner is a heads-up, not a permanent fixture. Restore to keep them.
+          if (expiringSoonCount > 0) {
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = extended.dangerContainer.copy(alpha = 0.35f),
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Text(
+                text =
+                  "$expiringSoonCount item${if (expiringSoonCount == 1) "" else "s"} will be " +
+                    "auto-deleted within 7 days. Restore to keep.",
+                style = MaterialTheme.typography.bodySmall,
+                color = extended.onDangerContainer,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+              )
+            }
+          }
           LazyColumn(
             modifier = Modifier.fillMaxWidth().height(260.dp),
             contentPadding = PaddingValues(vertical = 4.dp),

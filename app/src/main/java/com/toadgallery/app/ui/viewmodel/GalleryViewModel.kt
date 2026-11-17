@@ -81,6 +81,7 @@ data class GalleryUiState(
   val vaultMedia: List<GalleryMediaItem> = emptyList(),
   val vaultDecryptedPreviews: Map<Long, ByteArray> = emptyMap(),
   val trashedMedia: List<GalleryMediaItem> = emptyList(),
+  val trashedExpiringSoonCount: Int = 0,
   val selectedMediaIds: Set<Long> = emptySet(),
   val isSelectionMode: Boolean = false,
   val showBatchMoveDialog: Boolean = false,
@@ -363,8 +364,9 @@ class GalleryViewModel(
       galleryRepo.vaultMedia,
       galleryRepo.trashedMedia,
       galleryRepo.customAlbums,
-    ) { visible, vault, trashed, albums ->
-      MediaBundle(visible, vault, trashed, albums)
+      galleryRepo.trashedExpiringSoonCount(),
+    ) { visible, vault, trashed, albums, expiringSoon ->
+      MediaBundle(visible, vault, trashed, albums, expiringSoon)
     }
 
   private val baseUiState: StateFlow<GalleryUiState> =
@@ -482,6 +484,7 @@ class GalleryViewModel(
             vaultMedia = media.vault,
             vaultDecryptedPreviews = emptyMap(),
             trashedMedia = media.trashed,
+            trashedExpiringSoonCount = media.expiringSoonCount,
             selectedMediaIds = emptySet(),
             isSelectionMode = false,
             showBatchMoveDialog = false,
@@ -1434,6 +1437,7 @@ class GalleryViewModel(
     val vault: List<GalleryMediaItem>,
     val trashed: List<GalleryMediaItem>,
     val customAlbums: List<AlbumEntity>,
+    val expiringSoonCount: Int = 0,
   )
 
   companion object {

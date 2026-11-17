@@ -19,6 +19,7 @@ import com.toadgallery.app.data.local.FaceExclusionEntity
 import com.toadgallery.app.data.local.MediaItemEntity
 import com.toadgallery.app.data.local.SampleMediaCatalog
 import com.toadgallery.app.data.media.MediaPermissionHelper
+import com.toadgallery.app.data.trash.TrashPurgeWorker
 import com.toadgallery.app.data.media.MediaStoreScanner
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.MediaCategory
@@ -54,6 +55,19 @@ class GalleryRepository(
 
   val trashedMedia: Flow<List<GalleryMediaItem>> =
     dao.observeTrashedMedia().map { list -> list.map { it.toDomain() } }
+
+  /**
+   * Live count of trashed items that will be auto-purged within the next
+   * [TrashPurgeWorker.GRACE_DAYS] — drives the "about to delete" notice in
+   * the Recycle Bin. Cutoff is computed at subscription; within a session
+   * the 7-day window barely moves, so re-subscribing on each dialog open is
+   * fine. NULL trashedAt rows are excluded (data-integrity artifacts).
+   */
+  fun trashedExpiringSoonCount(): Flow<Int> {
+    val now = System.currentTimeMillis()
+    val cutoff = now - TrashPurgeWorker.RETENTION_MILLIS
+    return dao.observeTrashedExpiringSoonCount(cutoff, TrashPurgeWorker.GRACE_MILLIS)
+  }
 
   val customAlbums: Flow<List<AlbumEntity>> = dao.observeAlbums()
 
