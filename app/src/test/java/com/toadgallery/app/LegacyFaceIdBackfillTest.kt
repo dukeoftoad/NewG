@@ -54,14 +54,16 @@ class LegacyFaceIdBackfillTest {
     database.close()
   }
 
-  private fun embedding(): FloatArray = FloatArray(192) { (it % 7) * 0.01f }
+  /** Deterministic per-face embedding — distinct faces must derive distinct IDs. */
+  private fun embedding(faceIndex: Int): FloatArray =
+    FloatArray(192) { ((it + faceIndex * 3) % 7) * 0.01f }
 
   /** v8-style payload: box + embedding, NO faceId fields. */
   private fun v8Payload(withEmbedding: Boolean = true): String {
     val faces = JSONArray()
     repeat(2) { index ->
       val face = JSONObject().put("faceIndex", index).put("box", JSONArray(listOf(0.1, 0.2, 0.5, 0.6)))
-      if (withEmbedding) face.put("embedding", JSONArray(embedding().toList()))
+      if (withEmbedding) face.put("embedding", JSONArray(embedding(index).toList()))
       faces.put(face)
     }
     return JSONObject().put("faces", faces).toString()
@@ -153,10 +155,15 @@ class LegacyFaceIdBackfillTest {
     // so the row keeps null faceId and the runtime saved-index fallback.
     val photoId = insertPhoto("opaque", v8Payload(withEmbedding = false))
     dao.upsertFaceAssignment(FaceAssignmentEntity(photoId = photoId, faceIndex = 0, personClusterId = "person-$photoId-0"))
+    dao.upsertFacePerson(
+      FacePersonEntity(clusterId = "person-$photoId-0", name = "Untouched Person", coverPhotoId = photoId, coverFaceIndex = 0),
+    )
 
     val backfilled = dao.backfillLegacyFaceIds()
     assertEquals("nothing backfilled for an underivable payload", 0, backfilled)
     assertNull("row keeps the null faceId (index fallback)", dao.getFaceAssignmentsForPhoto(photoId).single().faceId)
-    assertNotNull("v8 person record is untouched too", dao.getFacePerson("person-$photoId-0"))
+    val person = dao.getFacePerson("person-$photoId-0")
+    assertNotNull("v8 person record survives untouched", person)
+    assertEquals("Untouched Person", person!!.name)
   }
 }
