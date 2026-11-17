@@ -115,8 +115,11 @@ class FacePersonMergeProjectionTest {
       )
 
     assertEquals("person + detached cluster", 2, detached.size)
-    val person = detached.single { it.id == "person:cara" }
+    // A lone named group keeps its cluster identity — the synthetic
+    // person:<name> id appears only when two or more clusters actually merge.
+    val person = detached.single { it.id == "cluster-a" }
     assertEquals("person keeps only its own membership", listOf(1L), person.photoIds)
+    assertEquals("person keeps its name", "Cara", person.name)
     val cluster = detached.single { it.id == "cluster-b" }
     assertEquals("detached cluster keeps its data", listOf(2L), cluster.photoIds)
     assertNull("detached cluster is unnamed", cluster.name)
@@ -143,7 +146,11 @@ class FacePersonMergeProjectionTest {
         ),
       )
     assertEquals("blank and null names stay separate", 2, unnamed.size)
-    assertTrue(unnamed.all { it.id.startsWith("cluster:") })
+    assertEquals(
+      "unnamed clusters keep their own ids (no synthetic person)",
+      setOf("cluster-a", "cluster-b"),
+      unnamed.map { it.id }.toSet(),
+    )
   }
 
   @Test
@@ -168,8 +175,9 @@ class FacePersonMergeProjectionTest {
         ),
       )
     assertEquals(
-      "bigger people first; ties by name then cluster id",
-      listOf("cluster-2", "cluster-3", "person:zoe"),
+      "bigger people first; ties by name then cluster id. cluster-1 stays " +
+        "its own group: a lone named cluster is not rewritten to person:<name>",
+      listOf("cluster-2", "cluster-3", "cluster-1"),
       merged.map { it.id },
     )
   }
