@@ -416,31 +416,6 @@ fun SearchScreen(
                   style = MaterialTheme.typography.labelSmall,
                   color = extended.textMuted,
                 )
-                if (uiState.faceCorrectionHistory.any { it.undoneAt == null }) {
-                  Surface(
-                    onClick = onUndoFaceCorrection,
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                  ) {
-                    Row(
-                      modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                      verticalAlignment = Alignment.CenterVertically,
-                      horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                      Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(13.dp),
-                      )
-                      Text(
-                        text = "Undo last change",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                      )
-                    }
-                  }
-                }
               }
             }
 
@@ -591,7 +566,6 @@ fun SearchScreen(
               }
             }
 
-            }
           }
 
           if (isPersonDetail) {
@@ -804,3 +778,4 @@ fun SearchScreen(
     }
   }
 
+}

@@ -129,6 +129,7 @@ fun SettingsScreen(
         SettingsHubView(
           uiState = uiState,
           viewModel = viewModel,
+          galleryState = galleryState,
           mediaAccessLevel = mediaAccessLevel,
           onSyncMediaPermissions = onSyncMediaPermissions,
         )
@@ -158,6 +159,7 @@ fun SettingsScreen(
 private fun SettingsHubView(
   uiState: SettingsUiState,
   viewModel: SettingsViewModel,
+  galleryState: GalleryUiState,
   mediaAccessLevel: MediaAccessLevel,
   onSyncMediaPermissions: () -> Unit,
 ) {
