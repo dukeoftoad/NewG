@@ -1,6 +1,8 @@
 package com.toadgallery.app.ui.overlays
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,8 +24,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.toadgallery.app.data.memories.OnThisDay
@@ -47,13 +52,25 @@ fun OnThisDaySheet(
   BackHandler(onBack = onDismiss)
   val extended = LocalToadColors.current
 
+  // v2.4.0: fade+scale entrance — dialog windows otherwise snap open.
+  val entrance = remember { Animatable(0f) }
+  LaunchedEffect(Unit) { entrance.animateTo(1f, tween(200)) }
+
   Dialog(
     onDismissRequest = onDismiss,
     properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
   ) {
     Surface(
       modifier =
-        Modifier.fillMaxWidth(0.94f).widthIn(max = 560.dp).padding(vertical = 28.dp),
+        Modifier.fillMaxWidth(0.94f)
+          .widthIn(max = 560.dp)
+          .padding(vertical = 28.dp)
+          .graphicsLayer {
+            alpha = entrance.value
+            val s = 0.94f + 0.06f * entrance.value
+            scaleX = s
+            scaleY = s
+          },
       shape = RoundedCornerShape(28.dp),
       color = MaterialTheme.colorScheme.surface,
       border = BorderStroke(1.dp, extended.borderStrong),
