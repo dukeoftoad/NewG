@@ -7,6 +7,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.toadgallery.app.data.local.ToadGalleryDatabase
 import com.toadgallery.app.data.preferences.UserPreferencesRepository
 import com.toadgallery.app.data.trash.TrashPurgeScheduler
 import com.toadgallery.app.domain.PackageManagerAppIconSwitcher
@@ -53,6 +54,23 @@ class ToadGalleryApplication :
     // the unique-named periodic request; reboot / reinstall survive. The worker
     // itself only deletes trashed rows older than 30 days.
     TrashPurgeScheduler.schedule(this)
+
+    // E3 (v2.1.0): one-time eager backfill of legacy v8 null-faceId feedback
+    // rows against each photo's current face payload, so feedback on photos
+    // that are never re-indexed still gains stable face identities. Gated by
+    // a preference flag (exactly once per install); rows that cannot be
+    // derived from their payload stay on the saved-index fallback (safe skip).
+    appScope.launch(Dispatchers.IO) {
+      val prefs = UserPreferencesRepository(this@ToadGalleryApplication)
+      if (!prefs.preferences.first().legacyFaceIdBackfillDone) {
+        runCatching {
+          val dao = ToadGalleryDatabase.getInstance(this@ToadGalleryApplication).galleryDao()
+          val backfilled = dao.backfillLegacyFaceIds()
+          android.util.Log.i("FaceBackfill", "legacy face-ID backfill updated $backfilled rows")
+        }
+        prefs.setLegacyFaceIdBackfillDone()
+      }
+    }
   }
 
   override fun newImageLoader(): ImageLoader =

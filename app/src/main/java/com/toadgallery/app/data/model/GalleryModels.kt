@@ -193,6 +193,8 @@ data class UserPreferences(
   val mlIndexSizeMb: Float = 18.4f,
   val systemMediaSync: Boolean = false,
   val mediaManagementPromptSeen: Boolean = false,
+  /** One-time eager backfill of legacy v8 null-faceId feedback rows (E3, v2.1.0). */
+  val legacyFaceIdBackfillDone: Boolean = false,
   val appIcon: AppIcon = AppIcon.CLASSIC_TOAD,
   val appFont: AppFont = AppFont.DEFAULT,
 )
