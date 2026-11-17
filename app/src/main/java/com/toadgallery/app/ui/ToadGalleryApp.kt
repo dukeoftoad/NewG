@@ -374,18 +374,14 @@ fun ToadGalleryApp(
                   },
                   onOpenLightbox = galleryViewModel::openLightbox,
                   onSetColumns = galleryViewModel::setColumns,
-                  onNamePerson = galleryViewModel::setFacePersonName,
-                  onExcludeFace = galleryViewModel::excludeFaceFromPerson,
-                  onSetPersonCover = galleryViewModel::setFacePersonCover,
-                  onSetPersonIgnored = galleryViewModel::setFacePersonIgnored,
-                  onAssignFace = galleryViewModel::assignFaceToPerson,
-                  onUndoFaceCorrection = galleryViewModel::undoLastFaceCorrection,
                 )
               }
               composable(TopLevelTab.SETTINGS.route) {
                 SettingsScreen(
                   uiState = settingsState,
                   viewModel = settingsViewModel,
+                  galleryState = galleryState,
+                  galleryViewModel = galleryViewModel,
                   mediaAccessLevel = galleryState.mediaAccessLevel,
                   onSyncMediaPermissions = ::triggerSyncOrPermissions,
                   onOpenVaultModal = galleryViewModel::openVaultDialog,

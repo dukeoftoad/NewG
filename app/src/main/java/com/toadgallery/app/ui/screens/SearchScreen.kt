@@ -30,7 +30,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
@@ -64,18 +63,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.toadgallery.app.data.ai.FacePersonGroup
-import com.toadgallery.app.data.ai.orderFaceAssignmentTargets
 import com.toadgallery.app.data.model.MediaType
 import com.toadgallery.app.data.model.SearchTabMode
 import com.toadgallery.app.ui.components.GalleryMediaImage
 import com.toadgallery.app.ui.components.people.FaceThumbnail
-import com.toadgallery.app.ui.components.people.PersonManagementSheet
 import com.toadgallery.app.ui.components.pinchToZoomGridColumns
 import com.toadgallery.app.ui.theme.LocalToadColors
 import com.toadgallery.app.ui.viewmodel.GalleryUiState
 import com.toadgallery.app.ui.viewmodel.MapDisplayMode
-import kotlin.math.roundToInt
 
 @Composable
 fun SearchScreen(
@@ -90,12 +85,6 @@ fun SearchScreen(
   onNotifyMissingGps: () -> Unit,
   onOpenLightbox: (Long) -> Unit,
   onSetColumns: (Int) -> Unit = {},
-  onNamePerson: (FacePersonGroup, String?) -> Unit = { _, _ -> },
-  onExcludeFace: (Long, Int) -> Unit = { _, _ -> },
-  onSetPersonCover: (FacePersonGroup, Long, Int) -> Unit = { _, _, _ -> },
-  onSetPersonIgnored: (FacePersonGroup, Boolean) -> Unit = { _, _ -> },
-  onAssignFace: (Long, Int, FacePersonGroup) -> Unit = { _, _, _ -> },
-  onUndoFaceCorrection: () -> Unit = {},
   modifier: Modifier = Modifier,
 ) {
   val extended = LocalToadColors.current
@@ -104,7 +93,6 @@ fun SearchScreen(
     listOf("sunset", "receipt", "5,000", "dogs", "nature", "notice", "coffee")
   }
   var typeMenuExpanded by remember { mutableStateOf(false) }
-  var personBeingNamed by remember { mutableStateOf<FacePersonGroup?>(null) }
   val prefsCols = uiState.preferences.columns.coerceIn(2, 10)
   val resultColumns = if (isWideLayout) (prefsCols + 1).coerceIn(2, 10) else prefsCols
   val compactResults = resultColumns >= 6
@@ -592,9 +580,6 @@ fun SearchScreen(
                       horizontalArrangement = Arrangement.spacedBy(8.dp),
                       verticalAlignment = Alignment.CenterVertically,
                     ) {
-                      TextButton(onClick = { personBeingNamed = group }) {
-                        Text(if (group.name.isNullOrBlank()) "Name" else "Edit")
-                      }
                       Text(
                         text = "View",
                         style = MaterialTheme.typography.labelMedium,
@@ -606,158 +591,6 @@ fun SearchScreen(
               }
             }
 
-            if (uiState.unassignedFaceGroups.isNotEmpty()) {
-              item(key = "unassigned_faces_header") {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                  "UNASSIGNED FACES",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = extended.textMuted,
-                )
-              }
-              items(
-                items = uiState.unassignedFaceGroups,
-                key = { candidate -> "unassigned_face_${candidate.id}" },
-                contentType = { "unassigned_face_row" },
-              ) { candidate ->
-                val face = candidate.faces.firstOrNull()
-                val photo = face?.let { mediaById[it.photoId] }
-                if (face != null && photo != null) {
-                  val suggestionsForFace = uiState.facePersonSuggestions[candidate.id].orEmpty()
-                  val suggestionScoreById =
-                    remember(suggestionsForFace) {
-                      suggestionsForFace.associateBy { it.personId }
-                    }
-                  val orderedTargets =
-                    remember(uiState.peopleGroups, suggestionsForFace) {
-                      orderFaceAssignmentTargets(uiState.peopleGroups, suggestionsForFace)
-                    }
-                  Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                  ) {
-                    FaceThumbnail(
-                      item = photo,
-                      bounds = candidate.faceBounds[face],
-                      sourceRevision = uiState.faceIndexRevisions[face.photoId] ?: 0L,
-                      modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)),
-                    )
-                    Column(
-                      modifier = Modifier.weight(1f),
-                      verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                      Text(
-                        photo.title,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                      )
-                      Text(
-                        text =
-                          if (suggestionsForFace.isNotEmpty()) "Unassigned • Suggested match ready"
-                          else "Unassigned detected face",
-                        style = MaterialTheme.typography.labelSmall,
-                        color =
-                          if (suggestionsForFace.isNotEmpty()) MaterialTheme.colorScheme.primary
-                          else extended.textMuted,
-                      )
-                    }
-                    TextButton(onClick = { personBeingNamed = candidate }) { Text("Name") }
-                    var assignMenuExpanded by
-                      remember(face.photoId, face.faceIndex) { mutableStateOf(false) }
-                    Box {
-                      TextButton(onClick = { assignMenuExpanded = true }) { Text("Assign") }
-                      DropdownMenu(
-                        expanded = assignMenuExpanded,
-                        onDismissRequest = { assignMenuExpanded = false },
-                      ) {
-                        if (suggestionScoreById.isNotEmpty()) {
-                          DropdownMenuItem(
-                            text = { Text("SUGGESTED MATCHES") },
-                            enabled = false,
-                            onClick = {},
-                          )
-                        }
-                        orderedTargets.forEach { target ->
-                          val matchInfo = suggestionScoreById[target.id]
-                          val similarityPct =
-                            matchInfo?.let {
-                              ((1f - it.medianDistance.coerceIn(0f, 1f)) * 100f).roundToInt()
-                            }
-                          DropdownMenuItem(
-                            text = {
-                              Text(
-                                (target.name?.takeIf { it.isNotBlank() } ?: "Unnamed person") +
-                                  if (similarityPct != null) " · Suggested ($similarityPct%)"
-                                  else ""
-                              )
-                            },
-                            onClick = {
-                              onAssignFace(face.photoId, face.faceIndex, target)
-                              assignMenuExpanded = false
-                            },
-                          )
-                        }
-                      }
-                    }
-                    TextButton(onClick = { onSetPersonIgnored(candidate, true) }) { Text("Ignore") }
-                  }
-                }
-              }
-            }
-
-            if (uiState.ignoredPeopleGroups.isNotEmpty()) {
-              item(key = "ignored_people_header") {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                  "IGNORED PEOPLE",
-                  style = MaterialTheme.typography.labelSmall,
-                  color = extended.textMuted,
-                )
-              }
-              itemsIndexed(
-                items = uiState.ignoredPeopleGroups,
-                key = { _, group -> "ignored_person_${group.id}" },
-                contentType = { _, _ -> "ignored_person_row" },
-              ) { index, group ->
-                Row(
-                  modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                  Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                  ) {
-                    val coverFace =
-                      group.faces.firstOrNull {
-                        it.photoId == group.coverPhotoId && it.faceIndex == group.coverFaceIndex
-                      } ?: group.faces.firstOrNull()
-                    val cover = coverFace?.let { mediaById[it.photoId] }
-                    if (coverFace != null && cover != null) {
-                      FaceThumbnail(
-                        item = cover,
-                        bounds = group.faceBounds[coverFace],
-                        sourceRevision = uiState.faceIndexRevisions[coverFace.photoId] ?: 0L,
-                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
-                      )
-                    }
-                    Column {
-                      Text(
-                        group.name?.takeIf { it.isNotBlank() } ?: "Ignored person ${index + 1}",
-                        style = MaterialTheme.typography.bodyMedium,
-                      )
-                      Text(
-                        "${group.photoIds.size} photos",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = extended.textMuted,
-                      )
-                    }
-                  }
-                  TextButton(onClick = { onSetPersonIgnored(group, false) }) { Text("Unignore") }
-                }
-              }
             }
           }
 
@@ -812,15 +645,6 @@ fun SearchScreen(
                             color = extended.textMuted,
                           )
                         }
-                      }
-                      TextButton(onClick = { personBeingNamed = activePersonGroup }) {
-                        Icon(
-                          imageVector = Icons.Filled.Edit,
-                          contentDescription = null,
-                          modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text("Manage")
                       }
                     }
                   }
@@ -980,15 +804,3 @@ fun SearchScreen(
     }
   }
 
-  PersonManagementSheet(
-    group = personBeingNamed,
-    uiState = uiState,
-    onDismiss = { personBeingNamed = null },
-    onNamePerson = onNamePerson,
-    onExcludeFace = onExcludeFace,
-    onSetPersonCover = onSetPersonCover,
-    onSetPersonIgnored = onSetPersonIgnored,
-    onAssignFace = onAssignFace,
-    onUndoFaceCorrection = onUndoFaceCorrection,
-  )
-}
