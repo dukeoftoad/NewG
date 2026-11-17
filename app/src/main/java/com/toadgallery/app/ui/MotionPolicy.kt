@@ -18,7 +18,7 @@ object MotionPolicy {
   val isRobolectric: Boolean =
     Build.FINGERPRINT.contains("robolectric", ignoreCase = true)
 
-  /** [tween] of [ms] in production; instant [snap] under Robolectric. */
-  fun <T> uiSpec(ms: Int): FiniteAnimationSpec<T> =
+  /** [tween] of [ms] in production (default 280ms, the tab-slide spec); instant [snap] under Robolectric. */
+  fun <T> uiSpec(ms: Int = 280): FiniteAnimationSpec<T> =
     if (isRobolectric) snap() else tween(ms)
 }
