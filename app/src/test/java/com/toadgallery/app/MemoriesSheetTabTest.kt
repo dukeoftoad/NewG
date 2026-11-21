@@ -53,11 +53,10 @@ class MemoriesSheetTabTest {
 
     // Week tab: enabled when the ±3-day window has matches; switch and check
     // the header stays (never crashes, stays on the sheet).
-    val weekEnabled =
-      composeTestRule
-        .onAllNodes(hasTestTag("memories_tab_week"))
-        .fetchSemanticsNodes()
-        .any { node -> node.config.contains(SemanticsProperties.Enabled) && node.config[SemanticsProperties.Enabled] }
+    val weekNode = composeTestRule.onAllNodes(hasTestTag("memories_tab_week")).fetchSemanticsNodes().firstOrNull()
+    val weekEnabled = weekNode?.config?.let { cfg ->
+      cfg.contains(SemanticsProperties.Enabled) && cfg[SemanticsProperties.Enabled]
+    } ?: false
     if (weekEnabled) {
       composeTestRule.onNodeWithTag("memories_tab_week").performClick()
       composeTestRule.waitForIdle()
