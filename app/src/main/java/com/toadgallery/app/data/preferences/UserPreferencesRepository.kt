@@ -122,10 +122,16 @@ class UserPreferencesRepository(context: Context) {
           prefs[Keys.APP_FONT]?.let { runCatching { AppFont.valueOf(it) }.getOrNull() }
             ?: AppFont.DEFAULT,
         legacyFaceIdBackfillDone = prefs[Keys.LEGACY_FACE_ID_BACKFILL_DONE] ?: false,
+        introDone = prefs[Keys.INTRO_DONE] ?: false,
       )
     }
 
   /** Marks the one-time legacy face-ID backfill (E3) as complete. */
+  /** v3.0.0: mark the first-run intro as seen (one-way; no API to undo). */
+  suspend fun setIntroDone() {
+    dataStore.edit { it[Keys.INTRO_DONE] = true }
+  }
+
   suspend fun setLegacyFaceIdBackfillDone() {
     dataStore.edit { it[Keys.LEGACY_FACE_ID_BACKFILL_DONE] = true }
   }

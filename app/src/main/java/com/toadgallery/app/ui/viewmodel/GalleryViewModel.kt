@@ -637,6 +637,11 @@ class GalleryViewModel(
     }
   }
 
+  /** v3.0.0: the first-run intro finished; persist one-way and hide it. */
+  fun markIntroDone() {
+    viewModelScope.launch { prefsRepo.setIntroDone() }
+  }
+
   /**
    * After a multi-item batch op, offer the "Media management" permission
    * once: with it granted, system-level trash/favorite PendingIntents

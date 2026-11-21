@@ -80,6 +80,7 @@ import android.app.Activity
 import android.content.Intent
 import com.toadgallery.app.data.security.BiometricAuthHelper
 import com.toadgallery.app.ui.overlays.BatchDeleteConfirmDialog
+import com.toadgallery.app.ui.overlays.IntroOverlay
 import com.toadgallery.app.ui.overlays.BatchMoveDestinationDialog
 import com.toadgallery.app.ui.overlays.HiddenVaultScreen
 import com.toadgallery.app.ui.overlays.LightboxOverlay
@@ -644,6 +645,16 @@ fun ToadGalleryApp(
         )
       }
       }
+    }
+
+    // v3.0.0: first-run intro over the whole shell, exactly once per install
+    // (DataStore-backed flag survives upgrades). Gated off under Robolectric
+    // for the same reason MotionPolicy snaps: the existing UI tests drive
+    // the gallery directly from a fresh install, and a modal over the shell
+    // would starve them of every node. The overlay itself has a dedicated
+    // createComposeRule test (IntroOverlayTest).
+    if (!galleryState.preferences.introDone && !MotionPolicy.isRobolectric) {
+      IntroOverlay(onFinish = galleryViewModel::markIntroDone)
     }
   }
 }

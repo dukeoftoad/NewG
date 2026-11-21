@@ -199,4 +199,6 @@ data class UserPreferences(
   val legacyFaceIdBackfillDone: Boolean = false,
   val appIcon: AppIcon = AppIcon.CLASSIC_TOAD,
   val appFont: AppFont = AppFont.DEFAULT,
+  /** v3.0.0: first-run intro has been seen; never re-shown on upgrade. */
+  val introDone: Boolean = false,
 )
