@@ -478,8 +478,8 @@ fun ToadGalleryApp(
       }
       AnimatedVisibility(
         visible = activeLightboxItem != null,
-        enter = fadeIn(MotionPolicy.uiSpec(220)) + scaleIn(initialScale = 0.92f, animationSpec = MotionPolicy.uiSpec(220)),
-        exit = fadeOut(MotionPolicy.uiSpec(180)) + scaleOut(targetScale = 0.94f, animationSpec = MotionPolicy.uiSpec(180)),
+        enter = fadeIn(MotionPolicy.lightboxInSpec()) + scaleIn(initialScale = 0.92f, animationSpec = MotionPolicy.lightboxInSpec()),
+        exit = fadeOut(MotionPolicy.lightboxOutSpec()) + scaleOut(targetScale = 0.94f, animationSpec = MotionPolicy.lightboxOutSpec()),
       ) {
         CompositionLocalProvider(LocalOverlayAnimatedVisibilityScope provides this) {
         val overlayItem = lastLightboxItem

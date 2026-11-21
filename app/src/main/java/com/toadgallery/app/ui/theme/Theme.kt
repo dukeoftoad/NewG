@@ -15,13 +15,18 @@ import com.toadgallery.app.data.model.AppearanceMode
 import com.toadgallery.app.data.model.ThemePalette
 import com.toadgallery.app.domain.AppFont
 
+/**
+ * The M3 shape ladder mapped onto the ToadMark radius scale (see
+ * [ToadMarkTokens]): extraSmall = thumb radius, small = control, medium =
+ * card, large = sheet-adjacent cards, extraLarge = sheets and overlays.
+ */
 val ToadShapes =
   Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraSmall = RoundedCornerShape(ToadMarkTokens.RadiusThumb),
+    small = RoundedCornerShape(ToadMarkTokens.RadiusControl),
+    medium = RoundedCornerShape(ToadMarkTokens.RadiusCard),
+    large = RoundedCornerShape(ToadMarkTokens.RadiusSheet - 4.dp),
+    extraLarge = RoundedCornerShape(ToadMarkTokens.RadiusSheet),
   )
 
 @Composable

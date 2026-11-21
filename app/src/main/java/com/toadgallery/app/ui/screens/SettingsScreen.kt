@@ -90,6 +90,7 @@ import com.toadgallery.app.ui.components.SectionHeading
 import com.toadgallery.app.ui.components.StorageBreakdownBar
 import com.toadgallery.app.ui.components.ToadSwitch
 import com.toadgallery.app.ui.theme.LocalToadColors
+import com.toadgallery.app.ui.theme.ToadMarkTokens
 import com.toadgallery.app.ui.viewmodel.SettingsUiState
 import com.toadgallery.app.ui.viewmodel.SettingsViewModel
 import java.util.Locale
@@ -896,9 +897,9 @@ private fun SettingsDrillRow(
     modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize().testTag(testTag),
   ) {
     Row(
-      modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+      modifier = Modifier.padding(horizontal = ToadMarkTokens.RowPaddingH, vertical = ToadMarkTokens.RowPaddingV),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      horizontalArrangement = Arrangement.spacedBy(ToadMarkTokens.RowIconGap),
     ) {
       Box(
         modifier = Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(iconContainer),
@@ -935,12 +936,18 @@ private fun SettingsDrillRow(
         )
       }
       if (!trailingPill.isNullOrBlank()) {
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+        Surface(
+          shape = RoundedCornerShape(ToadMarkTokens.RadiusBadge),
+          color = MaterialTheme.colorScheme.primaryContainer,
+        ) {
           Text(
             text = trailingPill,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = ToadMarkTokens.BadgeFontSize),
             color = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.padding(
+              horizontal = ToadMarkTokens.BadgePaddingH,
+              vertical = ToadMarkTokens.BadgePaddingV,
+            ),
           )
         }
       }
@@ -948,7 +955,7 @@ private fun SettingsDrillRow(
         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
         contentDescription = null,
         tint = extended.textDim,
-        modifier = Modifier.size(20.dp),
+        modifier = Modifier.size(ToadMarkTokens.RowChevronSize),
       )
     }
   }
@@ -965,9 +972,9 @@ private fun SettingsToggleRow(
 ) {
   val extended = LocalToadColors.current
   Row(
-    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+    modifier = Modifier.fillMaxWidth().padding(horizontal = ToadMarkTokens.RowPaddingH, vertical = ToadMarkTokens.RowPaddingVCompact),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    horizontalArrangement = Arrangement.spacedBy(ToadMarkTokens.RowIconGap),
   ) {
     Box(
       modifier =

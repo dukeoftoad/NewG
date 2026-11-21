@@ -63,6 +63,7 @@ import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.model.StorySlide
 import com.toadgallery.app.ui.components.GalleryMediaImage
 import com.toadgallery.app.ui.MotionPolicy
+import com.toadgallery.app.ui.theme.ToadMarkTokens
 import com.toadgallery.app.data.trash.TrashPurgeWorker
 import com.toadgallery.app.ui.theme.LocalToadColors
 
@@ -143,7 +144,7 @@ fun StoryViewerOverlay(
         modifier =
           Modifier.fillMaxWidth()
             .weight(1f)
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(ToadMarkTokens.RadiusSheet))
             .clickable(onClick = onAdvance)
             .testTag("story_advance_surface")
       ) {
@@ -201,7 +202,7 @@ fun RecycleBinDialog(
   val entrance = remember { Animatable(0f) }
   LaunchedEffect(Unit) {
     if (MotionPolicy.isRobolectric) entrance.snapTo(1f)
-    else entrance.animateTo(1f, tween(200))
+    else entrance.animateTo(1f, tween(MotionPolicy.Medium))
   }
 
   Dialog(
@@ -220,7 +221,7 @@ fun RecycleBinDialog(
             scaleX = s
             scaleY = s
           },
-      shape = RoundedCornerShape(28.dp),
+      shape = RoundedCornerShape(ToadMarkTokens.RadiusSheet),
       color = MaterialTheme.colorScheme.surface,
       border = BorderStroke(1.dp, extended.borderStrong),
     ) {
@@ -265,7 +266,7 @@ fun RecycleBinDialog(
           // banner is a heads-up, not a permanent fixture. Restore to keep them.
           if (expiringSoonCount > 0) {
             Surface(
-              shape = RoundedCornerShape(14.dp),
+              shape = RoundedCornerShape(ToadMarkTokens.RadiusControl),
               color = extended.dangerContainer.copy(alpha = 0.35f),
               modifier = Modifier.fillMaxWidth(),
             ) {
@@ -285,7 +286,7 @@ fun RecycleBinDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp),
           ) {
             items(trashedItems, key = { it.id }) { item ->
-              Surface(shape = RoundedCornerShape(16.dp), color = extended.surfaceHigh) {
+              Surface(shape = RoundedCornerShape(ToadMarkTokens.RadiusControl), color = extended.surfaceHigh) {
                 Row(
                   modifier = Modifier.fillMaxWidth().padding(10.dp),
                   verticalAlignment = Alignment.CenterVertically,
@@ -293,7 +294,7 @@ fun RecycleBinDialog(
                 ) {
                   GalleryMediaImage(
                     item = item,
-                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(ToadMarkTokens.RadiusThumb)),
                   )
                   Column(modifier = Modifier.weight(1f)) {
                     Text(

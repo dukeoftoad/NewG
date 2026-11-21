@@ -342,6 +342,11 @@ class PhotoEditorAndDepthRobolectricTest {
     composeTestRule
       .onNodeWithTag("settings_hub_list")
       .performScrollToNode(hasTestTag("settings_row_ai_engine"))
+    // The ToadMark row rhythm (v2.5.0) makes hub rows taller, so after
+    // performScrollToNode the row can rest partly clipped at the viewport
+    // edge; a click there hits the overlay below the list instead of the
+    // row. performScrollTo re-centers it fully inside the viewport first.
+    composeTestRule.onNodeWithTag("settings_row_ai_engine").performScrollTo()
     composeTestRule.onNodeWithTag("settings_row_ai_engine").performClick()
     composeTestRule.waitForIdle()
 

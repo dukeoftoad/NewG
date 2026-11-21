@@ -52,6 +52,7 @@ import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.data.video.TrimTimelineState
 import com.toadgallery.app.data.video.VideoEditPlan
 import com.toadgallery.app.ui.MotionPolicy
+import com.toadgallery.app.ui.theme.ToadMarkTokens
 import com.toadgallery.app.ui.theme.LocalToadColors
 
 /**
@@ -120,7 +121,7 @@ fun VideoEditSheet(
   val entrance = remember { Animatable(0f) }
   LaunchedEffect(Unit) {
     if (MotionPolicy.isRobolectric) entrance.snapTo(1f)
-    else entrance.animateTo(1f, tween(200))
+    else entrance.animateTo(1f, tween(MotionPolicy.Medium))
   }
 
   Dialog(
@@ -139,7 +140,7 @@ fun VideoEditSheet(
             scaleX = s
             scaleY = s
           },
-      shape = RoundedCornerShape(28.dp),
+      shape = RoundedCornerShape(ToadMarkTokens.RadiusSheet),
       color = MaterialTheme.colorScheme.surface,
       border = BorderStroke(1.dp, extended.borderStrong),
     ) {
