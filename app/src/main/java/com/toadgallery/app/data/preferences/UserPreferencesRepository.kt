@@ -72,6 +72,7 @@ class UserPreferencesRepository(context: Context) {
     val APP_ICON = stringPreferencesKey("app_icon")
     val APP_FONT = stringPreferencesKey("app_font")
     val LEGACY_FACE_ID_BACKFILL_DONE = booleanPreferencesKey("legacy_face_id_backfill_done")
+    val INTRO_DONE = booleanPreferencesKey("intro_done")
   }
 
   val preferences: Flow<UserPreferences> =
@@ -122,10 +123,16 @@ class UserPreferencesRepository(context: Context) {
           prefs[Keys.APP_FONT]?.let { runCatching { AppFont.valueOf(it) }.getOrNull() }
             ?: AppFont.DEFAULT,
         legacyFaceIdBackfillDone = prefs[Keys.LEGACY_FACE_ID_BACKFILL_DONE] ?: false,
+        introDone = prefs[Keys.INTRO_DONE] ?: false,
       )
     }
 
   /** Marks the one-time legacy face-ID backfill (E3) as complete. */
+  /** v3.0.0: mark the first-run intro as seen (one-way; no API to undo). */
+  suspend fun setIntroDone() {
+    dataStore.edit { it[Keys.INTRO_DONE] = true }
+  }
+
   suspend fun setLegacyFaceIdBackfillDone() {
     dataStore.edit { it[Keys.LEGACY_FACE_ID_BACKFILL_DONE] = true }
   }
