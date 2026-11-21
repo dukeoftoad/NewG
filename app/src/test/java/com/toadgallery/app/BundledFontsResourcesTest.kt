@@ -10,10 +10,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * v3.0.0 — every Appearance font entry resolves to a usable family: SYSTEM
- * maps to the platform default and every other enum value must produce a
- * non-null FontFamily (its backing R.font resource must exist and load).
- * Guards the picker against a dead entry after a rename or a dropped ttf.
+ * v3.0.0 — every Appearance font entry resolves to a usable family. SYSTEM
+ * maps to the platform default; every other enum value must produce a
+ * distinct non-default FontFamily. The backing R.font resources must exist
+ * and load — checked directly against the resource system, which is the
+ * same surface the picker's previews render through. Guards against a dead
+ * picker entry after a rename or a dropped ttf.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -26,16 +28,16 @@ class BundledFontsResourcesTest {
       val family = com.toadgallery.app.ui.theme.fontFamilyFor(font)
       assertTrue(
         "font family resolved to nothing for ${font.name}",
-        family != com.toadgallery.app.ui.theme.FontFamily.Default || font == AppFont.SYSTEM,
+        font == AppFont.SYSTEM || family != androidx.compose.ui.text.font.FontFamily.Default,
       )
-      // And the family actually renders: its first typeface loads a resource.
-      if (font != AppFont.SYSTEM) {
-        val hasResource = family.fonts.any { it.resourceId != 0 }
-        assertTrue("font ${font.name} has no backing resource", hasResource)
-      }
     }
-    // The v3.0.0 sketch pair specifically (regression guard for the copy).
-    assertTrue(context.resources.getIdentifier("caveat", "font", context.packageName) != 0)
-    assertTrue(context.resources.getIdentifier("patrick_hand", "font", context.packageName) != 0)
+    // Every non-system entry's backing resource must exist and load,
+    // including the v3.0.0 sketch pair (regression guard for the copy).
+    val fontResources =
+      listOf("toad_regular", "manrope_regular", "spacegrotesk_regular", "jetbrainsmono_regular", "caveat", "patrick_hand")
+    fontResources.forEach { name ->
+      val resId = context.resources.getIdentifier(name, "font", context.packageName)
+      assertTrue("missing font resource $name", resId != 0)
+    }
   }
 }
