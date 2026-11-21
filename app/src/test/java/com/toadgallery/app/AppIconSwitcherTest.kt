@@ -16,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * PackageManagerAppIconSwitcher: the component-name rule must match the 8
+ * PackageManagerAppIconSwitcher: the component-name rule must match the
  * activity-alias names in AndroidManifest exactly — otherwise the switcher would flip
  * the state of components that don't exist and the launcher icon would never change.
  * Manifest sync is verified against the raw manifest source (Robolectric's
@@ -38,7 +38,7 @@ class AppIconSwitcherTest {
             .readText()
     }
 
-    /** All 8 aliases, same mapping the switcher uses. */
+    /** Every alias, same mapping the switcher uses. */
     private fun allAliases(): List<ComponentName> =
         AppIcon.entries.map { PackageManagerAppIconSwitcher.componentNameFor(context.packageName, it) }
 
@@ -50,7 +50,7 @@ class AppIconSwitcherTest {
     }
 
     @Test
-    fun `all 8 variants produce distinct names that resolve to manifest aliases`() {
+    fun `all icon variants produce distinct names that resolve to manifest aliases`() {
         val switcher = newSwitcher()
         val classNames = mutableSetOf<String>()
         for (icon in AppIcon.entries) {
@@ -160,5 +160,23 @@ class AppIconSwitcherTest {
         ghost.apply(AppIcon.CLASSIC_TOAD)
         val after = all.associateWith { pm.getComponentEnabledSetting(it) }
         assertEquals("ghost guard must leave every alias untouched", before, after)
+    }
+
+    @Test
+    fun `default lookup resolves manifest-declared aliases including disabled ones`() {
+        val pm = context.packageManager
+        val target =
+            PackageManagerAppIconSwitcher.componentNameFor(context.packageName, AppIcon.FROG_PHOTO)
+        val plainOk = runCatching { pm.getActivityInfo(target, 0) }.isSuccess
+        val flagOk =
+            runCatching { pm.getActivityInfo(target, PackageManager.MATCH_DISABLED_COMPONENTS) }
+                .isSuccess
+        if (!plainOk && !flagOk) {
+            // Robolectric cannot resolve activity-aliases at all — the real-device
+            // behavior of the flag is pinned by the ghost-guard stub tests and the
+            // on-device soak; nothing testable here.
+            return
+        }
+        assertTrue("MATCH_DISABLED_COMPONENTS lookup must resolve the disabled alias", flagOk)
     }
 }

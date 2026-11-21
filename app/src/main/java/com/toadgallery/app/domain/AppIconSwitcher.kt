@@ -46,10 +46,19 @@ class PackageManagerAppIconSwitcher(
      * How to decide that a component exists in this build. Defaults to the real
      * PackageManager lookup; tests inject a stub because Robolectric's PackageManager
      * does not resolve activity-aliases (it always throws for them).
+     *
+     * v3.0.1: the lookup MUST pass [PackageManager.MATCH_DISABLED_COMPONENTS].
+     * Every alias except the currently-enabled one ships `android:enabled="false"`
+     * in the manifest, and a plain getActivityInfo(component, 0) does not match
+     * disabled components — so the guard rejected every switch to a different
+     * icon with "target alias is not installed" (founder device, v3.0.0 logs),
+     * silently breaking the whole App Icon picker. With the flag, manifest-declared
+     * but disabled aliases resolve, while an alias that genuinely is not in the
+     * build (downgrade / restored backup) still throws and still trips the guard.
      */
     private val componentInstalled: (ComponentName, PackageManager) -> Boolean = { component, pm ->
         try {
-            pm.getActivityInfo(component, 0)
+            pm.getActivityInfo(component, PackageManager.MATCH_DISABLED_COMPONENTS)
             true
         } catch (_: PackageManager.NameNotFoundException) {
             false
