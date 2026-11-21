@@ -177,6 +177,7 @@ fun PhotosScreen(
       items = uiState.onThisDay,
       onOpenLightbox = onOpenLightbox,
       onDismiss = { showMemoriesSheet = false },
+      weekItems = uiState.weekMemories,
     )
   }
 

@@ -65,6 +65,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toadgallery.app.data.model.MediaType
 import com.toadgallery.app.data.model.SearchTabMode
+import com.toadgallery.app.ui.components.MediaThumbnailCard
+import com.toadgallery.app.data.memories.OnThisDay
 import com.toadgallery.app.ui.components.GalleryMediaImage
 import com.toadgallery.app.ui.components.people.FaceThumbnail
 import com.toadgallery.app.ui.components.pinchToZoomGridColumns
@@ -304,6 +306,43 @@ fun SearchScreen(
                       if (active) MaterialTheme.colorScheme.onPrimary else extended.textMuted,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                   )
+                }
+              }
+            }
+          }
+
+          // v3.0.0: Memories strip — the On-This-Day shelf surfaces inside the
+          // Search hub so memories live where browsing starts, not only on the
+          // Photos grid. Same tap-through as everywhere: jump straight into the
+          // lightbox. Hidden once the user types (results own the screen then).
+          if (uiState.searchQuery.isBlank() && uiState.onThisDay.isNotEmpty()) {
+            item(key = "search_memories_row") {
+              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  Text(
+                    text = "Memories · On this day",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                  )
+                  Text(
+                    text = OnThisDay.yearSpan(uiState.onThisDay),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = extended.textMuted,
+                  )
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                  items(uiState.onThisDay.take(12), key = { it.id }) { memory ->
+                    MediaThumbnailCard(
+                      item = memory,
+                      forceSquare = true,
+                      onClick = { onOpenLightbox(memory.id) },
+                      modifier = Modifier.testTag("search_memory_${memory.id}"),
+                    )
+                  }
                 }
               }
             }

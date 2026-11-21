@@ -28,34 +28,43 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.toadgallery.app.data.memories.OnThisDay
+import com.toadgallery.app.data.memories.WeekMemories
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.ui.MotionPolicy
-import com.toadgallery.app.ui.theme.ToadMarkTokens
 import com.toadgallery.app.ui.components.MediaThumbnailCard
 import com.toadgallery.app.ui.theme.LocalToadColors
+import com.toadgallery.app.ui.theme.ToadMarkTokens
 
 /**
- * "See all" surface for the On-This-Day memories card (v2.3.0): the full
- * memories collection in a grid instead of the card's single-row shelf.
- * Tapping a thumbnail closes the sheet and opens the lightbox via the same
- * [onOpenLightbox] path the grid uses, so selection/favorites behavior stays
- * out of the memories view on purpose.
+ * "See all" surface for memories (v2.3.0, tabbed in v3.0.0): the full
+ * collection in a grid instead of the card's single-row shelf. v3.0.0 adds
+ * the Week tab — the ±3-day recall window from [WeekMemories] — next to the
+ * original day-exact On This Day tab. Tapping a thumbnail closes the sheet
+ * and opens the lightbox via the same [onOpenLightbox] path the grid uses,
+ * so selection/favorites behavior stays out of the memories view on purpose.
  */
 @Composable
 fun OnThisDaySheet(
   items: List<GalleryMediaItem>,
   onOpenLightbox: (Long) -> Unit,
   onDismiss: () -> Unit,
+  weekItems: List<GalleryMediaItem> = emptyList(),
 ) {
   BackHandler(onBack = onDismiss)
   val extended = LocalToadColors.current
+
+  var tab by remember { mutableStateOf(if (items.isNotEmpty()) 0 else 1) }
 
   // v2.4.0: fade+scale entrance — dialog windows otherwise snap open.
   val entrance = remember { Animatable(0f) }
@@ -63,6 +72,9 @@ fun OnThisDaySheet(
     if (MotionPolicy.isRobolectric) entrance.snapTo(1f)
     else entrance.animateTo(1f, tween(MotionPolicy.Medium))
   }
+
+  // The tab's live list; the grid is a pure function of (tab, items).
+  val shown = if (tab == 0) items else weekItems
 
   Dialog(
     onDismissRequest = onDismiss,
@@ -86,15 +98,18 @@ fun OnThisDaySheet(
     ) {
       Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier.fillMaxWidth().testTag("memories_sheet_header"),
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically,
         ) {
           Column {
-            Text("On this day", style = MaterialTheme.typography.titleMedium)
+            Text("Memories", style = MaterialTheme.typography.titleMedium)
             Text(
               text =
-                "${items.size} memor${if (items.size == 1) "y" else "ies"} · ${OnThisDay.yearSpan(items)}",
+                if (tab == 0)
+                  "${items.size} memor${if (items.size == 1) "y" else "ies"} · ${OnThisDay.yearSpan(items)}"
+                else
+                  "${weekItems.size} this week · ${WeekMemories.windowLabel()}",
               style = MaterialTheme.typography.bodySmall,
               color = extended.textMuted,
             )
@@ -104,14 +119,34 @@ fun OnThisDaySheet(
           }
         }
 
+        // v3.0.0: Day / Week tabs. A tab with no memories is disabled rather
+        // than hidden so the surface stays stable — the day tab exists even
+        // when today has no day-exact matches.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          MemoriesTab(
+            label = "On this day",
+            selected = tab == 0,
+            enabled = items.isNotEmpty(),
+            onClick = { tab = 0 },
+            modifier = Modifier.testTag("memories_tab_day"),
+          )
+          MemoriesTab(
+            label = "This week",
+            selected = tab == 1,
+            enabled = weekItems.isNotEmpty(),
+            onClick = { tab = 1 },
+            modifier = Modifier.testTag("memories_tab_week"),
+          )
+        }
+
         LazyVerticalGrid(
           columns = GridCells.Fixed(3),
           contentPadding = PaddingValues(vertical = 4.dp),
           horizontalArrangement = Arrangement.spacedBy(4.dp),
           verticalArrangement = Arrangement.spacedBy(4.dp),
-          modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+          modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).testTag("memories_grid"),
         ) {
-          items(items = items, key = { it.id }) { item ->
+          items(items = shown, key = { it.id }) { item ->
             MediaThumbnailCard(
               item = item,
               forceSquare = true,
@@ -124,5 +159,43 @@ fun OnThisDaySheet(
         }
       }
     }
+  }
+}
+
+/** Compact pill tab used by the Memories sheet's Day/Week switch. */
+@Composable
+private fun MemoriesTab(
+  label: String,
+  selected: Boolean,
+  enabled: Boolean,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Surface(
+    onClick = onClick,
+    enabled = enabled,
+    shape = RoundedCornerShape(ToadMarkTokens.RadiusControl),
+    color =
+      when {
+        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.surfaceVariant
+      },
+    contentColor =
+      when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        selected -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+      },
+    border =
+      if (selected) null
+      else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    modifier = modifier,
+  ) {
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelLarge,
+      modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+    )
   }
 }
