@@ -86,7 +86,8 @@ class WeekMemoriesTest {
         item(4, calendar(2025, Calendar.NOVEMBER, 25)), // +4 — no match
       )
     val picked = WeekMemories.pick(items, today())
-    assertEquals(listOf(1L, 2L), picked.map { it.id })
+    // newest first: Nov 24 (id 2) sorts before Nov 18 (id 1)
+    assertEquals(listOf(2L, 1L), picked.map { it.id })
   }
 
   @Test
@@ -138,7 +139,7 @@ class WeekMemoriesTest {
   @Test
   fun `window label uses month-day span`() {
     val label = WeekMemories.windowLabel(today())
-    assertEquals("Nov 18 – 24", label)
+    assertEquals("Nov 18 – Nov 24", label)
   }
 
   @Test
