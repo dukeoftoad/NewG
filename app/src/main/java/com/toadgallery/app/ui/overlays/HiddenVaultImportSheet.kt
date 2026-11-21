@@ -195,7 +195,7 @@ fun HiddenVaultImportSheet(
 
         val rows = remember(visibleGalleryMedia) { visibleGalleryMedia.chunked(3) }
         LazyColumn(
-          modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+          modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 320.dp),
           contentPadding = PaddingValues(vertical = 4.dp),
           verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
