@@ -72,6 +72,7 @@ class UserPreferencesRepository(context: Context) {
     val APP_ICON = stringPreferencesKey("app_icon")
     val APP_FONT = stringPreferencesKey("app_font")
     val LEGACY_FACE_ID_BACKFILL_DONE = booleanPreferencesKey("legacy_face_id_backfill_done")
+    val INTRO_DONE = booleanPreferencesKey("intro_done")
   }
 
   val preferences: Flow<UserPreferences> =
