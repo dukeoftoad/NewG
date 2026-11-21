@@ -1,7 +1,7 @@
 package com.toadgallery.app
 
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -51,20 +51,19 @@ class MemoriesSheetTabTest {
     composeTestRule.onNodeWithTag("memories_tab_day").assertIsDisplayed()
     composeTestRule.onNodeWithTag("memories_tab_week").assertIsDisplayed()
 
-    // Week tab: enabled when the ±3-day window has matches; switch and check
-    // the header stays (never crashes, stays on the sheet).
-    val weekNode = composeTestRule.onAllNodes(hasTestTag("memories_tab_week")).fetchSemanticsNodes().firstOrNull()
-    val weekEnabled = weekNode?.config?.let { cfg ->
-      cfg.contains(SemanticsProperties.Enabled) && cfg[SemanticsProperties.Enabled]
-    } ?: false
-    if (weekEnabled) {
-      composeTestRule.onNodeWithTag("memories_tab_week").performClick()
-      composeTestRule.waitForIdle()
-      composeTestRule.onNodeWithTag("memories_sheet_header").assertIsDisplayed()
-      // and back
-      composeTestRule.onNodeWithTag("memories_tab_day").performClick()
-      composeTestRule.waitForIdle()
-      composeTestRule.onNodeWithTag("memories_sheet_header").assertIsDisplayed()
-    }
+    // Week tab: when the ±3-day window has matches, switch and check the
+    // header stays (never crashes, stays on the sheet). assertIsEnabled
+    // skips the branch when today's window is empty — matching the pure
+    // matcher tests' coverage of the disabled case.
+    runCatching { composeTestRule.onNodeWithTag("memories_tab_week").assertIsEnabled() }
+      .onSuccess {
+        composeTestRule.onNodeWithTag("memories_tab_week").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("memories_sheet_header").assertIsDisplayed()
+        // and back
+        composeTestRule.onNodeWithTag("memories_tab_day").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("memories_sheet_header").assertIsDisplayed()
+      }
   }
 }
