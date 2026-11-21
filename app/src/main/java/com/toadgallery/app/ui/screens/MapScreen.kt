@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toadgallery.app.ui.components.GalleryMediaImage
 import com.toadgallery.app.ui.theme.LocalToadColors
+import com.toadgallery.app.ui.theme.ToadMarkTokens
 import com.toadgallery.app.ui.viewmodel.GalleryUiState
 import com.toadgallery.app.ui.viewmodel.MapDisplayMode
 import kotlin.math.hypot
@@ -155,7 +156,7 @@ fun PlacesMapContent(
     // Interactive Vector Map Canvas
     Surface(
       modifier = Modifier.fillMaxWidth().weight(1f),
-      shape = RoundedCornerShape(28.dp),
+      shape = RoundedCornerShape(ToadMarkTokens.RadiusSheet),
       color = MaterialTheme.colorScheme.surface,
       border = BorderStroke(1.dp, extended.borderStrong),
     ) {

@@ -37,6 +37,7 @@ import androidx.compose.ui.window.Dialog
 import com.toadgallery.app.data.memories.OnThisDay
 import com.toadgallery.app.data.model.GalleryMediaItem
 import com.toadgallery.app.ui.MotionPolicy
+import com.toadgallery.app.ui.theme.ToadMarkTokens
 import com.toadgallery.app.ui.components.MediaThumbnailCard
 import com.toadgallery.app.ui.theme.LocalToadColors
 
@@ -60,7 +61,7 @@ fun OnThisDaySheet(
   val entrance = remember { Animatable(0f) }
   LaunchedEffect(Unit) {
     if (MotionPolicy.isRobolectric) entrance.snapTo(1f)
-    else entrance.animateTo(1f, tween(200))
+    else entrance.animateTo(1f, tween(MotionPolicy.Medium))
   }
 
   Dialog(
@@ -79,7 +80,7 @@ fun OnThisDaySheet(
             scaleX = s
             scaleY = s
           },
-      shape = RoundedCornerShape(28.dp),
+      shape = RoundedCornerShape(ToadMarkTokens.RadiusSheet),
       color = MaterialTheme.colorScheme.surface,
       border = BorderStroke(1.dp, extended.borderStrong),
     ) {
