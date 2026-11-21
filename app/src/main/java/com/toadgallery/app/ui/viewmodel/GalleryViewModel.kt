@@ -13,6 +13,7 @@ import com.toadgallery.app.data.ai.DepthModelManager
 import com.toadgallery.app.data.ai.DepthModelPackState
 import com.toadgallery.app.data.ai.FacePersonClusterer
 import com.toadgallery.app.data.memories.OnThisDay
+import com.toadgallery.app.data.memories.WeekMemories
 import com.toadgallery.app.data.ai.FacePersonGroup
 import com.toadgallery.app.data.ai.FacePersonSuggestion
 import com.toadgallery.app.data.ai.FacePersonSuggestionRanker
@@ -84,6 +85,7 @@ data class GalleryUiState(
   val trashedMedia: List<GalleryMediaItem> = emptyList(),
   val trashedExpiringSoonCount: Int = 0,
   val onThisDay: List<GalleryMediaItem> = emptyList(),
+  val weekMemories: List<GalleryMediaItem> = emptyList(),
   val selectedMediaIds: Set<Long> = emptySet(),
   val isSelectionMode: Boolean = false,
   val showBatchMoveDialog: Boolean = false,
@@ -346,7 +348,7 @@ class GalleryViewModel(
       galleryRepo.customAlbums,
       galleryRepo.trashedExpiringSoonCount(),
     ) { visible, vault, trashed, albums, expiringSoon ->
-      MediaBundle(visible, vault, trashed, albums, expiringSoon, OnThisDay.pick(visible))
+      MediaBundle(visible, vault, trashed, albums, expiringSoon, OnThisDay.pick(visible), WeekMemories.pick(visible))
     }
 
   private val baseUiState: StateFlow<GalleryUiState> =
@@ -466,6 +468,7 @@ class GalleryViewModel(
             trashedMedia = media.trashed,
             trashedExpiringSoonCount = media.expiringSoonCount,
             onThisDay = media.onThisDay,
+            weekMemories = media.weekMemories,
             selectedMediaIds = emptySet(),
             isSelectionMode = false,
             showBatchMoveDialog = false,
@@ -1472,6 +1475,7 @@ class GalleryViewModel(
     val customAlbums: List<AlbumEntity>,
     val expiringSoonCount: Int = 0,
     val onThisDay: List<GalleryMediaItem> = emptyList(),
+    val weekMemories: List<GalleryMediaItem> = emptyList(),
   )
 
   companion object {

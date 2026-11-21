@@ -22,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.toadgallery.app.data.memories.OnThisDay
@@ -48,7 +49,9 @@ fun OnThisDayCard(
     color = extended.surfaceHigh,
     border = BorderStroke(1.dp, extended.borderStrong),
     modifier =
-      Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+      Modifier.fillMaxWidth()
+        .padding(horizontal = 8.dp, vertical = 6.dp)
+        .testTag("on_this_day_card"),
   ) {
     Column(
       modifier = Modifier.padding(14.dp),
@@ -74,7 +77,7 @@ fun OnThisDayCard(
             color = extended.textMuted,
           )
         }
-        TextButton(onClick = onSeeAll) {
+        TextButton(onClick = onSeeAll, modifier = Modifier.testTag("on_this_day_see_all")) {
           Text("See all")
         }
       }

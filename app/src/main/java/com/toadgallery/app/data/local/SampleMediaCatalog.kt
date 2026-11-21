@@ -270,6 +270,46 @@ object SampleMediaCatalog {
         ocrText = "",
         exifSummary = "AES-256-GCM Vault • Protected",
       ),
+      // v3.0.0: year-old memories — a fresh install shows real On-This-Day
+      // and This-Week content instead of empty memories surfaces.
+      MediaItemEntity(
+        title = "Last Year's Trail Walk",
+        drawableResName = "sample_forest_trail",
+        bucketName = "Camera",
+        category = MediaCategory.CAMERA.name,
+        mediaType = MediaType.PHOTO.name,
+        dateLabel = "14 Nov 2025",
+        weekGroup = "Nov 10 – 16, 2025",
+        monthGroup = "November 2025",
+        timestamp = 1763097600000L, // 2025-11-14 12:00 UTC
+        locationName = "Fern Valley Trail",
+        hasGps = true,
+        mapX = 0.62f,
+        mapY = 0.41f,
+        aspectRatio = 1.5f,
+        tagsCsv = "hike, autumn, memory",
+        ocrText = "",
+        exifSummary = "Fern Valley Trail • 14 Nov 2025",
+      ),
+      MediaItemEntity(
+        title = "Pond at Dusk, Last Year",
+        drawableResName = "sample_lake_sunset",
+        bucketName = "Camera",
+        category = MediaCategory.CAMERA.name,
+        mediaType = MediaType.PHOTO.name,
+        dateLabel = "18 Nov 2025",
+        weekGroup = "Nov 17 – 23, 2025",
+        monthGroup = "November 2025",
+        timestamp = 1763443200000L, // 2025-11-18 12:00 UTC
+        locationName = "Lily Pond",
+        hasGps = true,
+        mapX = 0.48f,
+        mapY = 0.57f,
+        aspectRatio = 0.75f,
+        tagsCsv = "pond, dusk, memory",
+        ocrText = "",
+        exifSummary = "Lily Pond • 18 Nov 2025",
+      ),
       // Pre-seeded Recycle Bin items
       MediaItemEntity(
         title = "Duplicate Notice Capture",

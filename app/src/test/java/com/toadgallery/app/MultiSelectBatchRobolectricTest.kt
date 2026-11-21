@@ -117,7 +117,7 @@ class MultiSelectBatchRobolectricTest {
     // Select All -> bottom action bar appears with Share, Move, Favorite, Hide, and Delete
     composeTestRule.onNodeWithTag("selection_select_all_button").performClick()
     composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithText("9 selected").assertIsDisplayed()
+    composeTestRule.onNodeWithText("11 selected").assertIsDisplayed()
     composeTestRule.onNodeWithText("Deselect All").assertIsDisplayed()
     composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
     composeTestRule.onNodeWithTag("batch_share_button").assertIsDisplayed()
