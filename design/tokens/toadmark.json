@@ -1,0 +1,92 @@
+{
+  "name": "ToadMark",
+  "version": "1.0.0",
+  "description": "The shared toad-family design language: one brand palette, one metric scale, one motion character across toadGALLERY, toadHEALTH and toadPLAYER.",
+  "provenance": {
+    "brandPalette": "toadPLAYER ToadTheme — dukeoftoad/toadPLAYER LGPL-3.0-only (zarzet); values re-expressed from toad_theme.dart, no code copied",
+    "accents": "toadHEALTH ToadColors — dukeoftoad/toadHEALTH MIT (dukeoftoad); values from lib/theme.dart",
+    "metrics": "toadPLAYER AppTokens.standard — LGPL-3.0-only (zarzet); values from app_tokens.dart",
+    "springs": "Tuned Compose spring() presets that follow the M3-Expressive spatial/effects split (spatial overshoots slightly, effects settle flat); material_3_expressive package values are not copied"
+  },
+  "color": {
+    "light": {
+      "seed": "#557B2F",
+      "surface": "#F9FAF1",
+      "secondary": "#56624A",
+      "tertiary": "#38656A"
+    },
+    "dark": {
+      "seed": "#9CCC65",
+      "surface": "#12140E",
+      "secondary": "#BDC2AE",
+      "tertiary": "#A2CFD4"
+    },
+    "accent": {
+      "coral": "#E2694E",
+      "sun": "#EFB03F",
+      "pond": "#6FB7C4",
+      "pondDeep": "#4E93A3",
+      "lilypad": "#9CC46A"
+    },
+    "neutral": {
+      "cream": "#F6F1E0",
+      "paper": "#FEFAEC",
+      "ink": "#2B2B20",
+      "inkSoft": "#7A7561",
+      "moss": "#31402B",
+      "toadGreen": "#5F9C3F",
+      "toadDeep": "#3B6B2B",
+      "toadLight": "#BFDC85"
+    }
+  },
+  "radius": {
+    "badge": 6,
+    "thumb": 8,
+    "cover": 12,
+    "control": 16,
+    "card": 20,
+    "sheet": 28
+  },
+  "gap": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24
+  },
+  "touch": {
+    "minTarget": 48
+  },
+  "motion": {
+    "durationMs": {
+      "fast": 150,
+      "medium": 250,
+      "slow": 400
+    },
+    "spring": {
+      "spatialFast": { "dampingRatio": 0.9, "stiffness": 380.0 },
+      "spatialDefault": { "dampingRatio": 0.9, "stiffness": 220.0 },
+      "spatialSlow": { "dampingRatio": 0.95, "stiffness": 140.0 },
+      "effectsFast": { "dampingRatio": 1.0, "stiffness": 800.0 },
+      "effectsDefault": { "dampingRatio": 1.0, "stiffness": 380.0 }
+    }
+  },
+  "row": {
+    "paddingH": 20,
+    "paddingV": 16,
+    "paddingVCompact": 12,
+    "iconGap": 16,
+    "iconDividerIndent": 56,
+    "chevronSize": 24
+  },
+  "badge": {
+    "fontSize": 11,
+    "paddingH": 6,
+    "paddingV": 2
+  },
+  "type": {
+    "policy": "headline and title roles carry the brand family (rounded terminals, bold weights); body and label roles carry the neutral family (crisp cut terminals). Families stay app-side: toadGALLERY keeps its Appearance font picker.",
+    "brandRoles": ["display", "headline", "title"],
+    "neutralRoles": ["body", "label"]
+  }
+}
