@@ -17,6 +17,10 @@ enum class AppFont(val label: String, val description: String) {
   INTER("Inter", "Crisp and neutral, built for screens"),
   SPACE_GROTESK("Space Grotesk", "Quirky technical shapes with wide caps"),
   JETBRAINS_MONO("JetBrains Mono", "Monospace — every glyph the same width"),
+  // v3.0.0: the sketch-book pair from toadHEALTH (SIL OFL via Google Fonts).
+  // Single-weight handwriting faces; heavier roles resolve to their one weight.
+  CAVEAT("Caveat", "Handwritten warmth — the pond journal look"),
+  PATRICK_HAND("Patrick Hand", "Casual neat print, like a field notebook"),
   ;
 
   companion object {

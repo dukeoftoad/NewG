@@ -45,6 +45,11 @@ val SpaceGroteskFontFamily =
     Font(R.font.spacegrotesk_bold, FontWeight.Bold),
   )
 
+/** v3.0.0: toadHEALTH's sketch pair — single weight (SIL OFL). */
+val CaveatFontFamily = FontFamily(Font(R.font.caveat, FontWeight.Normal))
+
+val PatrickHandFontFamily = FontFamily(Font(R.font.patrick_hand, FontWeight.Normal))
+
 val JetBrainsMonoFontFamily =
   FontFamily(
     Font(R.font.jetbrainsmono_regular, FontWeight.Normal),
@@ -66,4 +71,6 @@ fun fontFamilyFor(font: AppFont): FontFamily =
     AppFont.INTER -> InterFamily
     AppFont.SPACE_GROTESK -> SpaceGroteskFontFamily
     AppFont.JETBRAINS_MONO -> JetBrainsMonoFontFamily
+    AppFont.CAVEAT -> CaveatFontFamily
+    AppFont.PATRICK_HAND -> PatrickHandFontFamily
   }
