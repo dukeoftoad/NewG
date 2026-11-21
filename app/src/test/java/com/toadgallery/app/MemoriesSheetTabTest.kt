@@ -1,10 +1,11 @@
 package com.toadgallery.app
 
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import org.junit.Rule
 import org.junit.Test
@@ -56,7 +57,7 @@ class MemoriesSheetTabTest {
       composeTestRule
         .onAllNodes(hasTestTag("memories_tab_week"))
         .fetchSemanticsNodes()
-        .any { it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Enabled) && it.config[androidx.compose.ui.semantics.SemanticsProperties.Enabled] }
+        .any { node -> node.config.contains(SemanticsProperties.Enabled) && node.config[SemanticsProperties.Enabled] }
     if (weekEnabled) {
       composeTestRule.onNodeWithTag("memories_tab_week").performClick()
       composeTestRule.waitForIdle()
