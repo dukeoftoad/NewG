@@ -56,7 +56,7 @@ class ToadGalleryRobolectricTest {
     // asserting it is visible.
     composeTestRule.waitUntil(timeoutMillis = 10_000) {
       runCatching {
-          composeTestRule.onNodeWithText("9 selected").assertIsDisplayed()
+          composeTestRule.onNodeWithText("11 selected").assertIsDisplayed()
           composeTestRule.onNodeWithTag("batch_action_bar").assertIsDisplayed()
           true
         }

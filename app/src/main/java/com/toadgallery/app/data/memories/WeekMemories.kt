@@ -33,7 +33,7 @@ object WeekMemories {
       .mapNotNull { item ->
         val cal = Calendar.getInstance().apply { timeInMillis = item.timestamp }.normalized()
         if (cal.get(Calendar.YEAR) >= currentYear) return@mapNotNull null
-        if (!cal.withinDaysOf(center, WINDOW_DAYS)) return@mapNotNull null
+        if (!cal.seasonallyWithinDaysOf(center, WINDOW_DAYS)) return@mapNotNull null
         cal to item
       }
       .sortedByDescending { (cal, _) -> cal.timeInMillis }
@@ -71,22 +71,44 @@ object WeekMemories {
   }
 
   /**
-   * True when this calendar falls within [days] calendar days of [other]
-   * (inclusive), compared on the YEAR field after a day-level diff, so a
-   * Dec 30 photo can surface in a window centered on Jan 2. Day-level
-   * arithmetic (add/roll) is used rather than raw millis: with DST and
-   * timezone offsets, 3*24h in millis is not reliably 3 calendar days.
+   * True when this calendar's (month, day) falls within [days] days of
+   * [other]'s (month, day) in the SAME year — the seasonal distance, so a
+   * Nov 18 2023 photo is 3 "days" from a Nov 21 today, and a Dec 30 capture
+   * is 3 days from a Jan 2 today (wrap across the year seam).
+   *
+   * Distance is seam-aware day-of-year arithmetic on a year-collapsed copy:
+   * min(|doyA − doyB|, yearLen − |doyA − doyB|). The seam term is what makes
+   * Dec 30 ↔ Jan 2 come out as 3 instead of 363. Day-of-year values come
+   * from Calendar (not raw millis) so DST/timezone offsets never leak in.
+   *
+   * Leap-day forgiveness, same rule as OnThisDay: a Feb 29 capture is
+   * compared as Feb 28 when the collapsed year is not a leap year.
    */
-  private fun Calendar.withinDaysOf(other: Calendar, days: Int): Boolean {
-    var a = (this.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 12) }
-    var b = (other.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 12) }
-    if (a.after(b)) { val t = a; a = b; b = t }
-    var diff = 0
-    while (a.before(b)) {
-      a.add(Calendar.DAY_OF_YEAR, 1)
-      diff++
-      if (diff > days) return false
+  private fun Calendar.seasonallyWithinDaysOf(other: Calendar, days: Int): Boolean {
+    val year = other.get(Calendar.YEAR)
+
+    fun leapAwareDayOfYear(c: Calendar): Int {
+      val month = c.get(Calendar.MONTH)
+      var day = c.get(Calendar.DAY_OF_MONTH)
+      if (month == Calendar.FEBRUARY && day == 29) {
+        val isLeap =
+          (c as? GregorianCalendar ?: GregorianCalendar()).isLeapYear(year)
+        if (!isLeap) day = 28
+      }
+      val collapsed =
+        Calendar.getInstance(timeZone).apply {
+          clear()
+          set(year, month, day, 12, 0, 0)
+        }
+      return collapsed.get(Calendar.DAY_OF_YEAR)
     }
-    return diff <= days
+
+    val doyA = leapAwareDayOfYear(this)
+    val doyB = leapAwareDayOfYear(other)
+    val direct = kotlin.math.abs(doyA - doyB)
+    val yearLen =
+      if (GregorianCalendar().isLeapYear(year)) 366 else 365
+    val seam = yearLen - direct
+    return minOf(direct, seam) <= days
   }
 }
