@@ -82,7 +82,7 @@ class ToadMarkTokensDriftTest {
 
         toadMarkNames(json).forEach { (name, hex) ->
             val argb = 0xFF000000L or hex.removePrefix("#").toLong(16)
-            val dartName = name.replaceFirstChar { it.lowercase() }
+            val dartName = "toadmark" + name.removePrefix("ToadMark")
             val expected = "('$dartName', Color(0x${argb.toString(16).uppercase()})),  // ${hex.uppercase()}"
             assertTrue(
                 "toadmark_tokens.dart is missing '$expected' — run scripts/gen_tokens.py",
