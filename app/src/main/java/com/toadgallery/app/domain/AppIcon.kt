@@ -22,4 +22,8 @@ enum class AppIcon(val label: String, val aliasSuffix: String, val mipmapName: S
     PHOTO_STACK("Photo Stack", "PhotoStack", "ic_launcher_photo_stack"),
     ON_LEAF("Toad on Leaf", "OnLeaf", "ic_launcher_on_leaf"),
     CAMERA("Gallery Camera", "Camera", "ic_launcher_camera"),
+    // v3.0.0: the ToadMark identity icons — the v2.5.0 design language as
+    // launcher art. Appended last so the picker order stays stable.
+    TOADMARK_MOSS("ToadMark Moss", "ToadmarkMoss", "ic_launcher_moss"),
+    TOADMARK_POND("ToadMark Pond", "ToadmarkPond", "ic_launcher_pond"),
 }
