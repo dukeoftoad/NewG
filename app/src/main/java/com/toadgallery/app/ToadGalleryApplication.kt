@@ -11,6 +11,7 @@ import com.toadgallery.app.data.local.ToadGalleryDatabase
 import com.toadgallery.app.data.preferences.UserPreferencesRepository
 import com.toadgallery.app.data.trash.TrashPurgeScheduler
 import com.toadgallery.app.domain.PackageManagerAppIconSwitcher
+import com.toadgallery.app.ui.MotionPolicy
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,10 +45,20 @@ class ToadGalleryApplication :
     // others, so a fresh install or a restored backup shows the right icon even
     // before the user opens Settings → Appearance & Timeline → App Icon.
     // (Same startup pattern as toadFILES' ToadApp.)
-    appScope.launch(Dispatchers.IO) {
-      val icon =
-        UserPreferencesRepository(this@ToadGalleryApplication).preferences.first().appIcon
-      PackageManagerAppIconSwitcher(this@ToadGalleryApplication).apply(icon)
+    //
+    // Gated off under Robolectric (MotionPolicy pattern): the apply runs on a
+    // REAL Dispatchers.IO thread that survives sandbox teardown, and Robolectric's
+    // component-enabled-setting map is static across tests in the same JVM — a
+    // late apply from an earlier Activity-launching test can land DURING
+    // AppIconSwitcherTest and clobber its seeded baseline (observed: LauncherClassic
+    // re-enabled mid-test, main CI red on a timing flake). Production path is
+    // unchanged; the switcher's own behavior is covered by its dedicated tests.
+    if (!MotionPolicy.isRobolectric) {
+      appScope.launch(Dispatchers.IO) {
+        val icon =
+          UserPreferencesRepository(this@ToadGalleryApplication).preferences.first().appIcon
+        PackageManagerAppIconSwitcher(this@ToadGalleryApplication).apply(icon)
+      }
     }
     // Schedule the 30-day Recycle Bin auto-purge (v2.1.0). KEEP policy means
     // re-scheduling on every Application start is a no-op once WorkManager has
